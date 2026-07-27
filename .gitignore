@@ -1,0 +1,23 @@
+# Sentinel — Git Ignore
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Sentinel data (machine-specific)
+sentinel/data/
+.sentinel/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
