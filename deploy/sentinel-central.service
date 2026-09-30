@@ -1,0 +1,20 @@
+[Unit]
+Description=Sentinel Central - TrinTech Digital Defense
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sentinel
+ExecStart=/usr/bin/python3 /opt/sentinel/sentinel.py central
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/root/.sentinel
+
+[Install]
+WantedBy=multi-user.target

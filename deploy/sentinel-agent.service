@@ -1,0 +1,20 @@
+[Unit]
+Description=Sentinel Agent - TrinTech Digital Defense
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/sentinel
+ExecStart=/usr/bin/python3 /opt/sentinel/sentinel.py agent http://CHANGE_TO_CENTRAL_IP:8743
+Restart=always
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/root/.sentinel
+
+[Install]
+WantedBy=multi-user.target
