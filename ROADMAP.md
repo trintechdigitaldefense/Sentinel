@@ -20,31 +20,33 @@ Wins when it is all of:
 
 ---
 
-## Phase 1 — Make the Core Unfair (NOW)
+## Phase 1 — Make the Core Unfair (COMPLETE)
 
 | # | Feature | Status |
 |---|---------|--------|
-| 1 | TLS + mutual token on agent channel | In progress |
-| 2 | Auto-quarantine playbook | In progress |
-| 3 | Quiet mode + false-positive tuning | In progress |
-| 4 | Canary beacon callbacks | In progress |
-| 5 | One-command client onboarding | In progress |
+| 1 | TLS + mutual token on agent channel | Done |
+| 2 | Auto-quarantine playbook | Done |
+| 3 | Quiet mode + false-positive tuning | Done |
+| 4 | Canary beacon callbacks | Done |
+| 5 | One-command client onboarding | Done |
 
 **Outcome:** Safe and sticky for real clients.
 
 ---
 
-## Phase 2 — Own the Deception Layer
+## Phase 2 — Own the Deception Layer (IN PROGRESS)
 
-| # | Feature |
-|---|---------|----|
-| 6 | Mirage fusion (file canaries + fake services + banners) |
-| 7 | Adaptive decoys by industry |
-| 8 | Decoy interaction scoring |
-| 9 | Memory / process canaries |
-| 10 | Attacker timeline reconstruction |
+| # | Feature | Status |
+|---|---------|--------|
+| 6 | Mirage fusion (file canaries + fake services + banners) | Module ready |
+| 7 | Adaptive decoys by industry | Module ready |
+| 8 | Decoy interaction scoring | Module ready |
+| 9 | Memory / process canaries | Module ready |
+| 10 | Attacker timeline reconstruction | Module ready |
 
 **Outcome:** Clear differentiation vs monitoring-only tools.
+
+See PHASE2.md and modules/phase2.py.
 
 ---
 
@@ -73,17 +75,6 @@ Wins when it is all of:
 | 20 | Air-gapped / offline mode |
 
 **Outcome:** Regional + operational moat.
-
----
-
-## Priority spine
-
-1. TLS + hardened agent channel  
-2. Auto-quarantine on critical alerts  
-3. Quiet mode / severity thresholds  
-4. Canary beacon callbacks  
-5. Lightweight central dashboard  
-6. Mirage fully fused into Sentinel  
 
 ---
 
