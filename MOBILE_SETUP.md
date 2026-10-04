@@ -1,35 +1,25 @@
-# Sentinel v2.2.0 — Mobile setup (Phase 1 complete)
-
-All engine chunks are on GitHub. From any device:
+# Sentinel — Mobile setup (Phase 1 + 2)
 
 ```bash
 git clone https://github.com/trintechdigitaldefense/Sentinel.git
 cd Sentinel
+
+# Engine v2.2
 python3 assemble_engine.py
-```
 
-That writes full `sentinel.py` (~94KB) with Phase 1 wired:
-- Quiet mode
-- Auto-quarantine
-- Canary beacons
-- `sentinel onboard --client NAME`
-- Token agent headers
+# Phase 2 module
+python3 restore_phase2.py
 
-## Verify
+# Wire Phase 2 into sentinel.py (→ v2.3.0)
+python3 restore_wire_phase2.py
+python3 wire_phase2.py
 
-```bash
+# Verify
 python3 sentinel.py phase1
-python3 sentinel.py onboard --client "Test"
-python3 sentinel.py --help   # or: python3 sentinel.py
+python3 sentinel.py phase2
+python3 sentinel.py mirage --industry accounting
+python3 sentinel.py score
+python3 sentinel.py timeline
 ```
 
-## Chunks required
-
-- `engine_chunks/part_0a.b64` + `part_0b.b64`
-- `engine_chunks/part_1a.b64` + `part_1b.b64`
-- `engine_chunks/part_2a.b64` + `part_2b.b64`
-- `engine_chunks/part_3.b64`
-- `assemble_engine.py`
-- `modules/phase1.py`
-
-TrinTech Digital Defense — Phase 1 complete.
+TrinTech Digital Defense
