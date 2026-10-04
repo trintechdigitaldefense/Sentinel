@@ -1,82 +1,19 @@
 # Sentinel Roadmap — Best & Only of Its Kind
 
-**TrinTech Digital Defense**  
-Goal: The definitive deception-first, multi-host Line of Defense engine for Caribbean SMBs and supervised managed service.
+**TrinTech Digital Defense**
 
----
+## Phase 1 — Core Unfair (COMPLETE)
+Token agents · quarantine · quiet mode · canary beacons · onboard
 
-## Positioning
+## Phase 2 — Deception Layer (COMPLETE)
+Mirage · adaptive decoys · scoring · process canaries · timeline
 
-Not another SIEM. Not another EDR clone.  
-**Visibility + deception + automatic response + clear reports** under one operator model.
-
-Wins when it is all of:
-1. Deception-first (not detection-only)
-2. Multi-host with simple token/TLS agents
-3. Automatic response, not just alerts
-4. Client-ready PDF + weekly ops model built in
-5. Runs on modest hardware
-6. Sold and operated as a Caribbean managed service
-
----
-
-## Phase 1 — Make the Core Unfair (COMPLETE)
-
-| # | Feature | Status |
-|---|---------|--------|
-| 1 | TLS + mutual token on agent channel | Done |
-| 2 | Auto-quarantine playbook | Done |
-| 3 | Quiet mode + false-positive tuning | Done |
-| 4 | Canary beacon callbacks | Done |
-| 5 | One-command client onboarding | Done |
-
-**Outcome:** Safe and sticky for real clients.
-
----
-
-## Phase 2 — Own the Deception Layer (IN PROGRESS)
-
-| # | Feature | Status |
-|---|---------|--------|
-| 6 | Mirage fusion (file canaries + fake services + banners) | Module ready |
-| 7 | Adaptive decoys by industry | Module ready |
-| 8 | Decoy interaction scoring | Module ready |
-| 9 | Memory / process canaries | Module ready |
-| 10 | Attacker timeline reconstruction | Module ready |
-
-**Outcome:** Clear differentiation vs monitoring-only tools.
-
-See PHASE2.md and modules/phase2.py.
-
----
-
-## Phase 3 — Operator’s Brain
-
-| # | Feature |
-|---|---------|----|
-| 11 | Lightweight central web dashboard |
-| 12 | Multi-tenant mode (many clients, one central) |
-| 13 | WhatsApp / Telegram / Email alert routing |
-| 14 | Weekly auto-report + executive summary |
-| 15 | Sentinel self health & heartbeat |
-
-**Outcome:** Control plane for the managed service.
-
----
+## Phase 3 — Operator’s Brain (IN PROGRESS)
+Dashboard · multi-tenant · **WhatsApp +1-868-362-0679** · weekly report · health
 
 ## Phase 4 — Hard to Copy
+Behavioral baseline · Caribbean threat pack · playbooks · evidence pack · offline mode
 
-| # | Feature |
-|---|---------|----|
-| 16 | Behavioral baseline per host |
-| 17 | Caribbean threat pack |
-| 18 | Response playbooks library |
-| 19 | Evidence / case export pack |
-| 20 | Air-gapped / offline mode |
+See PHASE1.md, PHASE2.md, PHASE3.md.
 
-**Outcome:** Regional + operational moat.
-
----
-
-*DEFEND. DETECT. DOMINATE.*  
-TrinTech Digital Defense
+*DEFEND. DETECT. DOMINATE.* 🇹🇹
