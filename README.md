@@ -1,86 +1,141 @@
-# 🛡️ Sentinel v2.1 — Client-Ready Line of Defense
+# SENTINEL v2.5 — TrinTech Digital Defense
 
-**TrinTech Digital Defense** · Trinidad & Tobago
+Continuous monitoring, active deception (canaries), reverse-shell detection, and early warning for **local SMB networks** — without a full SOC.
 
-Continuous network monitoring, active deception, reverse-shell detection, and early intrusion warning for businesses that need real visibility without a full SOC.
-
-[![Python](https://img.shields.io/badge/Python-3.12+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
-[![Version](https://img.shields.io/badge/Version-2.1.0%20Client--Ready-blue?style=for-the-badge)](#)
-[![License](https://img.shields.io/badge/License-Authorized%20Use%20Only-gray?style=for-the-badge)](#license)
+**Trinidad & Tobago · Caribbean-focused**
 
 ---
 
-## What is new in v2.1
-
-- **Realistic canary decoys** (AWS keys, .env, SSH keys, DB configs) with unique IDs
-- **Real-time canary watcher** (`sentinel canary`)
-- **Enhanced reverse-shell detection** (bash -i, /dev/tcp, nc -e, python/perl/php shells, etc.)
-- **Professional PDF reports** (`sentinel pdf`)
-- **Multi-host agents** with shared-token authentication
-- **Permission lockdown**, self-integrity checks, log rotation
-- **systemd-ready** installer + clean uninstall
-- Client deployment guide: [CLIENT_READY.md](CLIENT_READY.md)
-
----
-
-## Quick start
+## Install (any device)
 
 ```bash
 git clone https://github.com/trintechdigitaldefense/Sentinel.git
 cd Sentinel
-sudo bash install-sentinel.sh                  # central
-# or
-sudo bash install-sentinel.sh --agent http://CENTRAL_IP:8743
+python3 setup.py
 ```
+
+That is the full setup: engine + Phase 4 + numbered menu + clean banner.
+
+**Requirements:** Python 3.10+ (3.12 fine). Linux or Termux/Ubuntu. Root helps for some network checks but is not required for core features.
+
+---
+
+## How to use
 
 ```bash
-sentinel deception    # plant canaries
-sentinel integrity    # FIM baseline
-sentinel hunt         # continuous monitoring
-sentinel pdf          # client report
-sentinel canary       # watch decoys live
+cd Sentinel
+python3 sentinel.py
 ```
 
+**MAIN MENU**
+
+| # | Action |
+|---|--------|
+| **1** | **Continuous protection** — scan + canaries once, then stay hunting |
+| 2 | Quick network scan (one-shot) |
+| 3 | Hunt only (continuous) |
+| 4 | Deploy deception / canaries |
+| 5 | Integrity baseline (FIM) — run once on new hosts |
+| 6 | Process / reverse-shell scan |
+| 7 | Report |
+| 8 | Phase 4 (baseline, Caribbean pack, playbooks, evidence) |
+| 9–12 | Info, alerts, hardening, status |
+| 0 | Exit |
+
+Or without the menu:
+
+```bash
+python3 sentinel.py start     # one-shot
+python3 sentinel.py hunt      # continuous
+python3 sentinel.py integrity
+python3 sentinel.py baseline
+python3 sentinel.py caribbean
+python3 sentinel.py evidence --hours 24
+python3 sentinel.py pdf       # if reportlab installed
+```
+
+### First hour on a client network
+
+1. `python3 setup.py`
+2. Edit scan range if needed: `~/.sentinel/config.json` → `network.scan_subnets` (e.g. `["192.168.1.0/24"]`)
+3. Menu **5** — build FIM baseline
+4. Menu **1** — leave continuous protection running
+5. Later: menu **7** / `pdf` for client-facing report
+
 ---
 
-## Core commands
+## Where to deploy (local SMBs)
 
-| Command | Purpose |
-|---------|---------|
-| `start` | Full scan + deception + hunt |
-| `deception` | Deploy realistic canaries |
-| `canary` | Real-time canary watcher |
-| `hunt` | Continuous monitoring |
-| `processes` | Reverse-shell / process scan |
-| `pdf` | Generate PDF report |
-| `central` | Multi-host listener (token auth) |
-| `agent <url>` | Report to central node |
-| `integrity` | Build/check FIM baseline |
-| `uninstall` | Clean removal |
+| Placement | Why |
+|-----------|-----|
+| **Office server / always-on PC** | Best: continuous hunt + canaries 24/7 |
+| **Owner’s workstation** | Good visibility of that host + LAN scan |
+| **Raspberry Pi / mini PC on LAN** | Low cost dedicated sensor |
+| **Laptop only** | Works while online; not full-time coverage |
 
-Full hardening rules and client limitations: **[CLIENT_READY.md](CLIENT_READY.md)**  
-Client-oriented overview: **[README-CLIENT.md](README-CLIENT.md)**
+**Best practice for SMBs:** one always-on host on the main office LAN running menu **1** (or `hunt` under systemd).
+
+Typical clients: small offices, retail, clinics, professional services, NGOs — anywhere with Windows/Linux devices, shared Wi‑Fi, and no SOC.
 
 ---
 
-## Managed package (recommended for clients)
+## What makes it client-ready
 
-1. **Sentinel** — continuous monitoring & detection  
-2. **Mirage** — active deception layer  
-3. **Full Network Audit & Mapping**  
-4. **Bi-weekly security reports**  
-5. **Weekly technical maintenance**
+| Capability | Benefit for SMB |
+|------------|-----------------|
+| **Continuous hunt** | Ongoing process, cron, SSH, FIM checks |
+| **Canary decoys** | Fake AWS keys, `.env`, passwords — alert if touched |
+| **Reverse-shell patterns** | Detects common attacker shells |
+| **FIM baseline** | Notices critical file changes |
+| **Numbered menu** | Staff can operate without CLI memorization |
+| **PDF / evidence pack** | Something you can hand the client |
+| **Phase 4 playbooks** | Clear response steps (e.g. REVERSE_SHELL) |
+| **Caribbean pack** | Regional-oriented checks |
+| **Hardening + permissions** | Config/data locked down (600/700) |
+| **Multi-host agents** | Optional: agents report to a central node |
+| **One-command setup** | `python3 setup.py` after clone |
 
-Contact: trintechdigitaldefense@gmail.com · WhatsApp +1 (868) 362-0679
+### Honest limits (set expectations)
+
+- Not a replacement for EDR/firewall/patch management
+- Network discovery depends on LAN visibility and permissions
+- Outbound/`/proc` features may be limited on Termux/containers
+- Authorization required — only networks you own or are contracted to defend
+
+---
+
+## Managed package (TrinTech)
+
+1. **Sentinel** — continuous monitoring & detection
+2. **Mirage** — deception layer
+3. **Network audit & mapping** (periodic)
+4. **Reports** (e.g. bi-weekly)
+5. **Technical maintenance** (e.g. weekly)
+
+**Contact:** trintechdigitaldefense@gmail.com · WhatsApp **+1 (868) 362-0679**
+
+---
+
+## Files you care about
+
+| Path | Role |
+|------|------|
+| `setup.py` | **Only install step you need** |
+| `sentinel.py` | Main tool (built by setup) |
+| `modules/phase4.py` | Baseline, Caribbean, playbooks, evidence |
+| `~/.sentinel/config.json` | Config (subnets, agents, alerts) |
+| `~/.sentinel/data/` | Logs, baselines, canary tracker |
+
+Do **not** run `restore_phase2/3/4.py` (legacy broken packs).
 
 ---
 
 ## License
 
-For **authorized defensive and security testing use only**.  
-Unauthorized access is illegal under the Trinidad & Tobago Cybercrimes Act and applicable international law.
+Authorized defensive and security testing only.
+Unauthorized access is illegal under applicable law (including Trinidad & Tobago Cybercrimes Act).
 
 ---
 
-**TrinTech Digital Defense** 🇹🇹  
-*DEFEND. DETECT. DOMINATE.*
+**TrinTech Digital Defense**
+*Defend. Detect. Dominate.*
