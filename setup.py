@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Sentinel one-command setup — TrinTech Digital Defense
+Sentinel one-command setup — TrinTech Digital Defense v2.6
 
   git clone https://github.com/trintechdigitaldefense/Sentinel.git
   cd Sentinel
@@ -80,6 +80,14 @@ def step_phase6() -> None:
         print("[=] wire_phase6.py not present yet")
 
 
+def step_phase7() -> None:
+    w7 = ROOT / "wire_phase7.py"
+    if w7.exists():
+        run([sys.executable, str(w7)])
+    else:
+        print("[=] wire_phase7.py not present yet")
+
+
 def step_clear_integrity() -> None:
     import os
     for p in {
@@ -111,15 +119,15 @@ def step_default_subnet() -> None:
 
 def step_verify() -> None:
     print("\n" + "=" * 50)
-    print("  SENTINEL SETUP COMPLETE")
+    print("  SENTINEL SETUP COMPLETE (v2.6)")
     print("=" * 50)
     print("""
   python3 sentinel.py
-  python3 sentinel.py service-install   # always-on
-  python3 sentinel.py service-status
-  python3 sentinel.py digest-cron       # daily WhatsApp digest
-  python3 sentinel.py hygiene
-  python3 sentinel.py heartbeat
+  python3 sentinel.py service-install
+  python3 sentinel.py central          # multi-host UI :8790
+  python3 sentinel.py agent-report
+  python3 sentinel.py quiet --on
+  python3 sentinel.py release
 
 Config:  ~/.sentinel/config.json
 Do NOT run restore_phase*.py
@@ -134,6 +142,7 @@ def main() -> None:
     step_ui()
     step_phase5()
     step_phase6()
+    step_phase7()
     step_clear_integrity()
     step_default_subnet()
     step_verify()
