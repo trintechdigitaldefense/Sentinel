@@ -72,6 +72,14 @@ def step_phase5() -> None:
         print("[=] wire_phase5.py not present yet")
 
 
+def step_phase6() -> None:
+    w6 = ROOT / "wire_phase6.py"
+    if w6.exists():
+        run([sys.executable, str(w6)])
+    else:
+        print("[=] wire_phase6.py not present yet")
+
+
 def step_clear_integrity() -> None:
     import os
     for p in {
@@ -105,30 +113,13 @@ def step_verify() -> None:
     print("\n" + "=" * 50)
     print("  SENTINEL SETUP COMPLETE")
     print("=" * 50)
-    r = subprocess.run(
-        [sys.executable, str(ENGINE), "phase4"],
-        cwd=str(ROOT),
-        capture_output=True,
-        text=True,
-        timeout=90,
-    )
-    out = (r.stdout or "") + (r.stderr or "")
-    if "behavioral_enabled" in out or r.returncode == 0:
-        print("[+] phase4 OK")
-    else:
-        print("[!] phase4 check weak — still try menu")
-        print(out[-400:])
-
     print("""
-========================================
-  HOW TO USE
-========================================
-
-  python3 sentinel.py              # numbered menu
-  python3 sentinel.py start        # one-shot
-  python3 sentinel.py hunt         # continuous
-  python3 sentinel.py autosubnet   # Phase 5
-  python3 sentinel.py dashboard    # Phase 5 HTML status
+  python3 sentinel.py
+  python3 sentinel.py service-install   # always-on
+  python3 sentinel.py service-status
+  python3 sentinel.py digest-cron       # daily WhatsApp digest
+  python3 sentinel.py hygiene
+  python3 sentinel.py heartbeat
 
 Config:  ~/.sentinel/config.json
 Do NOT run restore_phase*.py
@@ -142,6 +133,7 @@ def main() -> None:
     step_phase4()
     step_ui()
     step_phase5()
+    step_phase6()
     step_clear_integrity()
     step_default_subnet()
     step_verify()
