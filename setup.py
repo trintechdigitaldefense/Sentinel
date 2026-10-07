@@ -64,6 +64,14 @@ def step_ui() -> None:
                 run([sys.executable, str(p)])
 
 
+def step_phase5() -> None:
+    w5 = ROOT / "wire_phase5.py"
+    if w5.exists():
+        run([sys.executable, str(w5)])
+    else:
+        print("[=] wire_phase5.py not present yet")
+
+
 def step_clear_integrity() -> None:
     import os
     for p in {
@@ -117,13 +125,10 @@ def step_verify() -> None:
 ========================================
 
   python3 sentinel.py              # numbered menu
-  python3 sentinel.py start        # one-shot scan + decoys
-  python3 sentinel.py hunt         # continuous protection
-
-First-time client host:
-  1. python3 sentinel.py           → menu → 5 (integrity)
-  2. menu → 1  (continuous protection)  leave running
-  3. menu → 8  Phase 4 as needed
+  python3 sentinel.py start        # one-shot
+  python3 sentinel.py hunt         # continuous
+  python3 sentinel.py autosubnet   # Phase 5
+  python3 sentinel.py dashboard    # Phase 5 HTML status
 
 Config:  ~/.sentinel/config.json
 Do NOT run restore_phase*.py
@@ -136,6 +141,7 @@ def main() -> None:
     step_assemble()
     step_phase4()
     step_ui()
+    step_phase5()
     step_clear_integrity()
     step_default_subnet()
     step_verify()
