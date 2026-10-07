@@ -1,44 +1,48 @@
-# SENTINEL Phase 5 — Competitive ops layer
+# SENTINEL Phase 5 — Ops layer
 
 ## Features
 
 | Command | Purpose |
 |---------|---------|
-| `phase5` | Self-check Phase 5 modules |
-| `autosubnet` | Detect local /24 and write to config (no /8 scans) |
-| `heartbeat` | Write/read `~/.sentinel/data/heartbeat.json` |
-| `digest [--hours 24]` | Alert log summary → `digest_latest.json` |
-| `status-json` | Machine-readable status for SIEM / scripts |
-| `dashboard` | Local HTML status page (default port **8787**) |
+| `phase5` | Self-check |
+| `autosubnet` | Detect local /24 → config |
+| `heartbeat` | Write/read heartbeat.json |
+| `digest` | Alert summary → digest_latest.json |
+| `whatsapp-digest [--force]` | Send digest via CallMeBot WhatsApp |
+| `hygiene [--reset]` | Dedupe / rate-limit status |
+| `status-json` | Machine-readable status |
+| `dashboard` | HTML status on port 8787 |
+
+## Hunt integration
+
+Each hunt cycle calls `heartbeat_from_hunt()` so heartbeat age stays fresh while continuous protection runs.
+
+## Alert hygiene
+
+`send_alert()` is gated by `hygiene_should_emit()` — same alert key suppressed for **15 minutes** by default (`phase5.hygiene.window_sec`).
+
+## WhatsApp setup
+
+1. Get CallMeBot API key for your number  
+2. Edit `~/.sentinel/config.json`:
+
+```json
+"alerting": {
+  "whatsapp": {
+    "enabled": true,
+    "phone": "18683620679",
+    "apikey": "YOUR_KEY"
+  }
+}
+```
+
+3. Test: `python3 sentinel.py whatsapp-digest --force`
 
 ## Install
 
 ```bash
-cd Sentinel
+git pull origin main
 python3 setup.py
-python3 wire_phase5.py   # if setup did not wire yet
+python3 wire_phase5.py
+python3 sentinel.py phase5
 ```
-
-## Dashboard
-
-```bash
-python3 sentinel.py dashboard
-# http://HOST:8787/
-python3 sentinel.py dashboard --write-only
-```
-
-## Why this matters for SMBs
-
-- **Autosubnet** — fewer failed scans on first install
-- **Heartbeat** — external uptime checks
-- **Digest** — daily summary for client reports
-- **status-json** — automation / multi-site glue
-- **Dashboard** — optional visibility without a full SOC UI
-
-## Next (roadmap)
-
-1. Alert rate-limit / dedupe
-2. WhatsApp/Telegram digest push
-3. Multi-tenant central dashboard
-4. Windows agent packaging
-5. Signed release artifacts
