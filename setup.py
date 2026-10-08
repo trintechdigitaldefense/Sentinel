@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """
-Sentinel one-command setup — TrinTech Digital Defense v2.6
+SENTINEL single install path — TrinTech Digital Defense
 
   git clone https://github.com/trintechdigitaldefense/Sentinel.git
   cd Sentinel
   python3 setup.py
+
+That is the only install step. Do NOT run restore_phase*.py.
+After setup: python3 sentinel.py doctor
 """
 from __future__ import annotations
 
+import json
+import os
 import py_compile
 import subprocess
 import sys
@@ -15,9 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-PHASE4 = ROOT / "modules" / "phase4.py"
-WIRE4 = ROOT / "wire_phase4.py"
-FIX_UI = ROOT / "fix_ui.py"
+VERSION = "2.6.1"
 
 
 def run(cmd: list) -> int:
@@ -38,114 +41,141 @@ def step_assemble() -> None:
         sys.exit(1)
 
 
-def step_phase4() -> None:
-    PHASE4.parent.mkdir(parents=True, exist_ok=True)
-    if PHASE4.exists() and PHASE4.stat().st_size > 2000:
-        try:
-            py_compile.compile(str(PHASE4), doraise=True)
-            print(f"[=] modules/phase4.py OK ({PHASE4.stat().st_size} bytes)")
-        except Exception:
-            print("[!] phase4.py invalid — git pull origin main")
+def step_wire(name: str, script: str) -> None:
+    p = ROOT / script
+    if p.exists():
+        run([sys.executable, str(p)])
     else:
-        print("[!] modules/phase4.py missing — git pull origin main")
-    if WIRE4.exists():
-        run([sys.executable, str(WIRE4)])
-    else:
-        print("[!] wire_phase4.py missing")
+        print(f"[=] {script} not present — skip")
 
 
 def step_ui() -> None:
-    if FIX_UI.exists():
-        run([sys.executable, str(FIX_UI)])
-    else:
-        for script in ("wire_menu.py", "wire_menu_continuous.py", "set_banner_simple.py"):
-            p = ROOT / script
-            if p.exists():
-                run([sys.executable, str(p)])
-
-
-def step_phase5() -> None:
-    w5 = ROOT / "wire_phase5.py"
-    if w5.exists():
-        run([sys.executable, str(w5)])
-    else:
-        print("[=] wire_phase5.py not present yet")
-
-
-def step_phase6() -> None:
-    w6 = ROOT / "wire_phase6.py"
-    if w6.exists():
-        run([sys.executable, str(w6)])
-    else:
-        print("[=] wire_phase6.py not present yet")
-
-
-def step_phase7() -> None:
-    w7 = ROOT / "wire_phase7.py"
-    if w7.exists():
-        run([sys.executable, str(w7)])
-    else:
-        print("[=] wire_phase7.py not present yet")
+    fix = ROOT / "fix_ui.py"
+    if fix.exists():
+        run([sys.executable, str(fix)])
+        return
+    for script in ("wire_menu.py", "wire_menu_continuous.py", "set_banner_simple.py"):
+        p = ROOT / script
+        if p.exists():
+            run([sys.executable, str(p)])
 
 
 def step_clear_integrity() -> None:
-    import os
     for p in {
         Path.home() / ".sentinel/data/self_integrity.json",
         Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel")) / "data/self_integrity.json",
     }:
         if p.exists():
-            p.unlink()
-            print(f"[+] Cleared {p}")
+            try:
+                p.unlink()
+                print(f"[+] Cleared {p}")
+            except Exception as e:
+                print(f"[=] could not clear {p}: {e}")
 
 
-def step_default_subnet() -> None:
-    import json
-    cfg = Path.home() / ".sentinel/config.json"
-    if not cfg.exists():
-        return
+def step_harden_defaults() -> None:
+    """SMB-safe defaults: narrow subnets, WhatsApp off, quiet off."""
+    cfg_path = Path.home() / ".sentinel/config.json"
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    data = Path.home() / ".sentinel/data"
+    data.mkdir(parents=True, exist_ok=True)
     try:
-        c = json.loads(cfg.read_text())
-        nets = c.get("network", {}).get("scan_subnets", [])
-        if any(s.endswith(("/8", "/12", "/11", "/10")) for s in nets):
-            c.setdefault("network", {})["scan_subnets"] = [
-                s for s in nets if not s.endswith(("/8", "/12", "/11", "/10"))
-            ] or ["192.168.1.0/24"]
-            cfg.write_text(json.dumps(c, indent=2))
-            print("[+] Restricted scan_subnets:", c["network"]["scan_subnets"])
-    except Exception as e:
-        print(f"[=] subnet tweak skipped: {e}")
+        os.chmod(cfg_path.parent, 0o700)
+        os.chmod(data, 0o700)
+    except Exception:
+        pass
+
+    c: dict = {}
+    if cfg_path.exists():
+        try:
+            c = json.loads(cfg_path.read_text())
+        except Exception:
+            c = {}
+
+    net = c.setdefault("network", {})
+    nets = list(net.get("scan_subnets") or [])
+    if not nets or any(str(s).endswith(("/8", "/12", "/11", "/10", "/9")) for s in nets):
+        net["scan_subnets"] = [s for s in nets if not str(s).endswith(("/8", "/12", "/11", "/10", "/9"))] or [
+            "192.168.1.0/24"
+        ]
+        print("[+] scan_subnets:", net["scan_subnets"])
+
+    wa = c.setdefault("alerting", {}).setdefault("whatsapp", {})
+    wa.setdefault("enabled", False)
+    wa.setdefault("phone", "")
+    wa.setdefault("apikey", "")
+
+    q = c.setdefault("quiet_hours", {})
+    q.setdefault("enabled", False)
+    q.setdefault("start", "22:00")
+    q.setdefault("end", "07:00")
+    q.setdefault("allow_critical", True)
+
+    c.setdefault("version", VERSION)
+    cfg_path.write_text(json.dumps(c, indent=2))
+    try:
+        os.chmod(cfg_path, 0o600)
+    except Exception:
+        pass
+    print(f"[+] Defaults written → {cfg_path}")
 
 
-def step_verify() -> None:
-    print("\n" + "=" * 50)
-    print("  SENTINEL SETUP COMPLETE (v2.6)")
-    print("=" * 50)
-    print("""
-  python3 sentinel.py
-  python3 sentinel.py service-install
-  python3 sentinel.py central          # multi-host UI :8790
-  python3 sentinel.py agent-report
-  python3 sentinel.py quiet --on
-  python3 sentinel.py release
+def step_doctor() -> None:
+    doc = ROOT / "modules" / "doctor.py"
+    if not doc.exists():
+        print("[=] modules/doctor.py missing")
+        return
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
+    print("\n[*] Running doctor…")
+    subprocess.run(
+        [sys.executable, "-c", "from modules.doctor import run_doctor; run_doctor(True)"],
+        cwd=str(ROOT),
+        env=env,
+    )
 
-Config:  ~/.sentinel/config.json
-Do NOT run restore_phase*.py
-""")
+
+def step_verify_banner() -> None:
+    print("\n" + "=" * 56)
+    print(f"  SENTINEL SETUP COMPLETE  (v{VERSION})")
+    print("=" * 56)
+    print(
+        """
+  Single install path is done. Daily use:
+
+    python3 sentinel.py doctor      # readiness OK/WARN/FAIL
+    python3 sentinel.py             # menu
+    python3 sentinel.py integrity   # baseline once
+    python3 sentinel.py deception   # canaries
+    python3 sentinel.py service-install
+
+  Config:  ~/.sentinel/config.json
+  Do NOT run restore_phase*.py
+"""
+    )
 
 
 def main() -> None:
-    print("Sentinel setup — TrinTech Digital Defense")
+    print("SENTINEL single install — TrinTech Digital Defense")
     print(f"Repo: {ROOT}")
     step_assemble()
-    step_phase4()
+    p4 = ROOT / "modules" / "phase4.py"
+    if p4.exists() and p4.stat().st_size > 2000:
+        try:
+            py_compile.compile(str(p4), doraise=True)
+            print(f"[=] modules/phase4.py OK ({p4.stat().st_size} bytes)")
+        except Exception:
+            print("[!] phase4.py invalid — git pull origin main")
+    step_wire("phase4", "wire_phase4.py")
     step_ui()
-    step_phase5()
-    step_phase6()
-    step_phase7()
+    step_wire("phase5", "wire_phase5.py")
+    step_wire("phase6", "wire_phase6.py")
+    step_wire("phase7", "wire_phase7.py")
+    step_wire("doctor", "wire_doctor.py")
     step_clear_integrity()
-    step_default_subnet()
-    step_verify()
+    step_harden_defaults()
+    step_doctor()
+    step_verify_banner()
 
 
 if __name__ == "__main__":
