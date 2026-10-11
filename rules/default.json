@@ -1,0 +1,34 @@
+[
+  {
+    "id": "rs_bash_i",
+    "name": "Interactive bash reverse shell",
+    "condition": {"field": "command", "regex": "bash\\s+-i"},
+    "severity": "CRITICAL",
+    "attack": ["T1059"],
+    "suppression_key": "reverse_shell"
+  },
+  {
+    "id": "rs_dev_tcp",
+    "name": "Bash /dev/tcp",
+    "condition": {"field": "command", "regex": "/dev/tcp/"},
+    "severity": "CRITICAL",
+    "attack": ["T1059", "T1071"],
+    "suppression_key": "reverse_shell"
+  },
+  {
+    "id": "canary_touch",
+    "name": "Canary file accessed",
+    "condition": {"field": "reason", "equals": "canary"},
+    "severity": "HIGH",
+    "attack": ["T1005", "T1552"],
+    "suppression_key": "canary"
+  },
+  {
+    "id": "honey_login",
+    "name": "Honey credential use",
+    "condition": {"field": "reason", "equals": "honey_auth"},
+    "severity": "CRITICAL",
+    "attack": ["T1078", "T1110"],
+    "suppression_key": "honey_auth"
+  }
+]
