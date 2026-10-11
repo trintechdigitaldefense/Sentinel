@@ -1,11 +1,5 @@
 #!/usr/bin/env python3
-"""
-SENTINEL single install path — TrinTech Digital Defense
-
-  git clone https://github.com/trintechdigitaldefense/Sentinel.git
-  cd Sentinel
-  python3 setup.py
-"""
+"""SENTINEL single install path — TrinTech Digital Defense v2.8"""
 from __future__ import annotations
 
 import json
@@ -17,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "2.7.0"
+VERSION = "2.8.0"
 
 
 def run(cmd: list) -> int:
@@ -91,16 +85,11 @@ def step_harden_defaults() -> None:
     net = c.setdefault("network", {})
     nets = list(net.get("scan_subnets") or [])
     if not nets or any(str(s).endswith(("/8", "/12", "/11", "/10", "/9")) for s in nets):
-        net["scan_subnets"] = [s for s in nets if not str(s).endswith(("/8", "/12", "/11", "/10", "/9"))] or [
-            "192.168.1.0/24"
-        ]
+        net["scan_subnets"] = [s for s in nets if not str(s).endswith(("/8", "/12", "/11", "/10", "/9"))] or ["192.168.1.0/24"]
         print("[+] scan_subnets:", net["scan_subnets"])
 
     wa = c.setdefault("alerting", {}).setdefault("whatsapp", {})
     wa.setdefault("enabled", False)
-    wa.setdefault("phone", "")
-    wa.setdefault("apikey", "")
-
     tg = c.setdefault("alerting", {}).setdefault("telegram", {})
     tg.setdefault("enabled", False)
     tg.setdefault("token", "")
@@ -108,20 +97,20 @@ def step_harden_defaults() -> None:
 
     q = c.setdefault("quiet_hours", {})
     q.setdefault("enabled", False)
-    q.setdefault("start", "22:00")
-    q.setdefault("end", "07:00")
-    q.setdefault("allow_critical", True)
-
     dm = c.setdefault("deadman", {})
     dm.setdefault("enabled", True)
     dm.setdefault("interval_sec", 300)
     dm.setdefault("timeout_sec", 600)
 
+    portal = c.setdefault("portal", {})
+    portal.setdefault("port", 8791)
+    portal.setdefault("enabled", True)
+    portal.setdefault("client_name", "Client")
+
     c.setdefault("usb_watch", False)
     det = c.setdefault("detection", {})
     det.setdefault("usb_watch", False)
     det.setdefault("dns_entropy_threshold", 3.8)
-    det.setdefault("dns_min_label_len", 25)
 
     c.setdefault("version", VERSION)
     cfg_path.write_text(json.dumps(c, indent=2))
@@ -135,15 +124,12 @@ def step_harden_defaults() -> None:
 def step_doctor() -> None:
     doc = ROOT / "modules" / "doctor.py"
     if not doc.exists():
-        print("[=] modules/doctor.py missing")
         return
     env = os.environ.copy()
     env["PYTHONPATH"] = str(ROOT) + os.pathsep + env.get("PYTHONPATH", "")
-    print("\n[*] Running doctor…")
     subprocess.run(
         [sys.executable, "-c", "from modules.doctor import run_doctor; run_doctor(True)"],
-        cwd=str(ROOT),
-        env=env,
+        cwd=str(ROOT), env=env,
     )
 
 
@@ -151,24 +137,18 @@ def step_verify_banner() -> None:
     print("\n" + "=" * 56)
     print(f"  SENTINEL SETUP COMPLETE  (v{VERSION})")
     print("=" * 56)
-    print(
-        """
+    print("""
   python3 sentinel.py doctor
-  python3 sentinel.py integrity && python3 sentinel.py drift
+  python3 sentinel.py portal-url
+  python3 sentinel.py portal
+  python3 sentinel.py honey
+  python3 sentinel.py crypto-status
+  python3 sentinel.py suppress
+  python3 sentinel.py suppress-add usb backup
   python3 sentinel.py drift-pdf
-  python3 sentinel.py attack
   python3 sentinel.py detect
-  python3 sentinel.py persistence-baseline
-  python3 sentinel.py deadman
-  python3 sentinel.py bot-test
   python3 sentinel.py service-install
-
-  Telegram bot: set alerting.telegram token+chat_id, enabled=true
-  then: python3 sentinel.py bot
-
-  Config: ~/.sentinel/config.json
-"""
-    )
+""")
 
 
 def main() -> None:
@@ -179,17 +159,23 @@ def main() -> None:
     if p4.exists() and p4.stat().st_size > 2000:
         try:
             py_compile.compile(str(p4), doraise=True)
-            print(f"[=] modules/phase4.py OK ({p4.stat().st_size} bytes)")
         except Exception:
-            print("[!] phase4.py invalid — git pull origin main")
-    step_wire("phase4", "wire_phase4.py")
-    step_ui()
-    step_wire("phase5", "wire_phase5.py")
-    step_wire("phase6", "wire_phase6.py")
-    step_wire("phase7", "wire_phase7.py")
-    step_wire("doctor", "wire_doctor.py")
-    step_wire("drift_deadman", "wire_drift_deadman.py")
-    step_wire("revenue_tier2", "wire_revenue_tier2.py")
+            print("[!] phase4.py invalid")
+    for name, script in [
+        ("phase4", "wire_phase4.py"),
+        ("ui", None),
+        ("phase5", "wire_phase5.py"),
+        ("phase6", "wire_phase6.py"),
+        ("phase7", "wire_phase7.py"),
+        ("doctor", "wire_doctor.py"),
+        ("drift_deadman", "wire_drift_deadman.py"),
+        ("revenue_tier2", "wire_revenue_tier2.py"),
+        ("portal_harden", "wire_portal_harden.py"),
+    ]:
+        if name == "ui":
+            step_ui()
+        else:
+            step_wire(name, script)
     step_clear_integrity()
     step_harden_defaults()
     step_doctor()
