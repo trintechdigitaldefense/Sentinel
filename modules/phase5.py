@@ -245,23 +245,40 @@ def status_json() -> dict:
 def _html_page() -> str:
     st = status_json()
     dig = alert_digest(24)
-    rows = "".join(f"<tr><td>{k}</td><td>{v}</td></tr>" for k, v in (dig.get("by_keyword") or {}).items()) or "<tr><td colspan='2'>No alerts</td></tr>"
-    recent = "".join(f"<li><code>{x}</code></li>" for x in (dig.get("recent") or [])[-8:]) or "<li>No recent alerts</li>"
+    rows = "".join(
+        "<tr><td>%s</td><td>%s</td></tr>" % (k, v)
+        for k, v in (dig.get("by_keyword") or {}).items()
+    ) or "<tr><td colspan='2'>No alerts</td></tr>"
+    recent = "".join(
+        "<li><code>%s</code></li>" % x.replace("<", "<")
+        for x in (dig.get("recent") or [])[-8:]
+    ) or "<li>No recent alerts</li>"
     alive = st.get("heartbeat_alive")
     badge, color = ("ALIVE", "#0F766E") if alive else ("STALE", "#C2410C")
     nets = ", ".join(st.get("scan_subnets") or []) or "(not set)"
-    src = st.get("heartbeat_source") or "?"
-    return f"""<!DOCTYPE html><html><head><meta charset=\"utf-8\"/><meta http-equiv=\"refresh\" content=\"30\"/><title>SENTINEL</title>
-<style>body{{font-family:system-ui;margin:0;background:#0B1F3A;color:#E2E8F0}}header{{padding:1rem;background:#071525;border-bottom:3px solid #1A8CFF}}
-.card{{background:#132337;border-radius:10px;padding:1rem;margin:1rem auto;max-width:900px}}.badge{{background:{color};padding:.2rem .6rem;border-radius:999px;font-weight:700}}
-code{{color:#7DD3FC;font-size:.78rem}}</style></head><body>
-<header><h1>SENTINEL</h1><div>TrinTech Digital Defense</div></header>
-<div class=\"card\"><span class=\"badge\">{badge}</span>
-<p>Host: {st.get(\"host\")} · HB: {st.get(\"heartbeat_age_seconds\")}s ({src})</p>
-<p>Subnets: {nets} · Hygiene suppressed: {st.get(\"hygiene_suppressed\")}</p></div>
-<div class=\"card\"><h3>Buckets</h3><table>{rows}</table></div>
-<div class=\"card\"><h3>Recent</h3><ul>{recent}</ul></div>
-</body></html>"""
+    src_hb = st.get("heartbeat_source") or "?"
+    host = st.get("host") or "?"
+    age = st.get("heartbeat_age_seconds")
+    hy = st.get("hygiene_suppressed")
+    return (
+        "<!DOCTYPE html><html><head><meta charset='utf-8'/>"
+        "<meta http-equiv='refresh' content='30'/><title>SENTINEL</title>"
+        "<style>"
+        "body{font-family:system-ui;margin:0;background:#0B1F3A;color:#E2E8F0}"
+        "header{padding:1rem;background:#071525;border-bottom:3px solid #1A8CFF}"
+        ".card{background:#132337;border-radius:10px;padding:1rem;margin:1rem auto;max-width:900px}"
+        ".badge{background:%s;padding:.2rem .6rem;border-radius:999px;font-weight:700}"
+        "code{color:#7DD3FC;font-size:.78rem}"
+        "</style></head><body>"
+        "<header><h1>SENTINEL</h1><div>TrinTech Digital Defense</div></header>"
+        "<div class='card'><span class='badge'>%s</span>"
+        "<p>Host: %s · HB: %ss (%s)</p>"
+        "<p>Subnets: %s · Hygiene suppressed: %s</p></div>"
+        "<div class='card'><h3>Buckets</h3><table>%s</table></div>"
+        "<div class='card'><h3>Recent</h3><ul>%s</ul></div>"
+        "<p style='text-align:center;opacity:.7'>Full control UI: python3 sentinel.py dash</p>"
+        "</body></html>"
+    ) % (color, badge, host, age, src_hb, nets, hy, rows, recent)
 
 def dashboard_write() -> dict:
     path = _data() / "dashboard.html"
