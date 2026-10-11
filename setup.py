@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SENTINEL single install - TrinTech Digital Defense v2.9.2"""
+"""SENTINEL single install - TrinTech Digital Defense v2.9.3"""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "2.9.2"
+VERSION = "2.9.3"
 
 
 def run(cmd: list) -> int:
@@ -35,7 +35,6 @@ def step_assemble() -> None:
 def step_wire(name: str, script: str) -> None:
     p = ROOT / script
     if p.exists():
-        # wire scripts may fail compile mid-setup; continue then fix_indent
         subprocess.run([sys.executable, str(p)], cwd=str(ROOT))
     else:
         print(f"[=] {script} not present - skip")
@@ -52,19 +51,16 @@ def step_ui() -> None:
             run([sys.executable, str(p)])
 
 
-def step_fix_indent() -> None:
-    fix = ROOT / "fix_indent.py"
-    if fix.exists():
-        print("\n[*] Repairing hunt-loop indentation...")
-        run([sys.executable, str(fix)])
-    else:
-        # minimal inline repair
-        if not ENGINE.exists():
-            return
-        try:
-            py_compile.compile(str(ENGINE), doraise=True)
-        except Exception:
-            print("[!] fix_indent.py missing and engine has syntax errors")
+def step_rebuild_hooks() -> None:
+    rh = ROOT / "rebuild_hooks.py"
+    if rh.exists():
+        print("\n[*] Rebuilding hunt hooks with correct indent...")
+        run([sys.executable, str(rh)])
+        return
+    fi = ROOT / "fix_indent.py"
+    if fi.exists():
+        print("\n[*] Fallback fix_indent...")
+        run([sys.executable, str(fi)])
 
 
 def step_clear_integrity() -> None:
@@ -181,7 +177,7 @@ def main() -> None:
             step_ui()
         else:
             step_wire(name, script)
-    step_fix_indent()
+    step_rebuild_hooks()
     step_clear_integrity()
     step_harden_defaults()
     step_doctor()
