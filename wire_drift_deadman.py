@@ -22,28 +22,6 @@ CLI = r'''
             print("[!] deadman:", e)
 '''
 
-HUNT_HB = r'''
-            try:
-                from modules.deadman import emit_heartbeat
-                emit_heartbeat("hunt")
-            except Exception:
-                try:
-                    from modules.phase5 import heartbeat_from_hunt
-                    heartbeat_from_hunt()
-                except Exception:
-                    pass
-            try:
-                from modules.deadman import check_fleet
-                _dm = check_fleet()
-                if _dm.get("alert"):
-                    try:
-                        logger.warning(_dm["alert"])
-                    except Exception:
-                        print("[!]", _dm["alert"])
-            except Exception:
-                pass
-'''
-
 INTEGRITY_EXTRA = r'''
         try:
             from modules.drift import compute_score
@@ -76,20 +54,15 @@ def main():
     else:
         print("[=] drift CLI present")
 
+    # Hunt inject deferred to rebuild_hooks.py (correct indent)
     if "modules.deadman import emit_heartbeat" not in src:
-        idx = src.find("Persistence hunting")
-        wt = src.find("while True:", idx if idx >= 0 else 0)
-        if wt >= 0:
-            end = wt + len("while True:")
-            src = src[:end] + HUNT_HB + src[end:]
-            print("[+] hunt deadman heartbeat + fleet check")
-        else:
-            print("[!] no hunt while True — deadman still available via CLI")
+        print("[=] hunt inject deferred to rebuild_hooks")
     else:
         print("[=] deadman hunt hook present")
 
+    # CRITICAL: replace full line INCLUDING colon so colon is not orphaned
     if "modules.drift import compute_score" not in src:
-        for a in ['elif command == "integrity"', 'elif command in ("integrity"']:
+        for a in ['elif command == "integrity":', 'elif command in ("integrity", "fim"):']:
             if a in src:
                 src = src.replace(a, a + "\n" + INTEGRITY_EXTRA, 1)
                 print("[+] integrity drift snapshot hook")
@@ -100,8 +73,11 @@ def main():
         print("[=] drift integrity hook present")
 
     ENGINE.write_text(src)
-    py_compile.compile(str(ENGINE), doraise=True)
-    print("[+] wire_drift_deadman OK")
+    try:
+        py_compile.compile(str(ENGINE), doraise=True)
+        print("[+] wire_drift_deadman OK")
+    except Exception as e:
+        print("[!] compile pending rebuild_hooks:", e)
 
 
 if __name__ == "__main__":
