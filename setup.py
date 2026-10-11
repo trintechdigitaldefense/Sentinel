@@ -20,7 +20,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "2.6.1"
+VERSION = "2.6.2"
 
 
 def run(cmd: list) -> int:
@@ -74,7 +74,6 @@ def step_clear_integrity() -> None:
 
 
 def step_harden_defaults() -> None:
-    """SMB-safe defaults: narrow subnets, WhatsApp off, quiet off."""
     cfg_path = Path.home() / ".sentinel/config.json"
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     data = Path.home() / ".sentinel/data"
@@ -111,6 +110,11 @@ def step_harden_defaults() -> None:
     q.setdefault("end", "07:00")
     q.setdefault("allow_critical", True)
 
+    dm = c.setdefault("deadman", {})
+    dm.setdefault("enabled", True)
+    dm.setdefault("interval_sec", 300)
+    dm.setdefault("timeout_sec", 600)
+
     c.setdefault("version", VERSION)
     cfg_path.write_text(json.dumps(c, indent=2))
     try:
@@ -143,10 +147,10 @@ def step_verify_banner() -> None:
         """
   Single install path is done. Daily use:
 
-    python3 sentinel.py doctor      # readiness OK/WARN/FAIL
-    python3 sentinel.py             # menu
-    python3 sentinel.py integrity   # baseline once
-    python3 sentinel.py deception   # canaries
+    python3 sentinel.py doctor
+    python3 sentinel.py integrity
+    python3 sentinel.py drift          # 90-day baseline health
+    python3 sentinel.py deadman        # sensor offline check
     python3 sentinel.py service-install
 
   Config:  ~/.sentinel/config.json
@@ -172,6 +176,7 @@ def main() -> None:
     step_wire("phase6", "wire_phase6.py")
     step_wire("phase7", "wire_phase7.py")
     step_wire("doctor", "wire_doctor.py")
+    step_wire("drift_deadman", "wire_drift_deadman.py")
     step_clear_integrity()
     step_harden_defaults()
     step_doctor()
