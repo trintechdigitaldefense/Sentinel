@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild hunt-loop hooks with correct indentation."""
+"""Rebuild hunt-loop hooks + repair known wire corruption."""
 from pathlib import Path
 import py_compile
 import re
@@ -15,6 +15,19 @@ HOOK_MARKERS = [
     "persistence_hunt", "honeyauth", "ransomware_tripwire",
     "device_radar", "rules_engine",
 ]
+
+
+def repair_integrity_colon(src: str) -> str:
+    lines = src.splitlines()
+    out = []
+    for line in lines:
+        if re.match(r'^(\s*)elif command == "integrity"\s*$', line):
+            out.append(line.rstrip() + ":")
+            continue
+        if re.match(r'^\s*:\s*$', line):
+            continue
+        out.append(line)
+    return "\n".join(out) + ("\n" if src.endswith("\n") else "")
 
 
 def strip_broken_hook_blocks(src: str) -> str:
@@ -54,9 +67,6 @@ def strip_broken_hook_blocks(src: str) -> str:
 
 
 def find_hunt_while(src: str) -> int:
-    idx = src.find("Persistence hunting")
-    if idx < 0:
-        idx = src.find("persistence_hunt(config")
     search_from = 0
     best = -1
     while True:
@@ -155,54 +165,45 @@ def fix_empty_elifs():
 
 def main():
     if not ENGINE.exists():
-        print("[!] sentinel.py missing — run assemble/setup first")
+        print("[!] sentinel.py missing")
         sys.exit(1)
 
     src = ENGINE.read_text()
     ENGINE.with_suffix(".py.bak_hooks").write_text(src)
     print("[+] backup: sentinel.py.bak_hooks")
 
+    src = repair_integrity_colon(src)
+    print("[+] integrity colon pass")
     src = strip_broken_hook_blocks(src)
 
     wt = find_hunt_while(src)
-    if wt < 0:
-        print("[!] could not find hunt while True:")
-        ENGINE.write_text(src)
-        fix_empty_elifs()
-        try:
-            py_compile.compile(str(ENGINE), doraise=True)
-            print("[+] Syntax OK (no hunt while)")
-            return
-        except Exception as e:
-            print("[!]", e)
-            sys.exit(1)
-
-    line_start = src.rfind("\n", 0, wt) + 1
-    while_line = src[line_start : src.find("\n", wt)]
-    while_indent = while_line[: len(while_line) - len(while_line.lstrip(" \t"))]
-    body_indent = while_indent + "    "
-    print(f"[+] while True indent={len(while_indent)} spaces -> body={len(body_indent)}")
-
-    hooks = make_hooks(body_indent)
-    end = wt + len("while True:")
-    if "Sentinel hooks (auto)" in src:
-        print("[=] hooks marker already present — stripping first")
-        src = re.sub(
-            r"[ \t]*# --- Sentinel hooks \(auto\) ---.*?# --- end hooks ---\n?",
-            "",
-            src,
-            flags=re.S,
-        )
-        wt = find_hunt_while(src)
+    if wt >= 0:
+        line_start = src.rfind("\n", 0, wt) + 1
+        while_line = src[line_start : src.find("\n", wt)]
+        while_indent = while_line[: len(while_line) - len(while_line.lstrip(" \t"))]
+        body_indent = while_indent + "    "
+        print(f"[+] while True indent={len(while_indent)} -> body={len(body_indent)}")
+        if "Sentinel hooks (auto)" in src:
+            src = re.sub(
+                r"[ \t]*# --- Sentinel hooks \(auto\) ---.*?# --- end hooks ---\n?",
+                "",
+                src,
+                flags=re.S,
+            )
+            wt = find_hunt_while(src)
         end = wt + len("while True:")
+        src = src[:end] + make_hooks(body_indent) + src[end:]
+    else:
+        print("[=] no hunt while True found")
 
-    src = src[:end] + hooks + src[end:]
     ENGINE.write_text(src)
     fix_empty_elifs()
+    src = repair_integrity_colon(ENGINE.read_text())
+    ENGINE.write_text(src)
 
     try:
         py_compile.compile(str(ENGINE), doraise=True)
-        print("[+] Syntax OK — hooks rebuilt")
+        print("[+] Syntax OK")
     except Exception as e:
         print("[!] Still broken:", e)
         lines = ENGINE.read_text().splitlines()
