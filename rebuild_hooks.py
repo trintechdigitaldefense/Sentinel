@@ -1,225 +1,159 @@
 #!/usr/bin/env python3
-"""Rebuild hunt-loop hooks + repair known wire corruption."""
+"""SENTINEL rebuild_hooks — restore hunt loop + hooks ONLY on hunt/central."""
+from __future__ import annotations
+import re, sys
 from pathlib import Path
-import py_compile
-import re
-import sys
 
-ENGINE = Path(__file__).resolve().parent / "sentinel.py"
+ROOT = Path(__file__).resolve().parent
+ENGINE = ROOT / "sentinel.py"
 
-HOOK_MARKERS = [
-    "heartbeat_from_hunt", "emit_heartbeat as _dm_emit",
-    "from modules.deadman import emit_heartbeat",
-    "from modules.phase5 import heartbeat_from_hunt",
-    "check_fleet", "usb_watch", "lateral", "dns_watch",
-    "persistence_hunt", "honeyauth", "ransomware_tripwire",
-    "device_radar", "rules_engine",
-]
-
-
-def repair_integrity_colon(src: str) -> str:
-    lines = src.splitlines()
-    out = []
-    for line in lines:
-        if re.match(r'^(\s*)elif command == "integrity"\s*$', line):
-            out.append(line.rstrip() + ":")
-            continue
-        if re.match(r'^\s*:\s*$', line):
-            continue
-        out.append(line)
-    return "\n".join(out) + ("\n" if src.endswith("\n") else "")
-
-
-def strip_broken_hook_blocks(src: str) -> str:
-    lines = src.splitlines(keepends=True)
-    out = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        if re.match(r"^[ \t]*try:\s*$", line):
-            block = [line]
-            j = i + 1
-            while j < len(lines):
-                block.append(lines[j])
-                if re.match(r"^[ \t]*except\b", lines[j]) or re.match(r"^[ \t]*finally\b", lines[j]):
-                    j += 1
-                    while j < len(lines):
-                        if lines[j].strip() == "":
-                            block.append(lines[j]); j += 1; continue
-                        try_indent = len(line) - len(line.lstrip(" \t"))
-                        lead = len(lines[j]) - len(lines[j].lstrip(" \t"))
-                        if lead <= try_indent and not lines[j].lstrip().startswith(("except", "finally", "else")):
-                            break
-                        if re.match(r"^[ \t]*except\b", lines[j]) or re.match(r"^[ \t]*else:", lines[j]):
-                            block.append(lines[j]); j += 1; continue
-                        block.append(lines[j]); j += 1
-                    break
-                j += 1
-                if j - i > 40:
-                    break
-            blob = "".join(block)
-            if any(m in blob for m in HOOK_MARKERS):
-                i = j
-                continue
-        out.append(line)
-        i += 1
-    return "".join(out)
-
-
-def find_hunt_while(src: str) -> int:
-    search_from = 0
-    best = -1
-    while True:
-        wt = src.find("while True:", search_from)
-        if wt < 0:
-            break
-        window = src[wt : wt + 300]
-        if "persistence_hunt" in window or "process_scan" in window:
-            best = wt
-            if "persistence_hunt" in window:
-                return wt
-        search_from = wt + 1
-    return best
-
-
-def make_hooks(body_indent: str) -> str:
-    bi = body_indent
-    inner = body_indent + "    "
-    return f"""
-{bi}# --- Sentinel hooks (auto) ---
-{bi}try:
-{inner}from modules.phase5 import heartbeat_from_hunt
-{inner}heartbeat_from_hunt()
-{bi}except Exception:
-{inner}pass
-{bi}try:
-{inner}from modules.deadman import emit_heartbeat as _dm_emit, check_fleet as _dm_fleet
-{inner}_dm_emit("hunt")
-{inner}_dm_fleet()
-{bi}except Exception:
-{inner}pass
-{bi}try:
-{inner}from modules.usb_watch import check as _usb_check
-{inner}_usb_check()
-{bi}except Exception:
-{inner}pass
-{bi}try:
-{inner}from modules.lateral import check as _lat_check
-{inner}_lat_check()
-{bi}except Exception:
-{inner}pass
-{bi}try:
-{inner}from modules.dns_watch import check as _dns_check
-{inner}_dns_check()
-{bi}except Exception:
-{inner}pass
-{bi}try:
-{inner}from modules.device_radar import check as _radar_check
-{inner}_radar_check()
-{bi}except Exception:
-{inner}pass
-{bi}try:
-{inner}from modules.ransomware_tripwire import check as _tw_check
-{inner}_tw_check()
-{bi}except Exception:
-{inner}pass
-{bi}try:
-{inner}from modules.honeyauth import check as _honey_check
-{inner}_honey_check()
-{bi}except Exception:
-{inner}pass
-{bi}# --- end hooks ---
+HOOKS = """                # --- Sentinel hooks (auto) ---
+                try:
+                    from modules.phase5 import heartbeat_from_hunt
+                    heartbeat_from_hunt()
+                except Exception:
+                    pass
+                try:
+                    from modules.deadman import emit_heartbeat as _dm_emit, check_fleet as _dm_fleet
+                    _dm_emit("hunt")
+                    _dm_fleet()
+                except Exception:
+                    pass
+                try:
+                    from modules.usb_watch import check as _usb_check
+                    _usb_check()
+                except Exception:
+                    pass
+                try:
+                    from modules.lateral import check as _lat_check
+                    _lat_check()
+                except Exception:
+                    pass
+                try:
+                    from modules.dns_watch import check as _dns_check
+                    _dns_check()
+                except Exception:
+                    pass
+                try:
+                    from modules.device_radar import check as _radar_check
+                    _radar_check()
+                except Exception:
+                    pass
+                try:
+                    from modules.ransomware_tripwire import check as _tw_check
+                    _tw_check()
+                except Exception:
+                    pass
+                try:
+                    from modules.honeyauth import check as _honey_check
+                    _honey_check()
+                except Exception:
+                    pass
+                # --- end hooks ---
 """
 
-
-def fix_empty_elifs():
-    lines = ENGINE.read_text().splitlines()
-    fixed_empty = 0
+def _fix_integrity_colon(src: str) -> str:
+    src = re.sub(r'(elif command == "integrity")\s*\n', r'\1:\n', src)
+    lines = src.splitlines(keepends=True)
     out = []
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        out.append(line)
-        stripped = line.lstrip()
-        if stripped.startswith("elif ") and stripped.rstrip().endswith(":"):
-            ind = len(line) - len(stripped)
-            j = i + 1
-            while j < len(lines) and lines[j].strip() == "":
-                out.append(lines[j])
-                j += 1
-            if j >= len(lines) or (
-                lines[j].lstrip().startswith(("elif ", "else:", "def ", "class "))
-                and (len(lines[j]) - len(lines[j].lstrip())) <= ind
-            ):
-                out.append(" " * (ind + 4) + "pass  # placeholder")
-                fixed_empty += 1
-                i = j
-                continue
-            i = j
+    for i, line in enumerate(lines):
+        if line.strip() == ":" and i > 0 and "integrity" in lines[i - 1]:
             continue
-        i += 1
-    if fixed_empty:
-        ENGINE.write_text("\n".join(out) + "\n")
-        print(f"[+] filled {fixed_empty} empty elif bodies with pass")
+        out.append(line)
+    return "".join(out)
 
-
-def main():
+def main() -> None:
     if not ENGINE.exists():
-        print("[!] sentinel.py missing")
+        print("[!] sentinel.py missing", file=sys.stderr)
         sys.exit(1)
-
     src = ENGINE.read_text()
-    ENGINE.with_suffix(".py.bak_hooks").write_text(src)
-    print("[+] backup: sentinel.py.bak_hooks")
+    backup = ENGINE.with_suffix(".py.bak_hooks")
+    backup.write_text(src)
+    print(f"[+] backup: {backup.name}")
+    src = _fix_integrity_colon(src)
 
-    src = repair_integrity_colon(src)
-    print("[+] integrity colon pass")
-    src = strip_broken_hook_blocks(src)
+    hunt_body = (
+        '    elif command == "hunt":\n'
+        '        data = load_devices()\n'
+        '        logger.info(f"{C.CYAN}[*]{C.RESET} Persistence hunting \u2014 Ctrl+C to stop")\n'
+        '        interval = config.get("persistence", {}).get("monitor_interval", 60)\n'
+        '        try:\n'
+        '            while True:\n'
+        + HOOKS
+        + '                try:\n'
+        '                    persistence_hunt(config, logger)\n'
+        '                except Exception as _ph_err:\n'
+        '                    logger.warning(f"! persistence_hunt error: {_ph_err}")\n'
+        '                time.sleep(max(10, int(interval) if interval else 60))\n'
+        '        except KeyboardInterrupt:\n'
+        '            logger.info(f"{C.GREEN}\u2713{C.RESET} Persistence hunting stopped")\n'
+        '\n'
+    )
+    central_body = (
+        '    elif command == "central":\n'
+        '        start_central_listener(logger)\n'
+        '        logger.info(f"{C.CYAN}[*]{C.RESET} Central mode \u2014 listening for agents + local hunt")\n'
+        '        interval = config.get("persistence", {}).get("monitor_interval", 60)\n'
+        '        try:\n'
+        '            while True:\n'
+        '                # --- Sentinel hooks (auto) ---\n'
+        '                try:\n'
+        '                    from modules.phase5 import heartbeat_from_hunt\n'
+        '                    heartbeat_from_hunt()\n'
+        '                except Exception:\n'
+        '                    pass\n'
+        '                try:\n'
+        '                    from modules.deadman import emit_heartbeat as _dm_emit, check_fleet as _dm_fleet\n'
+        '                    _dm_emit("central")\n'
+        '                    _dm_fleet()\n'
+        '                except Exception:\n'
+        '                    pass\n'
+        '                # --- end hooks ---\n'
+        '                try:\n'
+        '                    persistence_hunt(config, logger)\n'
+        '                except Exception as _ph_err:\n'
+        '                    logger.warning(f"! persistence_hunt error: {_ph_err}")\n'
+        '                time.sleep(max(10, int(interval) if interval else 60))\n'
+        '        except KeyboardInterrupt:\n'
+        '            logger.info(f"{C.GREEN}\u2713{C.RESET} Central mode stopped")\n'
+        '\n'
+    )
 
-    wt = find_hunt_while(src)
-    if wt >= 0:
-        line_start = src.rfind("\n", 0, wt) + 1
-        while_line = src[line_start : src.find("\n", wt)]
-        while_indent = while_line[: len(while_line) - len(while_line.lstrip(" \t"))]
-        body_indent = while_indent + "    "
-        print(f"[+] while True indent={len(while_indent)} -> body={len(body_indent)}")
-        if "Sentinel hooks (auto)" in src:
-            src = re.sub(
-                r"[ \t]*# --- Sentinel hooks \(auto\) ---.*?# --- end hooks ---\n?",
-                "",
-                src,
-                flags=re.S,
-            )
-            wt = find_hunt_while(src)
-        end = wt + len("while True:")
-        src = src[:end] + make_hooks(body_indent) + src[end:]
+    hunt_pat = re.compile(r'^    elif command == "hunt":.*?(?=^    elif command )', re.M | re.S)
+    if not hunt_pat.search(src):
+        print("[!] could not find hunt block", file=sys.stderr)
+        sys.exit(1)
+    src = hunt_pat.sub(hunt_body, src, count=1)
+    print("[+] hunt loop restored + hooks on hunt")
+
+    central_pat = re.compile(r'^    elif command == "central":.*?(?=^    elif command )', re.M | re.S)
+    if central_pat.search(src):
+        src = central_pat.sub(central_body, src, count=1)
+        print("[+] central cleaned (short hooks + persistence_hunt)")
     else:
-        print("[=] no hunt while True found")
+        print("[=] no central block")
 
+    src = _fix_integrity_colon(src)
     ENGINE.write_text(src)
-    fix_empty_elifs()
-    src = repair_integrity_colon(ENGINE.read_text())
-    ENGINE.write_text(src)
-
+    import py_compile
     try:
         py_compile.compile(str(ENGINE), doraise=True)
         print("[+] Syntax OK")
-    except Exception as e:
-        print("[!] Still broken:", e)
-        lines = ENGINE.read_text().splitlines()
-        m = re.search(r"line (\d+)", str(e))
-        if m:
-            ln = int(m.group(1))
-            for i in range(max(0, ln - 5), min(len(lines), ln + 8)):
-                print(f"{i+1}: {lines[i]}")
+    except py_compile.PyCompileError as e:
+        print("[!] Syntax error:", e)
         sys.exit(1)
 
-    print()
-    print("Next:")
-    print("  python3 sentinel.py doctor")
-    print("  python3 sentinel.py dashboard-url")
-    print("  python3 sentinel.py dashboard")
-
+    text = ENGINE.read_text()
+    h = text.find('elif command == "hunt"')
+    e = text.find('elif command == "config"', h)
+    chunk = text[h:e] if e > h else text[h:h+3000]
+    if "while True:" in chunk and "persistence_hunt" in chunk:
+        print("[+] VERIFY hunt OK (while True + persistence_hunt)")
+    else:
+        print("[!] VERIFY hunt FAILED")
+        print(chunk[:600])
+        sys.exit(1)
+    print("\nNext:\n  python3 sentinel.py hunt\n  python3 go.py")
 
 if __name__ == "__main__":
     main()
