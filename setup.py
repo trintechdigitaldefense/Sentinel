@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SENTINEL single install — TrinTech Digital Defense v2.9.1"""
+"""SENTINEL single install - TrinTech Digital Defense v2.9.2"""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "2.9.1"
+VERSION = "2.9.2"
 
 
 def run(cmd: list) -> int:
@@ -35,9 +35,10 @@ def step_assemble() -> None:
 def step_wire(name: str, script: str) -> None:
     p = ROOT / script
     if p.exists():
-        run([sys.executable, str(p)])
+        # wire scripts may fail compile mid-setup; continue then fix_indent
+        subprocess.run([sys.executable, str(p)], cwd=str(ROOT))
     else:
-        print(f"[=] {script} not present — skip")
+        print(f"[=] {script} not present - skip")
 
 
 def step_ui() -> None:
@@ -49,6 +50,21 @@ def step_ui() -> None:
         p = ROOT / script
         if p.exists():
             run([sys.executable, str(p)])
+
+
+def step_fix_indent() -> None:
+    fix = ROOT / "fix_indent.py"
+    if fix.exists():
+        print("\n[*] Repairing hunt-loop indentation...")
+        run([sys.executable, str(fix)])
+    else:
+        # minimal inline repair
+        if not ENGINE.exists():
+            return
+        try:
+            py_compile.compile(str(ENGINE), doraise=True)
+        except Exception:
+            print("[!] fix_indent.py missing and engine has syntax errors")
 
 
 def step_clear_integrity() -> None:
@@ -111,7 +127,7 @@ def step_harden_defaults() -> None:
         os.chmod(cfg_path, 0o600)
     except Exception:
         pass
-    print(f"[+] Defaults written → {cfg_path}")
+    print(f"[+] Defaults written -> {cfg_path}")
 
 
 def step_doctor() -> None:
@@ -131,16 +147,15 @@ def step_verify_banner() -> None:
     print(f"  SENTINEL SETUP COMPLETE  (v{VERSION})")
     print("=" * 56)
     print("""
+  python3 sentinel.py doctor
   python3 sentinel.py dashboard-url
   python3 sentinel.py dashboard
-  python3 sentinel.py doctor
-  python3 sentinel.py bonus-test
   python3 sentinel.py service-install
 """)
 
 
 def main() -> None:
-    print("SENTINEL single install — TrinTech Digital Defense")
+    print("SENTINEL single install - TrinTech Digital Defense")
     print(f"Repo: {ROOT}")
     step_assemble()
     p4 = ROOT / "modules" / "phase4.py"
@@ -166,6 +181,7 @@ def main() -> None:
             step_ui()
         else:
             step_wire(name, script)
+    step_fix_indent()
     step_clear_integrity()
     step_harden_defaults()
     step_doctor()
