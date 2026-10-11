@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-VERSION = "2.6.1"
+VERSION = "2.6.2"
 
 def _home() -> Path:
     return Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel"))
@@ -106,14 +106,35 @@ def check_baseline() -> dict:
     return _warn("fim_baseline", "none — run menu 5 or: python3 sentinel.py integrity")
 
 def check_canaries() -> dict:
+    """Count real canaries from tracker (config.json), not just dir file count."""
+    from pathlib import Path as _P
     decoy = _data() / "deception_artifacts"
-    if not decoy.exists():
+    tracker_path = decoy / "config.json"
+    if not decoy.exists() and not tracker_path.exists():
         return _warn("canaries", "not deployed — run: python3 sentinel.py deception")
-    files = list(decoy.rglob("*"))
-    nfiles = sum(1 for f in files if f.is_file())
+    tracked = 0
+    alive = 0
+    if tracker_path.exists():
+        try:
+            data = json.loads(tracker_path.read_text())
+            if isinstance(data, dict):
+                tracked = len(data)
+                for path in data.keys():
+                    try:
+                        if _P(path).exists():
+                            alive += 1
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+    if tracked >= 6 and alive >= 3:
+        return _ok("canaries", f"{alive}/{tracked} canaries alive on disk")
+    if tracked >= 1:
+        return _warn("canaries", f"tracker has {tracked} entries, {alive} alive — redeploy deception")
+    nfiles = sum(1 for f in decoy.rglob("*") if f.is_file()) if decoy.exists() else 0
     if nfiles >= 3:
         return _ok("canaries", f"artifacts dir present ({nfiles} files)")
-    return _warn("canaries", "dir exists but sparse — redeploy deception")
+    return _warn("canaries", "not deployed — run: python3 sentinel.py deception")
 
 def check_heartbeat() -> dict:
     p = _data() / "heartbeat.json"
