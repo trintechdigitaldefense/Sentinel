@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SENTINEL single install path — TrinTech Digital Defense v2.8"""
+"""SENTINEL single install — TrinTech Digital Defense v2.9"""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "2.8.0"
+VERSION = "2.9.0"
 
 
 def run(cmd: list) -> int:
@@ -74,44 +74,32 @@ def step_harden_defaults() -> None:
         os.chmod(data, 0o700)
     except Exception:
         pass
-
     c: dict = {}
     if cfg_path.exists():
         try:
             c = json.loads(cfg_path.read_text())
         except Exception:
             c = {}
-
     net = c.setdefault("network", {})
     nets = list(net.get("scan_subnets") or [])
     if not nets or any(str(s).endswith(("/8", "/12", "/11", "/10", "/9")) for s in nets):
         net["scan_subnets"] = [s for s in nets if not str(s).endswith(("/8", "/12", "/11", "/10", "/9"))] or ["192.168.1.0/24"]
-        print("[+] scan_subnets:", net["scan_subnets"])
-
-    wa = c.setdefault("alerting", {}).setdefault("whatsapp", {})
-    wa.setdefault("enabled", False)
+    c.setdefault("alerting", {}).setdefault("whatsapp", {}).setdefault("enabled", False)
     tg = c.setdefault("alerting", {}).setdefault("telegram", {})
     tg.setdefault("enabled", False)
     tg.setdefault("token", "")
     tg.setdefault("chat_id", "")
-
-    q = c.setdefault("quiet_hours", {})
-    q.setdefault("enabled", False)
+    c.setdefault("quiet_hours", {}).setdefault("enabled", False)
     dm = c.setdefault("deadman", {})
     dm.setdefault("enabled", True)
     dm.setdefault("interval_sec", 300)
     dm.setdefault("timeout_sec", 600)
-
     portal = c.setdefault("portal", {})
     portal.setdefault("port", 8791)
     portal.setdefault("enabled", True)
     portal.setdefault("client_name", "Client")
-
     c.setdefault("usb_watch", False)
-    det = c.setdefault("detection", {})
-    det.setdefault("usb_watch", False)
-    det.setdefault("dns_entropy_threshold", 3.8)
-
+    c.setdefault("external", {"domain": "", "host": ""})
     c.setdefault("version", VERSION)
     cfg_path.write_text(json.dumps(c, indent=2))
     try:
@@ -138,15 +126,14 @@ def step_verify_banner() -> None:
     print(f"  SENTINEL SETUP COMPLETE  (v{VERSION})")
     print("=" * 56)
     print("""
-  python3 sentinel.py doctor
+  python3 sentinel.py bonus-test
+  python3 sentinel.py rules
+  python3 sentinel.py radar
+  python3 sentinel.py tripwire-deploy && python3 sentinel.py tripwire
+  python3 sentinel.py external example.com
+  python3 sentinel.py fleet
   python3 sentinel.py portal-url
-  python3 sentinel.py portal
-  python3 sentinel.py honey
-  python3 sentinel.py crypto-status
-  python3 sentinel.py suppress
-  python3 sentinel.py suppress-add usb backup
-  python3 sentinel.py drift-pdf
-  python3 sentinel.py detect
+  python3 sentinel.py doctor
   python3 sentinel.py service-install
 """)
 
@@ -171,6 +158,7 @@ def main() -> None:
         ("drift_deadman", "wire_drift_deadman.py"),
         ("revenue_tier2", "wire_revenue_tier2.py"),
         ("portal_harden", "wire_portal_harden.py"),
+        ("bonus", "wire_bonus.py"),
     ]:
         if name == "ui":
             step_ui()
