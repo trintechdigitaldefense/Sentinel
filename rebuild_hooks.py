@@ -62,6 +62,38 @@ def _fix_integrity_colon(src: str) -> str:
         out.append(line)
     return "".join(out)
 
+def _fix_canary_report_count(src: str) -> str:
+    old = (
+        "    decoy_count = 0\n"
+        "    if DECEPTION_DIR.exists():\n"
+        "        decoy_count = len([f for f in DECEPTION_DIR.rglob(\"*\") if f.is_file()])\n"
+        "    print(f\"{C.BOLD}DECEPTION:{C.RESET} {decoy_count} artifacts\")\n"
+    )
+    new = (
+        "    decoy_count = 0\n"
+        "    decoy_alive = 0\n"
+        "    tracker_file = DECEPTION_DIR / \"config.json\"\n"
+        "    if tracker_file.exists():\n"
+        "        try:\n"
+        "            _trk = json.loads(tracker_file.read_text())\n"
+        "            if isinstance(_trk, dict):\n"
+        "                decoy_count = len(_trk)\n"
+        "                decoy_alive = sum(1 for p in _trk if Path(p).exists())\n"
+        "        except Exception:\n"
+        "            pass\n"
+        "    if decoy_count == 0 and DECEPTION_DIR.exists():\n"
+        "        decoy_count = len([f for f in DECEPTION_DIR.rglob(\"*\") if f.is_file()])\n"
+        "        decoy_alive = decoy_count\n"
+        "    if decoy_count:\n"
+        "        print(f\"{C.BOLD}DECEPTION:{C.RESET} {decoy_alive}/{decoy_count} canaries alive\")\n"
+        "    else:\n"
+        "        print(f\"{C.BOLD}DECEPTION:{C.RESET} 0 artifacts — run: python3 sentinel.py deception\")\n"
+    )
+    if old in src:
+        print("[+] report canary count fixed")
+        return src.replace(old, new)
+    return src
+
 def main() -> None:
     if not ENGINE.exists():
         print("[!] sentinel.py missing", file=sys.stderr)
@@ -134,6 +166,7 @@ def main() -> None:
         print("[=] no central block")
 
     src = _fix_integrity_colon(src)
+    src = _fix_canary_report_count(src)
     ENGINE.write_text(src)
     import py_compile
     try:
