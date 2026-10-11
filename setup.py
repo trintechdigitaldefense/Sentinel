@@ -5,9 +5,6 @@ SENTINEL single install path — TrinTech Digital Defense
   git clone https://github.com/trintechdigitaldefense/Sentinel.git
   cd Sentinel
   python3 setup.py
-
-That is the only install step. Do NOT run restore_phase*.py.
-After setup: python3 sentinel.py doctor
 """
 from __future__ import annotations
 
@@ -20,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "2.6.2"
+VERSION = "2.7.0"
 
 
 def run(cmd: list) -> int:
@@ -104,6 +101,11 @@ def step_harden_defaults() -> None:
     wa.setdefault("phone", "")
     wa.setdefault("apikey", "")
 
+    tg = c.setdefault("alerting", {}).setdefault("telegram", {})
+    tg.setdefault("enabled", False)
+    tg.setdefault("token", "")
+    tg.setdefault("chat_id", "")
+
     q = c.setdefault("quiet_hours", {})
     q.setdefault("enabled", False)
     q.setdefault("start", "22:00")
@@ -114,6 +116,12 @@ def step_harden_defaults() -> None:
     dm.setdefault("enabled", True)
     dm.setdefault("interval_sec", 300)
     dm.setdefault("timeout_sec", 600)
+
+    c.setdefault("usb_watch", False)
+    det = c.setdefault("detection", {})
+    det.setdefault("usb_watch", False)
+    det.setdefault("dns_entropy_threshold", 3.8)
+    det.setdefault("dns_min_label_len", 25)
 
     c.setdefault("version", VERSION)
     cfg_path.write_text(json.dumps(c, indent=2))
@@ -145,16 +153,20 @@ def step_verify_banner() -> None:
     print("=" * 56)
     print(
         """
-  Single install path is done. Daily use:
+  python3 sentinel.py doctor
+  python3 sentinel.py integrity && python3 sentinel.py drift
+  python3 sentinel.py drift-pdf
+  python3 sentinel.py attack
+  python3 sentinel.py detect
+  python3 sentinel.py persistence-baseline
+  python3 sentinel.py deadman
+  python3 sentinel.py bot-test
+  python3 sentinel.py service-install
 
-    python3 sentinel.py doctor
-    python3 sentinel.py integrity
-    python3 sentinel.py drift          # 90-day baseline health
-    python3 sentinel.py deadman        # sensor offline check
-    python3 sentinel.py service-install
+  Telegram bot: set alerting.telegram token+chat_id, enabled=true
+  then: python3 sentinel.py bot
 
-  Config:  ~/.sentinel/config.json
-  Do NOT run restore_phase*.py
+  Config: ~/.sentinel/config.json
 """
     )
 
@@ -177,6 +189,7 @@ def main() -> None:
     step_wire("phase7", "wire_phase7.py")
     step_wire("doctor", "wire_doctor.py")
     step_wire("drift_deadman", "wire_drift_deadman.py")
+    step_wire("revenue_tier2", "wire_revenue_tier2.py")
     step_clear_integrity()
     step_harden_defaults()
     step_doctor()
