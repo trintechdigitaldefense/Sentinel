@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SENTINEL single install — TrinTech Digital Defense v2.9"""
+"""SENTINEL single install — TrinTech Digital Defense v2.9.1"""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "2.9.0"
+VERSION = "2.9.1"
 
 
 def run(cmd: list) -> int:
@@ -98,6 +98,11 @@ def step_harden_defaults() -> None:
     portal.setdefault("port", 8791)
     portal.setdefault("enabled", True)
     portal.setdefault("client_name", "Client")
+    dash = c.setdefault("dashboard", {})
+    dash.setdefault("port", 8792)
+    dash.setdefault("enabled", True)
+    dash.setdefault("allow_control", True)
+    dash.setdefault("client_name", "Client")
     c.setdefault("usb_watch", False)
     c.setdefault("external", {"domain": "", "host": ""})
     c.setdefault("version", VERSION)
@@ -126,14 +131,10 @@ def step_verify_banner() -> None:
     print(f"  SENTINEL SETUP COMPLETE  (v{VERSION})")
     print("=" * 56)
     print("""
-  python3 sentinel.py bonus-test
-  python3 sentinel.py rules
-  python3 sentinel.py radar
-  python3 sentinel.py tripwire-deploy && python3 sentinel.py tripwire
-  python3 sentinel.py external example.com
-  python3 sentinel.py fleet
-  python3 sentinel.py portal-url
+  python3 sentinel.py dashboard-url
+  python3 sentinel.py dashboard
   python3 sentinel.py doctor
+  python3 sentinel.py bonus-test
   python3 sentinel.py service-install
 """)
 
@@ -159,6 +160,7 @@ def main() -> None:
         ("revenue_tier2", "wire_revenue_tier2.py"),
         ("portal_harden", "wire_portal_harden.py"),
         ("bonus", "wire_bonus.py"),
+        ("dashboard", "wire_dashboard.py"),
     ]:
         if name == "ui":
             step_ui()
