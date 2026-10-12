@@ -10,7 +10,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "2.9.7"
+__version__ = "2.9.9"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -1197,15 +1197,8 @@ def persistence_hunt(config, logger):
     except Exception:
         pass
 
-    try:
-        hc = str(DECEPTION_DIR / "config.json")
-        if os.path.exists(hc):
-            mtime = os.path.getmtime(hc)
-            if time.time() - mtime < 300:
-                logger.warning(f"{C.RED}!{C.RESET} {C.BOLD}Decoy modified:{C.RESET} {C.BOLD}{hc}{C.RESET}")
-                send_alert("DECOY_MODIFIED", {"file": hc}, logger)
-    except Exception:
-        pass
+    # Tracker JSON is expected to change when decoys are deployed — do not alert on it.
+    # Real canary file changes are detected via canary watcher / FIM, not this path.
 
     fim_check(config, logger)
     process_scan(config, logger)
@@ -1816,6 +1809,9 @@ def uninstall_sentinel(logger=None):
 
 
 
+
+
+
 def print_banner():
     """Simple SENTINEL banner."""
     line = "=" * 52
@@ -1934,6 +1930,7 @@ def main():
     if len(sys.argv) < 2:
         interactive_menu()
         return
+    # fix_ui: open numbered menu when no command given
     if len(sys.argv) < 2:
         banner()
         print(f"{C.BOLD}{C.BLUE}USAGE:{C.RESET}")
