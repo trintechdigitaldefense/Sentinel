@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SENTINEL single install - TrinTech Digital Defense v2.9.4"""
+"""SENTINEL single install - TrinTech Digital Defense v2.9.5"""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "2.9.4"
+VERSION = "2.9.5"
 
 
 def run(cmd: list) -> int:
@@ -53,6 +53,12 @@ def step_ui() -> None:
 
 def step_self_integrity() -> None:
     p = ROOT / "fix_self_integrity.py"
+    if p.exists():
+        run([sys.executable, str(p)])
+
+
+def step_process_scan() -> None:
+    p = ROOT / "fix_process_scan.py"
     if p.exists():
         run([sys.executable, str(p)])
 
@@ -185,6 +191,7 @@ def main() -> None:
             step_wire(name, script)
     step_rebuild_hooks()
     step_self_integrity()
+    step_process_scan()
     step_clear_integrity()
     step_harden_defaults()
     step_doctor()
