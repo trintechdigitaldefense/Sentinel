@@ -173,6 +173,16 @@ def step_verify() -> None:
 def main() -> None:
     print("SENTINEL single install — TrinTech Digital Defense")
     print(f"Repo: {ROOT}")
+    # If user has blocked git pull with local edits, warn once
+    if (ROOT / ".git").exists():
+        try:
+            import subprocess
+            stt = subprocess.check_output(["git", "status", "--porcelain"], cwd=str(ROOT), text=True)
+            if stt.strip():
+                print("[!] Local changes detected — if setup looks old/broken run:")
+                print("    git fetch origin && git reset --hard origin/main && python3 setup.py")
+        except Exception:
+            pass
     step_assemble()
     step_stabilize()
     step_clear_integrity()

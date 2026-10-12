@@ -1813,6 +1813,12 @@ def uninstall_sentinel(logger=None):
 
 
 
+
+
+
+
+
+
 def print_banner():
     """Simple SENTINEL banner."""
     line = "=" * 52
@@ -1822,7 +1828,7 @@ def print_banner():
     try:
         ver = __version__
     except Exception:
-        ver = "2.9.9"
+        ver = "2.5.0"
     print(f"{C.BOLD}  v{ver}{C.RESET}")
     print(f"{C.GRAY}  TrinTech Digital Defense{C.RESET}")
     print(f"{C.GRAY}  Active Deception | Persistence Hunting | Line of Defense{C.RESET}")
@@ -1931,6 +1937,8 @@ def main():
     if len(sys.argv) < 2:
         interactive_menu()
         return
+    # fix_ui: open numbered menu when no command given
+    # fix_ui: open numbered menu when no command given
     # fix_ui: open numbered menu when no command given
     if len(sys.argv) < 2:
         banner()

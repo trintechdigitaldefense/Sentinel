@@ -7,7 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "2.9.7"
+VERSION = "2.9.9"
 
 NEW_FN = (
     "def self_integrity_check(logger=None):\n"
