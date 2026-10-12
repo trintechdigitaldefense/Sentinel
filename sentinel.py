@@ -362,6 +362,14 @@ def send_alert(alert_type, details, logger=None):
             return
     except Exception:
         pass
+
+    try:
+        from modules.phase5 import hygiene_should_emit
+        _hy = hygiene_should_emit(str(alert_type), None)
+        if not _hy.get("allow", True):
+            return
+    except Exception:
+        pass
     config = load_config_safe()
     # Phase 1: quiet mode filter
     try:
@@ -1859,6 +1867,9 @@ def interactive_menu(config=None, logger=None):
         ("10", "View alerts", ("alerts",)),
         ("11", "Hardening audit", ("hardening",)),
         ("12", "Status", ("status",)),
+        ("13", "Always-on service (systemd)", ("service-install",)),
+        ("14", "Service status", ("service-status",)),
+        ("15", "Schedule WhatsApp digest (daily cron)", ("digest-cron",)),
         ("0",  "Exit", ("__exit__",)),
     ]
 
@@ -2311,6 +2322,105 @@ def main():
             print(f"enabled={qc.get('enabled')} block_ip={qc.get('block_ip')} kill_process={qc.get('kill_process')}")
             print("Use: sentinel quarantine --status")
 
+
+    elif command in ("phase5", "p5"):
+        try:
+            from modules.phase5 import phase5_self_check, heartbeat_write, ensure_hygiene_defaults, ensure_whatsapp_defaults
+            ensure_hygiene_defaults()
+            ensure_whatsapp_defaults()
+            heartbeat_write({"source": "phase5"})
+            print(phase5_self_check())
+        except Exception as e:
+            print("[!] phase5:", e)
+    elif command == "autosubnet":
+        try:
+            from modules.phase5 import auto_subnet_apply
+            print(auto_subnet_apply())
+        except Exception as e:
+            print("[!] autosubnet:", e)
+    elif command == "heartbeat":
+        try:
+            from modules.phase5 import heartbeat_write, heartbeat_status
+            print(heartbeat_write({"source": "cli"}))
+            print(heartbeat_status())
+        except Exception as e:
+            print("[!] heartbeat:", e)
+    elif command == "digest":
+        try:
+            from modules.phase5 import alert_digest
+            hours = 24
+            if "--hours" in args:
+                i = args.index("--hours")
+                if i + 1 < len(args):
+                    hours = int(args[i + 1])
+            print(alert_digest(hours))
+        except Exception as e:
+            print("[!] digest:", e)
+    elif command in ("whatsapp-digest", "wa-digest", "digest-send"):
+        try:
+            from modules.phase5 import whatsapp_digest
+            hours = 24
+            force = "--force" in args
+            if "--hours" in args:
+                i = args.index("--hours")
+                if i + 1 < len(args):
+                    hours = int(args[i + 1])
+            print(whatsapp_digest(hours=hours, force=force))
+        except Exception as e:
+            print("[!] whatsapp-digest:", e)
+    elif command in ("hygiene", "alert-hygiene"):
+        try:
+            from modules.phase5 import hygiene_status, hygiene_reset, ensure_hygiene_defaults
+            ensure_hygiene_defaults()
+            if "--reset" in args or (args and args[0] == "reset"):
+                print(hygiene_reset())
+            print(hygiene_status())
+        except Exception as e:
+            print("[!] hygiene:", e)
+
+
+    elif command in ("service-install", "install-service"):
+        try:
+            from modules.phase5 import service_install
+            print(service_install())
+        except Exception:
+            try:
+                import os, textwrap
+                unit = textwrap.dedent("""
+                [Unit]
+                Description=SENTINEL persistence hunt
+                After=network.target
+                [Service]
+                Type=simple
+                WorkingDirectory=/tmp/SentinelP56
+                ExecStart=/usr/bin/python3 /tmp/SentinelP56/sentinel.py hunt
+                Restart=always
+                RestartSec=10
+                [Install]
+                WantedBy=multi-user.target
+                """).strip() + "\n"
+                path = Path("/etc/systemd/system/sentinel-hunt.service")
+                path.write_text(unit)
+                os.system("systemctl daemon-reload")
+                os.system("systemctl enable --now sentinel-hunt.service")
+                print("[+] service sentinel-hunt installed/started (fallback)")
+            except Exception as e2:
+                print("[!] service-install:", e2)
+    elif command in ("service-status",):
+        try:
+            import subprocess
+            r = subprocess.run(["systemctl", "is-active", "sentinel-hunt"], capture_output=True, text=True)
+            print(r.stdout.strip() or r.stderr.strip() or "unknown")
+        except Exception as e:
+            print("[!] service-status:", e)
+    elif command in ("digest-cron", "schedule-digest"):
+        try:
+            from modules.phase5 import install_digest_cron
+            sch = "weekly" if "--weekly" in args else "daily"
+            print(install_digest_cron(sch))
+        except Exception as e:
+            print("[!] digest-cron:", e)
+
     
     elif command == "baseline":
         config = ensure_phase4_defaults(config)
@@ -2690,51 +2800,6 @@ def main():
             print("control:", dash.get("allow_control", True))
         except Exception as e:
             print("[!] dashboard-url:", e)
-
-
-    elif command in ("hygiene", "alert-hygiene"):
-        try:
-            from modules.phase5 import hygiene_status, hygiene_reset, ensure_hygiene_defaults
-            ensure_hygiene_defaults()
-            if args and args[0] in ("reset", "--reset"):
-                print(hygiene_reset())
-            print(hygiene_status())
-        except Exception as e:
-            print("[!] hygiene:", e)
-    elif command in ("service-install", "install-service"):
-        try:
-            from modules.phase5 import service_install
-            print(service_install())
-        except Exception:
-            try:
-                import os, textwrap
-                unit = textwrap.dedent(f"""
-                [Unit]
-                Description=SENTINEL persistence hunt
-                After=network.target
-                [Service]
-                Type=simple
-                WorkingDirectory={root}
-                ExecStart=/usr/bin/python3 {engine} hunt
-                Restart=always
-                RestartSec=10
-                [Install]
-                WantedBy=multi-user.target
-                """).strip().format(root=str(ROOT), engine=str(ENGINE)) + "\n"
-                path = Path("/etc/systemd/system/sentinel-hunt.service")
-                path.write_text(unit)
-                os.system("systemctl daemon-reload")
-                os.system("systemctl enable --now sentinel-hunt.service")
-                print("[+] service sentinel-hunt installed/started (fallback)")
-            except Exception as e2:
-                print("[!] service-install:", e2)
-    elif command in ("service-status",):
-        try:
-            import subprocess
-            r = subprocess.run(["systemctl", "is-active", "sentinel-hunt"], capture_output=True, text=True)
-            print(r.stdout.strip() or r.stderr.strip() or "unknown")
-        except Exception as e:
-            print("[!] service-status:", e)
 
     elif command == "uninstall":
         uninstall_sentinel(logger)
