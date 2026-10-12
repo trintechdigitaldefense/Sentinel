@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SENTINEL single install — TrinTech Digital Defense v2.9.7
+"""SENTINEL single install — TrinTech Digital Defense v2.9.8
 
 One path:
   assemble (if needed) → stabilize (all wires + fixes) → defaults → doctor
@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "2.9.7"
+VERSION = "2.9.8"
 
 
 def run(cmd: list) -> int:
@@ -31,14 +31,15 @@ def engine_looks_complete() -> bool:
     except Exception:
         return False
     src = ENGINE.read_text(errors="ignore")
-    need = ["doctor", "hunt", "dashboard", "while True"]
+    need = ["doctor", "hunt", "dashboard", "while True", "hygiene"]
     return all(n in src for n in need)
 
 
 def step_assemble() -> None:
+    # Prefer pre-wired engine shipped in the repo (client-ready path)
     if engine_looks_complete() and "--force-assemble" not in sys.argv:
-        print(f"[=] Engine already complete ({ENGINE.stat().st_size} bytes) — skip assemble")
-        print("    (pass --force-assemble to rebuild from chunks)")
+        print(f"[=] Pre-wired engine OK ({ENGINE.stat().st_size} bytes) — skip assemble")
+        print("    (pass --force-assemble only if you need to rebuild from chunks)")
         return
     asm = ROOT / "assemble_engine.py"
     if not asm.exists():
