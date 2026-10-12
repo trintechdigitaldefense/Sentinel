@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SENTINEL single install - TrinTech Digital Defense v2.9.3"""
+"""SENTINEL single install - TrinTech Digital Defense v2.9.4"""
 from __future__ import annotations
 
 import json
@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "2.9.3"
+VERSION = "2.9.4"
 
 
 def run(cmd: list) -> int:
@@ -51,6 +51,12 @@ def step_ui() -> None:
             run([sys.executable, str(p)])
 
 
+def step_self_integrity() -> None:
+    p = ROOT / "fix_self_integrity.py"
+    if p.exists():
+        run([sys.executable, str(p)])
+
+
 def step_rebuild_hooks() -> None:
     rh = ROOT / "rebuild_hooks.py"
     if rh.exists():
@@ -81,27 +87,27 @@ def step_harden_defaults() -> None:
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     data = Path.home() / ".sentinel/data"
     data.mkdir(parents=True, exist_ok=True)
-    try:
-        os.chmod(cfg_path.parent, 0o700)
-        os.chmod(data, 0o700)
-    except Exception:
-        pass
-    c: dict = {}
+    c = {}
     if cfg_path.exists():
         try:
             c = json.loads(cfg_path.read_text())
         except Exception:
             c = {}
     net = c.setdefault("network", {})
-    nets = list(net.get("scan_subnets") or [])
-    if not nets or any(str(s).endswith(("/8", "/12", "/11", "/10", "/9")) for s in nets):
-        net["scan_subnets"] = [s for s in nets if not str(s).endswith(("/8", "/12", "/11", "/10", "/9"))] or ["192.168.1.0/24"]
-    c.setdefault("alerting", {}).setdefault("whatsapp", {}).setdefault("enabled", False)
-    tg = c.setdefault("alerting", {}).setdefault("telegram", {})
-    tg.setdefault("enabled", False)
-    tg.setdefault("token", "")
-    tg.setdefault("chat_id", "")
-    c.setdefault("quiet_hours", {}).setdefault("enabled", False)
+    net.setdefault("scan_subnets", ["192.168.1.0/24"])
+    agent = c.setdefault("agent", {})
+    agent.setdefault("shared_token", "")
+    agent.setdefault("central_url", "")
+    al = c.setdefault("alerting", {})
+    wa = al.setdefault("whatsapp", {})
+    wa.setdefault("enabled", False)
+    wa.setdefault("phone", "18683620679")
+    wa.setdefault("apikey", "")
+    p5 = c.setdefault("phase5", {})
+    hy = p5.setdefault("hygiene", {})
+    hy.setdefault("enabled", True)
+    hy.setdefault("window_sec", 900)
+    hy.setdefault("max_per_key", 1)
     dm = c.setdefault("deadman", {})
     dm.setdefault("enabled", True)
     dm.setdefault("interval_sec", 300)
@@ -178,6 +184,7 @@ def main() -> None:
         else:
             step_wire(name, script)
     step_rebuild_hooks()
+    step_self_integrity()
     step_clear_integrity()
     step_harden_defaults()
     step_doctor()
