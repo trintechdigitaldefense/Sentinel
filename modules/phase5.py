@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Sentinel Phase 5 — hygiene, WhatsApp digest, heartbeat, dashboard, autosubnet."""
 from __future__ import annotations
+import sys
 import hashlib, json, os, re, socket, subprocess, urllib.parse, urllib.request
 from datetime import datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -298,6 +299,120 @@ def dashboard_serve(host: str = "127.0.0.1", port: int = 8787) -> None:
     print(f"[+] dashboard http://{host}:{port}/")
     try: httpd.serve_forever()
     except KeyboardInterrupt: print("\n[+] stopped")
+
+
+def service_install() -> dict:
+    """Install always-on hunt: prefer systemd, else background nohup (Termux/proot)."""
+    import os
+    import shutil
+    import subprocess
+    import textwrap
+
+    root = Path(__file__).resolve().parent.parent
+    engine = root / "sentinel.py"
+    unit_name = "sentinel-hunt.service"
+    unit_path = Path("/etc/systemd/system") / unit_name
+    result = {"ok": False, "method": None, "detail": ""}
+
+    # --- try systemd ---
+    if shutil.which("systemctl") and Path("/run/systemd/system").exists():
+        unit = textwrap.dedent(f"""\
+        [Unit]
+        Description=SENTINEL persistence hunt (TrinTech Digital Defense)
+        After=network.target
+
+        [Service]
+        Type=simple
+        WorkingDirectory={root}
+        ExecStart=/usr/bin/env python3 {engine} hunt
+        Restart=always
+        RestartSec=15
+        Environment=PYTHONUNBUFFERED=1
+
+        [Install]
+        WantedBy=multi-user.target
+        """)
+        try:
+            unit_path.write_text(unit)
+            subprocess.run(["systemctl", "daemon-reload"], check=False, capture_output=True)
+            subprocess.run(["systemctl", "enable", "--now", unit_name], check=False, capture_output=True)
+            st = subprocess.run(["systemctl", "is-active", unit_name], capture_output=True, text=True)
+            active = (st.stdout or "").strip()
+            result = {
+                "ok": active == "active",
+                "method": "systemd",
+                "unit": unit_name,
+                "status": active or (st.stderr or "").strip(),
+                "detail": f"systemctl status {unit_name}",
+            }
+            if result["ok"]:
+                try:
+                    from modules.phase5 import heartbeat_write
+                    heartbeat_write({"source": "service-install"})
+                except Exception:
+                    pass
+            return result
+        except Exception as e:
+            result["detail"] = f"systemd failed: {e}"
+
+    # --- fallback: nohup background hunt ---
+    data = _data()
+    data.mkdir(parents=True, exist_ok=True)
+    pidfile = data / "hunt.pid"
+    logfile = data / "hunt_bg.log"
+
+    # stop previous bg hunt if any
+    if pidfile.exists():
+        try:
+            old = int(pidfile.read_text().strip())
+            os.kill(old, 15)
+        except Exception:
+            pass
+
+    logf = open(logfile, "a")
+    proc = subprocess.Popen(
+        [sys.executable, str(engine), "hunt"],
+        cwd=str(root),
+        stdout=logf,
+        stderr=subprocess.STDOUT,
+        start_new_session=True,
+    )
+    pidfile.write_text(str(proc.pid))
+    try:
+        heartbeat_write({"source": "service-install-bg"})
+    except Exception:
+        pass
+    return {
+        "ok": True,
+        "method": "background",
+        "pid": proc.pid,
+        "pidfile": str(pidfile),
+        "logfile": str(logfile),
+        "detail": "systemd unavailable — hunt started in background (nohup-style). Log: " + str(logfile),
+    }
+
+
+def service_status() -> dict:
+    """Report systemd or background hunt status."""
+    import os
+    import shutil
+    import subprocess
+
+    if shutil.which("systemctl") and Path("/run/systemd/system").exists():
+        st = subprocess.run(["systemctl", "is-active", "sentinel-hunt"], capture_output=True, text=True)
+        return {"ok": True, "method": "systemd", "status": (st.stdout or st.stderr or "").strip()}
+
+    pidfile = _data() / "hunt.pid"
+    if pidfile.exists():
+        try:
+            pid = int(pidfile.read_text().strip())
+            os.kill(pid, 0)
+            return {"ok": True, "method": "background", "status": "running", "pid": pid}
+        except Exception:
+            return {"ok": False, "method": "background", "status": "not running", "pidfile": str(pidfile)}
+    return {"ok": False, "method": "none", "status": "not installed — run: python3 sentinel.py service-install"}
+
+
 
 def phase5_self_check() -> dict:
     ensure_hygiene_defaults(); ensure_whatsapp_defaults()

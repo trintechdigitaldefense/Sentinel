@@ -2390,36 +2390,19 @@ def main():
         try:
             from modules.phase5 import service_install
             print(service_install())
-        except Exception:
-            try:
-                import os, textwrap
-                unit = textwrap.dedent("""
-                [Unit]
-                Description=SENTINEL persistence hunt
-                After=network.target
-                [Service]
-                Type=simple
-                WorkingDirectory=/tmp/SentinelP56
-                ExecStart=/usr/bin/python3 /tmp/SentinelP56/sentinel.py hunt
-                Restart=always
-                RestartSec=10
-                [Install]
-                WantedBy=multi-user.target
-                """).strip() + "\n"
-                path = Path("/etc/systemd/system/sentinel-hunt.service")
-                path.write_text(unit)
-                os.system("systemctl daemon-reload")
-                os.system("systemctl enable --now sentinel-hunt.service")
-                print("[+] service sentinel-hunt installed/started (fallback)")
-            except Exception as e2:
-                print("[!] service-install:", e2)
+        except Exception as e:
+            print("[!] service-install:", e)
     elif command in ("service-status",):
         try:
-            import subprocess
-            r = subprocess.run(["systemctl", "is-active", "sentinel-hunt"], capture_output=True, text=True)
-            print(r.stdout.strip() or r.stderr.strip() or "unknown")
-        except Exception as e:
-            print("[!] service-status:", e)
+            from modules.phase5 import service_status
+            print(service_status())
+        except Exception:
+            try:
+                import subprocess
+                r = subprocess.run(["systemctl", "is-active", "sentinel-hunt"], capture_output=True, text=True)
+                print(r.stdout.strip() or r.stderr.strip() or "unknown")
+            except Exception as e:
+                print("[!] service-status:", e)
     elif command in ("digest-cron", "schedule-digest"):
         try:
             from modules.phase5 import install_digest_cron
