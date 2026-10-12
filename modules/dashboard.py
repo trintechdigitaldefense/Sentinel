@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
-"""SENTINEL Client Dashboard - full visibility + control."""
+"""SENTINEL Client Dashboard — visibility + control with login + optional TLS."""
 from __future__ import annotations
+import hashlib
+import hmac
 import json
 import os
 import secrets
+import ssl
 import sys
 import threading
+import time
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, unquote
 
 ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+_SESSIONS: dict = {}
+SESSION_TTL = 8 * 3600
 
 
 def _home() -> Path:
@@ -46,23 +53,72 @@ def _save_cfg(c: dict) -> None:
         pass
 
 
+def _hash_pw(password: str, salt: str) -> str:
+    return hashlib.pbkdf2_hmac("sha256", password.encode(), salt.encode(), 120000).hex()
+
+
 def ensure_token() -> tuple:
     c = _cfg()
     dash = c.setdefault("dashboard", {})
     if not dash.get("token"):
         dash["token"] = secrets.token_urlsafe(24)
     dash.setdefault("port", 8792)
+    dash.setdefault("bind", "127.0.0.1")
     dash.setdefault("client_name", (c.get("portal") or {}).get("client_name") or "Client")
     dash.setdefault("enabled", True)
     dash.setdefault("allow_control", True)
+    dash.setdefault("require_login", bool(dash.get("password") or dash.get("password_hash")))
+    dash.setdefault("tls_cert", "")
+    dash.setdefault("tls_key", "")
+    if not dash.get("password_hash"):
+        if not dash.get("password"):
+            dash["password"] = secrets.token_urlsafe(10)
+        salt = secrets.token_hex(8)
+        dash["password_salt"] = salt
+        dash["password_hash"] = _hash_pw(dash["password"], salt)
+        dash["require_login"] = True
     _save_cfg({**c, "dashboard": dash})
     return dash["token"], int(dash.get("port") or 8792), dash
+
+
+def _check_password(password: str, dash: dict) -> bool:
+    if not password:
+        return False
+    salt = dash.get("password_salt") or ""
+    expected = dash.get("password_hash") or ""
+    if expected and salt:
+        got = _hash_pw(password, salt)
+        return hmac.compare_digest(got, expected)
+    plain = dash.get("password") or ""
+    return bool(plain) and hmac.compare_digest(password, plain)
+
+
+def _new_session() -> str:
+    sid = secrets.token_urlsafe(32)
+    _SESSIONS[sid] = time.time() + SESSION_TTL
+    now = time.time()
+    for k, exp in list(_SESSIONS.items()):
+        if exp < now:
+            _SESSIONS.pop(k, None)
+    return sid
+
+
+def _session_ok(sid) -> bool:
+    if not sid:
+        return False
+    exp = _SESSIONS.get(sid)
+    if not exp:
+        return False
+    if exp < time.time():
+        _SESSIONS.pop(sid, None)
+        return False
+    return True
 
 
 def collect_full() -> dict:
     out = {
         "generated": datetime.now().isoformat(),
-        "version": "2.9.1",
+        "version": "2.9.6",
         "client": ensure_token()[2].get("client_name") or "Client",
         "host": os.uname().nodename if hasattr(os, "uname") else "host",
         "drift": {},
@@ -81,6 +137,7 @@ def collect_full() -> dict:
         "suppressions": [],
         "external": {},
         "canaries": 0,
+        "canaries_alive": 0,
         "control_enabled": bool(ensure_token()[2].get("allow_control", True)),
     }
     try:
@@ -133,9 +190,15 @@ def collect_full() -> dict:
         out["suppressions"] = list_rules()
     except Exception:
         pass
-    decoy = _data() / "deception_artifacts"
-    if decoy.exists():
-        out["canaries"] = sum(1 for p in decoy.rglob("*") if p.is_file())
+    tracker = _data() / "deception_artifacts" / "config.json"
+    if tracker.exists():
+        try:
+            data = json.loads(tracker.read_text())
+            if isinstance(data, dict):
+                out["canaries"] = len(data)
+                out["canaries_alive"] = sum(1 for p in data if Path(p).exists())
+        except Exception:
+            pass
     return out
 
 
@@ -151,39 +214,30 @@ def run_action(action: str, params: dict) -> dict:
         if action == "suppress_add":
             from modules.suppressions import add_suppression
             return add_suppression(
-                str(params.get("type") or "*"),
+                str(params.get("detection_type") or params.get("type") or "GENERIC"),
                 str(params.get("pattern") or ""),
+                host=params.get("host"),
                 note=str(params.get("note") or "dashboard"),
             )
         if action == "suppress_del":
             from modules.suppressions import remove_rule
-            rid = str(params.get("id") or "")
+            rid = str(params.get("id") or params.get("rule_id") or "")
             return {"ok": remove_rule(rid), "id": rid}
         if action == "tripwire_deploy":
             from modules.ransomware_tripwire import deploy
             return deploy()
-        if action == "persistence_baseline":
-            from modules.persistence_hunt import create_baseline
-            return create_baseline()
-        if action == "device_approve":
-            from modules.device_radar import approve
-            return approve(str(params.get("key") or ""))
-        if action == "emit_heartbeat":
-            from modules.deadman import emit_heartbeat
-            return emit_heartbeat("dashboard")
-        if action == "compute_drift":
-            from modules.drift import compute_score
-            return compute_score([])
         if action == "quiet_on":
             c = _cfg()
+            c.setdefault("quiet", {})["enabled"] = True
             c.setdefault("quiet_hours", {})["enabled"] = True
             _save_cfg(c)
-            return {"ok": True, "quiet_hours": True}
+            return {"ok": True, "quiet": True}
         if action == "quiet_off":
             c = _cfg()
+            c.setdefault("quiet", {})["enabled"] = False
             c.setdefault("quiet_hours", {})["enabled"] = False
             _save_cfg(c)
-            return {"ok": True, "quiet_hours": False}
+            return {"ok": True, "quiet": False}
         if action == "usb_on":
             c = _cfg()
             c["usb_watch"] = True
@@ -196,7 +250,19 @@ def run_action(action: str, params: dict) -> dict:
             c.setdefault("detection", {})["usb_watch"] = False
             _save_cfg(c)
             return {"ok": True, "usb_watch": False}
-        if action == "detect_now":
+        if action == "emit_heartbeat":
+            from modules.deadman import emit_heartbeat
+            return emit_heartbeat("dashboard")
+        if action == "compute_drift":
+            from modules.drift import compute_score
+            return compute_score([])
+        if action == "persistence_baseline":
+            from modules.persistence_hunt import create_baseline
+            return create_baseline()
+        if action == "device_approve":
+            from modules.device_radar import approve
+            return approve(str(params.get("key") or ""))
+        if action in ("detect", "detect_now"):
             bundle = {}
             for label, mod in [
                 ("usb", "usb_watch"),
@@ -228,25 +294,69 @@ def html_page(token: str, client: str) -> str:
         "<!DOCTYPE html><html><head><meta charset=utf-8><title>SENTINEL</title></head>"
         "<body style='font-family:system-ui;background:#0B1220;color:#E8F0FE;padding:24px'>"
         "<h1>SENTINEL Dashboard</h1><p>Client: " + client + "</p>"
-        "<pre id=s></pre><script>fetch('/api/status?token=" + token + "')"
+        "<pre id=s></pre><script>fetch('/api/status',{headers:{'X-Sentinel-Token':'" + token + "'}})"
         ".then(r=>r.json()).then(d=>{document.getElementById('s').textContent=JSON.stringify(d,null,2)})</script>"
         "</body></html>"
     )
 
 
+def login_page(error: str = "") -> str:
+    err = f"<p style='color:#f87171'>{error}</p>" if error else ""
+    return f"""<!DOCTYPE html>
+<html><head><meta charset=utf-8><meta name=viewport content=\"width=device-width,initial-scale=1\">
+<title>SENTINEL Login</title>
+<style>
+body{{font-family:system-ui;background:#0B1F3A;color:#E2E8F0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}}
+.card{{background:#132337;padding:2rem;border-radius:12px;width:min(360px,92vw);box-shadow:0 8px 32px #0006}}
+h1{{margin:0 0 .25rem;font-size:1.4rem}}
+.sub{{opacity:.7;margin-bottom:1.25rem;font-size:.9rem}}
+label{{display:block;font-size:.8rem;margin:.75rem 0 .25rem;opacity:.85}}
+input{{width:100%;padding:.65rem .75rem;border-radius:8px;border:1px solid #334155;background:#0B1220;color:#E2E8F0;box-sizing:border-box}}
+button{{margin-top:1.25rem;width:100%;padding:.75rem;border:0;border-radius:8px;background:#1A8CFF;color:#fff;font-weight:700;cursor:pointer}}
+button:hover{{filter:brightness(1.08)}}
+</style></head><body>
+<div class=card>
+  <h1>SENTINEL</h1>
+  <div class=sub>TrinTech Digital Defense — Client Dashboard</div>
+  {err}
+  <form method=POST action=/login>
+    <label>Password</label>
+    <input type=password name=password required autofocus placeholder=\"Dashboard password\">
+    <button type=submit>Sign in</button>
+  </form>
+</div></body></html>"""
+
+
 class DashHandler(BaseHTTPRequestHandler):
     token = ""
     client_name = "Client"
+    dash_cfg = {}
 
     def log_message(self, *args):
         pass
+
+    def _cookies(self) -> dict:
+        raw = self.headers.get("Cookie") or ""
+        out = {}
+        for part in raw.split(";"):
+            if "=" in part:
+                k, v = part.strip().split("=", 1)
+                out[k] = unquote(v)
+        return out
 
     def _auth_ok(self) -> bool:
         u = urlparse(self.path)
         qs = parse_qs(u.query)
         tok = (qs.get("token") or [None])[0]
         hdr = self.headers.get("X-Sentinel-Token")
-        return bool(self.token) and (tok == self.token or hdr == self.token)
+        if self.token and (tok == self.token or hdr == self.token):
+            return True
+        if _session_ok(self._cookies().get("sentinel_session")):
+            return True
+        if not self.dash_cfg.get("require_login", True):
+            if self.token and self._cookies().get("sentinel_token") == self.token:
+                return True
+        return False
 
     def _read_json(self) -> dict:
         n = int(self.headers.get("Content-Length") or 0)
@@ -257,22 +367,49 @@ class DashHandler(BaseHTTPRequestHandler):
         except Exception:
             return {}
 
-    def _send(self, code: int, body: bytes, ctype: str = "application/json"):
+    def _read_form(self) -> dict:
+        n = int(self.headers.get("Content-Length") or 0)
+        if n <= 0:
+            return {}
+        raw = self.rfile.read(n).decode(errors="ignore")
+        return {k: (v[0] if v else "") for k, v in parse_qs(raw).items()}
+
+    def _send(self, code, body, ctype="application/json", extra_headers=None):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        if extra_headers:
+            for k, v in extra_headers:
+                self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self):
         u = urlparse(self.path)
+        if u.path == "/login":
+            self._send(200, login_page().encode(), "text/html; charset=utf-8")
+            return
+        if u.path == "/logout":
+            sid = self._cookies().get("sentinel_session")
+            if sid:
+                _SESSIONS.pop(sid, None)
+            self._send(302, b"", "text/plain", [
+                ("Location", "/login"),
+                ("Set-Cookie", "sentinel_session=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict"),
+            ])
+            return
         if not self._auth_ok():
-            self._send(401, b'{"error":"unauthorized"}')
+            accept = self.headers.get("Accept") or ""
+            if "text/html" in accept or u.path in ("/", "/index.html", "/dashboard"):
+                self._send(401, login_page().encode(), "text/html; charset=utf-8")
+            else:
+                self._send(401, b'{"error":"unauthorized","login":"/login"}')
             return
         if u.path in ("/", "/index.html", "/dashboard"):
-            body = html_page(self.token, self.client_name).encode()
-            self._send(200, body, "text/html; charset=utf-8")
+            self._send(200, html_page(self.token, self.client_name).encode(), "text/html; charset=utf-8")
             return
         if u.path == "/api/status":
             self._send(200, json.dumps(collect_full()).encode())
@@ -281,6 +418,19 @@ class DashHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         u = urlparse(self.path)
+        if u.path == "/login":
+            form = self._read_form()
+            pw = form.get("password") or ""
+            if _check_password(pw, self.dash_cfg):
+                sid = _new_session()
+                secure = " Secure;" if self.dash_cfg.get("tls_cert") else ""
+                self._send(302, b"OK", "text/plain", [
+                    ("Location", "/"),
+                    ("Set-Cookie", f"sentinel_session={sid}; Path=/; Max-Age={SESSION_TTL}; HttpOnly; SameSite=Strict;{secure}"),
+                ])
+            else:
+                self._send(401, login_page("Invalid password").encode(), "text/html; charset=utf-8")
+            return
         if not self._auth_ok():
             self._send(401, b'{"error":"unauthorized"}')
             return
@@ -292,25 +442,46 @@ class DashHandler(BaseHTTPRequestHandler):
         self._send(404, b'{"error":"not found"}')
 
 
-def start_dashboard(port: int = None, background: bool = False) -> dict:
+def start_dashboard(port=None, background=False) -> dict:
     token, default_port, dash = ensure_token()
     port = int(port or default_port)
+    bind = str(dash.get("bind") or "127.0.0.1")
     DashHandler.token = token
     DashHandler.client_name = dash.get("client_name") or "Client"
-    server = ThreadingHTTPServer(("0.0.0.0", port), DashHandler)
-    url = "http://127.0.0.1:%d/?token=%s" % (port, token)
-    print("[+] SENTINEL Dashboard on port %d" % port)
-    print("[+] Client URL: %s" % url)
+    DashHandler.dash_cfg = dash
+    server = ThreadingHTTPServer((bind, port), DashHandler)
+
+    scheme = "http"
+    cert = (dash.get("tls_cert") or "").strip()
+    key = (dash.get("tls_key") or "").strip()
+    if cert and key and Path(cert).exists() and Path(key).exists():
+        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        ctx.load_cert_chain(certfile=cert, keyfile=key)
+        server.socket = ctx.wrap_socket(server.socket, server_side=True)
+        scheme = "https"
+        print("[+] TLS enabled (%s)" % cert)
+    elif cert or key:
+        print("[!] tls_cert/tls_key set but files missing — serving plain HTTP")
+
+    host_show = "127.0.0.1" if bind in ("0.0.0.0", "::") else bind
+    url = f"{scheme}://{host_show}:{port}/"
+    login_url = f"{scheme}://{host_show}:{port}/login"
+    print("[+] SENTINEL Dashboard on %s:%d" % (bind, port))
+    print("[+] Open: %s" % login_url)
+    print("[+] API token URL: %s?token=%s" % (url.rstrip("/"), token))
+    if dash.get("password"):
+        print("[+] First-run password (change in config): %s" % dash.get("password"))
+        print("    stored hashed — clear dashboard.password after you save it")
     print("[+] Control: %s" % ("enabled" if dash.get("allow_control", True) else "disabled"))
     if background:
         threading.Thread(target=server.serve_forever, daemon=True).start()
-        return {"ok": True, "url": url, "port": port, "token": token, "background": True}
+        return {"ok": True, "url": url, "login": login_url, "port": port, "token": token, "scheme": scheme, "background": True}
     print("[*] Serving forever - Ctrl+C to stop")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
         print("\n[+] Dashboard stopped")
-    return {"ok": True, "url": url, "port": port, "token": token}
+    return {"ok": True, "url": url, "login": login_url, "port": port, "token": token, "scheme": scheme}
 
 
 if __name__ == "__main__":
