@@ -130,16 +130,17 @@ class C:
 
 
 def banner():
-    print(f"""
-{C.BOLD}{C.CYAN}  _   _      _   _        _     _______ _
- | \\ | |    | \\ | |      | |   |__   __(_)
- | |\\  |  __/ |\\  | (_| || || (_| | |_) | | | | | | |
+    """Clean client-facing banner (no broken ASCII art)."""
+    line = "=" * 52
+    print()
+    print(f"{C.CYAN}{C.BOLD}{line}{C.RESET}")
+    print(f"{C.CYAN}{C.BOLD}  SENTINEL{C.RESET}")
+    print(f"{C.BOLD}  v{__version__}{C.RESET}")
+    print(f"{C.GRAY}  TrinTech Digital Defense{C.RESET}")
+    print(f"{C.GRAY}  Active Deception | Persistence Hunting | Line of Defense{C.RESET}")
+    print(f"{C.CYAN}{C.BOLD}{line}{C.RESET}")
+    print()
 
-{C.BOLD}{C.BLUE}SENTINEL{C.RESET} {C.GRAY}v{__version__}{C.RESET}
-{C.GRAY}TrinTech Digital Defense — Cybersecurity Research & Tool Repository{C.RESET}
-{C.GRAY}Active Deception · Persistence Hunting · Line of Defense{C.RESET}
-{C.GRAY}{'_' * 50}{C.RESET}
-""")
 
 
 # ════════════════════════════════════════════════════════════════════
@@ -1821,7 +1822,7 @@ def print_banner():
     try:
         ver = __version__
     except Exception:
-        ver = "2.5.0"
+        ver = "2.9.9"
     print(f"{C.BOLD}  v{ver}{C.RESET}")
     print(f"{C.GRAY}  TrinTech Digital Defense{C.RESET}")
     print(f"{C.GRAY}  Active Deception | Persistence Hunting | Line of Defense{C.RESET}")
@@ -2130,19 +2131,20 @@ def main():
 
     # ── Line of Defense commands ──
     elif command == "integrity":
-
-        try:
-            from modules.drift import compute_score
-            compute_score([])
-        except Exception:
-            pass
-
         if "--check" in args:
             logger.info(f"{C.CYAN}[*]{C.RESET} Checking integrity against baseline...")
             fim_check(config, logger)
         else:
             logger.info(f"{C.CYAN}[*]{C.RESET} Generating file integrity baseline...")
             fim_build_baseline(config, logger)
+        # Record drift AFTER baseline exists so score is meaningful (not null/0)
+        try:
+            from modules.drift import compute_score, print_report
+            point = compute_score([])
+            if point.get("score") is not None:
+                logger.info(f"{C.GREEN}✓{C.RESET} Drift score: {C.BOLD}{point['score']}%{C.RESET} intact")
+        except Exception as _e:
+            pass
 
     elif command == "watch":
         fim_watch(config, logger)

@@ -118,7 +118,7 @@ def _session_ok(sid) -> bool:
 def collect_full() -> dict:
     out = {
         "generated": datetime.now().isoformat(),
-        "version": "2.9.6",
+        "version": "2.9.9",
         "client": ensure_token()[2].get("client_name") or "Client",
         "host": os.uname().nodename if hasattr(os, "uname") else "host",
         "drift": {},

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""SENTINEL single install — TrinTech Digital Defense v2.9.8
+"""SENTINEL single install — TrinTech Digital Defense v2.9.9
 
 One path:
   assemble (if needed) → stabilize (all wires + fixes) → defaults → doctor
@@ -15,7 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "2.9.8"
+VERSION = "2.9.9"
 
 
 def run(cmd: list) -> int:

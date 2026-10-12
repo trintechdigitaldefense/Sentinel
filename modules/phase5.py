@@ -146,7 +146,7 @@ def ensure_hygiene_defaults(config=None) -> dict:
 
 def heartbeat_write(extra: Optional[dict] = None) -> dict:
     path = _data() / "heartbeat.json"
-    payload = {"ts": datetime.now().isoformat(), "host": socket.gethostname(), "status": "alive", "version": "2.5.0", "phase": 5, "source": (extra or {}).get("source", "manual")}
+    payload = {"ts": datetime.now().isoformat(), "host": socket.gethostname(), "status": "alive", "version": "2.9.9", "phase": 5, "source": (extra or {}).get("source", "manual")}
     if extra: payload.update(extra)
     path.write_text(json.dumps(payload, indent=2))
     return {"ok": True, "file": str(path), "ts": payload["ts"], "source": payload["source"]}
@@ -240,7 +240,7 @@ def status_json() -> dict:
     hb = heartbeat_status()
     digest = alert_digest(24)
     hy = hygiene_status()
-    return {"ok": True, "product": "SENTINEL", "version": "2.5.0", "host": socket.gethostname(), "ts": datetime.now().isoformat(), "scan_subnets": nets, "heartbeat_alive": hb.get("alive", False), "heartbeat_age_seconds": hb.get("age_seconds"), "heartbeat_source": (hb.get("data") or {}).get("source"), "behavioral_baseline": (_data() / "behavioral_baseline.json").exists(), "fim_baseline": (_data() / "integrity_baseline" / "integrity_baseline.json").exists(), "alerts_24h_approx": digest.get("recent_count", 0), "alert_buckets": digest.get("by_keyword", {}), "hygiene_suppressed": hy.get("suppressed_total", 0), "data_dir": str(_data())}
+    return {"ok": True, "product": "SENTINEL", "version": "2.9.9", "host": socket.gethostname(), "ts": datetime.now().isoformat(), "scan_subnets": nets, "heartbeat_alive": hb.get("alive", False), "heartbeat_age_seconds": hb.get("age_seconds"), "heartbeat_source": (hb.get("data") or {}).get("source"), "behavioral_baseline": (_data() / "behavioral_baseline.json").exists(), "fim_baseline": (_data() / "integrity_baseline" / "integrity_baseline.json").exists(), "alerts_24h_approx": digest.get("recent_count", 0), "alert_buckets": digest.get("by_keyword", {}), "hygiene_suppressed": hy.get("suppressed_total", 0), "data_dir": str(_data())}
 
 def _html_page() -> str:
     st = status_json()
