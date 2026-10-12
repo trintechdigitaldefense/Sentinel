@@ -70,6 +70,7 @@ def _count_baseline_entries(baseline: dict) -> int:
     return max(len(baseline), 1)
 
 def compute_score(changed_paths: Optional[list] = None, total_files: Optional[int] = None) -> dict:
+    """Score = % of baseline files unchanged. Never records a fake 0% as drift when there is no baseline."""
     changed_paths = list(changed_paths or [])
     bl_path = _find_baseline()
     if total_files is None:
@@ -79,14 +80,23 @@ def compute_score(changed_paths: Optional[list] = None, total_files: Optional[in
                 total_files = _count_baseline_entries(json.loads(bl_path.read_text()))
             except Exception:
                 total_files = 0
-    if total_files is None or total_files <= 0:
+    note = "ok"
+    if not bl_path or total_files <= 0:
+        point = {
+            "timestamp": datetime.now().isoformat(),
+            "score": None,
+            "total_files": int(total_files or 0),
+            "changed_count": len(changed_paths),
+            "changed_paths": changed_paths[:50],
+            "note": "no_baseline",
+        }
+        return point
+    n_changed = min(len(changed_paths), total_files)
+    score = round(100.0 * (1.0 - (n_changed / float(total_files))), 2)
+    if score < 0:
         score = 0.0
-        note = "no_baseline" if not bl_path else "empty_baseline"
-    else:
-        n_changed = len(changed_paths)
-        n_changed = min(n_changed, total_files)
-        score = round(100.0 * (1.0 - (n_changed / float(total_files))), 2)
-        note = "ok" if bl_path else "scored_without_file"
+    if score > 100:
+        score = 100.0
     point = {
         "timestamp": datetime.now().isoformat(),
         "score": score,
@@ -96,6 +106,7 @@ def compute_score(changed_paths: Optional[list] = None, total_files: Optional[in
         "note": note,
     }
     hist = _load_history()
+    hist = [p for p in hist if p.get("score") is not None]
     hist.append(point)
     _save_history(hist)
     return point
@@ -118,7 +129,7 @@ def record_from_integrity_result(result: Any = None) -> dict:
     return compute_score(changed, total)
 
 def trend(days: int = 90) -> dict:
-    hist = _load_history()
+    hist = [p for p in _load_history() if p.get("score") is not None]
     if not hist:
         return {
             "ok": True,
@@ -151,8 +162,12 @@ def trend(days: int = 90) -> dict:
 
 def _verdict(score, delta, changed_count) -> str:
     if score is None:
-        return "No score available."
-    if score >= 98 and (delta is None or delta >= -2):
+        return "No baseline yet — run: python3 sentinel.py integrity"
+    try:
+        score = float(score)
+    except (TypeError, ValueError):
+        return "No baseline yet — run: python3 sentinel.py integrity"
+    if score >= 98:
         return f"Baseline healthy at {score}% intact — minimal drift."
     if score >= 90:
         return f"Your network is {score}% baseline-intact — {changed_count} change(s) since last baseline."
@@ -191,7 +206,7 @@ def print_report() -> dict:
     return t
 
 def sparkline() -> str:
-    hist = _load_history()
+    hist = [p for p in _load_history() if p.get("score") is not None]
     if len(hist) < 2:
         return ""
     scores = [float(p.get("score") or 0) for p in hist[-20:]]
