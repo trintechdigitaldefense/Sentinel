@@ -195,10 +195,47 @@ def collect_full() -> dict:
         try:
             data = json.loads(tracker.read_text())
             if isinstance(data, dict):
-                out["canaries"] = len(data)
-                out["canaries_alive"] = sum(1 for p in data if Path(p).exists())
+                alive = sum(1 for path in data if Path(path).exists())
+                total = len(data)
+                out["canaries"] = {"alive": alive, "total": total}
+                out["canaries_alive"] = alive
         except Exception:
-            pass
+            out["canaries"] = {"alive": 0, "total": 0}
+    else:
+        out["canaries"] = {"alive": 0, "total": 0}
+
+    # Drift score (latest)
+    try:
+        hist = (out.get("drift") or {}).get("history") or []
+        if hist:
+            out["drift_score"] = hist[-1].get("score")
+        elif (out.get("drift") or {}).get("latest_score") is not None:
+            out["drift_score"] = out["drift"]["latest_score"]
+    except Exception:
+        pass
+
+    # Heartbeat age
+    try:
+        from datetime import datetime as _dt
+        hb_path = _data() / "heartbeat.json"
+        if hb_path.exists():
+            hb = json.loads(hb_path.read_text())
+            out["heartbeat"] = hb
+            ts = hb.get("ts") or hb.get("timestamp")
+            if ts:
+                age = int((_dt.now() - _dt.fromisoformat(ts)).total_seconds())
+                out["heartbeat_age_seconds"] = max(0, age)
+    except Exception:
+        pass
+
+    # Quiet hours
+    try:
+        cfg = _cfg()
+        q = (cfg.get("alerting") or {}).get("quiet_hours") or cfg.get("quiet_hours") or {}
+        out["quiet"] = {"enabled": bool(q.get("enabled"))}
+    except Exception:
+        out["quiet"] = {"enabled": False}
+
     return out
 
 
@@ -281,6 +318,31 @@ def run_action(action: str, params: dict) -> dict:
             return {"ok": True, "detect": bundle}
         if action == "refresh":
             return {"ok": True, "status": collect_full()}
+        if action in ("client_report", "generate_report", "pdf_report"):
+            from modules.client_report import generate_client_pdf
+            r = generate_client_pdf()
+            return r
+        if action == "deception_redeploy":
+            try:
+                import subprocess, sys
+                root = Path(__file__).resolve().parent.parent
+                subprocess.Popen([sys.executable, str(root / "sentinel.py"), "deception"],
+                                 cwd=str(root), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                return {"ok": True, "msg": "deception redeploy started"}
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+        if action == "service_start":
+            try:
+                from modules.phase5 import service_install
+                return service_install()
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
+        if action == "service_status":
+            try:
+                from modules.phase5 import service_status
+                return service_status()
+            except Exception as e:
+                return {"ok": False, "error": str(e)}
         return {"ok": False, "error": "unknown action: " + action}
     except Exception as e:
         return {"ok": False, "error": str(e)}
@@ -408,11 +470,22 @@ class DashHandler(BaseHTTPRequestHandler):
             else:
                 self._send(401, b'{"error":"unauthorized","login":"/login"}')
             return
-        if u.path in ("/", "/index.html", "/dashboard"):
-            self._send(200, html_page(self.token, self.client_name).encode(), "text/html; charset=utf-8")
+        if u.path in ("/api/report.pdf", "/api/report"):
+            from modules.client_report import generate_client_pdf
+            r = generate_client_pdf()
+            if not r.get("ok"):
+                self._send(500, json.dumps(r).encode())
+                return
+            data = Path(r["path"]).read_bytes()
+            self._send(200, data, "application/pdf", extra_headers=[
+                ("Content-Disposition", f'attachment; filename="{Path(r["path"]).name}"'),
+            ])
             return
         if u.path == "/api/status":
             self._send(200, json.dumps(collect_full()).encode())
+            return
+        if u.path in ("/", "/index.html", "/dashboard"):
+            self._send(200, html_page(self.token, self.client_name).encode(), "text/html; charset=utf-8")
             return
         self._send(404, b'{"error":"not found"}')
 

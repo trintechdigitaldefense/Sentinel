@@ -1,52 +1,91 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SENTINEL - %%CLIENT%%</title>
+<title>SENTINEL — %%CLIENT%%</title>
 <style>
 :root{--bg:#0B1220;--card:#132238;--line:#1E3A5F;--text:#E8F0FE;--muted:#94A3B8;--blue:#1A8CFF;--cyan:#22D3EE;--green:#34D399;--amber:#FBBF24;--red:#F87171}
-*{box-sizing:border-box}body{margin:0;font-family:system-ui,sans-serif;background:var(--bg);color:var(--text)}
-header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--line);background:#0d1829}
+*{box-sizing:border-box}body{margin:0;font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text)}
+header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:16px 24px;border-bottom:1px solid var(--line);background:#0d1829}
 header h1{margin:0;font-size:1.25rem;color:var(--blue)}header .sub{color:var(--muted);font-size:.85rem}
-.badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:.75rem;font-weight:600}
-.badge.ok{background:#064e3b;color:var(--green)}.badge.warn{background:#78350f;color:var(--amber)}
-main{padding:20px;max-width:1200px;margin:0 auto}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}
+.badge{display:inline-block;padding:3px 12px;border-radius:999px;font-size:.75rem;font-weight:600}
+.badge.ok{background:#064e3b;color:var(--green)}.badge.warn{background:#78350f;color:var(--amber)}.badge.bad{background:#7f1d1d;color:var(--red)}
+main{padding:20px;max-width:1180px;margin:0 auto}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
-.card h3{margin:0 0 8px;font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
-.metric{font-size:2rem;font-weight:700;color:var(--cyan)}.metric.sm{font-size:1.25rem}
-.row{display:flex;gap:10px;flex-wrap:wrap;margin-top:12px}
-button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:8px 14px;font-weight:600;cursor:pointer;font-size:.85rem}
-button.secondary{background:#1e293b;border:1px solid var(--line)}button:hover{filter:brightness(1.08)}
+.card h3{margin:0 0 8px;font-size:.75rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.metric{font-size:1.85rem;font-weight:700;color:var(--cyan)}.metric.sm{font-size:1.15rem}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+button{background:var(--blue);color:#fff;border:0;border-radius:8px;padding:9px 14px;font-weight:600;cursor:pointer;font-size:.85rem}
+button.secondary{background:#1e293b;border:1px solid var(--line)}button.danger{background:#7f1d1d}button:hover{filter:brightness(1.1)}
+button:disabled{opacity:.5;cursor:not-allowed}
 table{width:100%;border-collapse:collapse;font-size:.85rem}
 th,td{text-align:left;padding:8px 6px;border-bottom:1px solid var(--line);vertical-align:top}
 th{color:var(--muted)}.mono{font-family:ui-monospace,monospace;font-size:.78rem;color:#cbd5e1}
 ul.alerts{margin:0;padding-left:18px;max-height:220px;overflow:auto}
 .section{margin-top:22px}.section h2{font-size:1rem;margin:0 0 10px;color:var(--blue)}
 footer{text-align:center;color:var(--muted);font-size:.75rem;padding:24px}
-#toast{position:fixed;bottom:20px;right:20px;background:#064e3b;color:var(--green);padding:10px 16px;border-radius:8px;display:none;z-index:9}
-input{background:#0d1829;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 10px;min-width:140px}
+#toast{position:fixed;bottom:20px;right:20px;background:#064e3b;color:var(--green);padding:12px 16px;border-radius:10px;display:none;z-index:9;max-width:320px;box-shadow:0 8px 24px #0006}
+input{background:#0d1829;border:1px solid var(--line);color:var(--text);border-radius:8px;padding:8px 10px;min-width:130px}
+/* Toggle switches */
+.switch-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--line)}
+.switch-row:last-child{border-bottom:0}
+.switch-label{font-size:.9rem}.switch-label small{display:block;color:var(--muted);font-size:.75rem;margin-top:2px}
+.sw{position:relative;width:48px;height:28px;flex-shrink:0}
+.sw input{opacity:0;width:0;height:0}
+.slider{position:absolute;cursor:pointer;inset:0;background:#334155;border-radius:999px;transition:.2s}
+.slider:before{position:absolute;content:"";height:22px;width:22px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.2s}
+.sw input:checked + .slider{background:var(--blue)}
+.sw input:checked + .slider:before{transform:translateX(20px)}
+.report-box{background:linear-gradient(135deg,#0d2847,#132238);border:1px solid var(--blue);border-radius:14px;padding:18px}
+.report-box p{margin:0 0 12px;color:var(--muted);font-size:.9rem;line-height:1.45}
 </style></head><body>
 <header>
-  <div><h1>SENTINEL</h1>
-  <div class="sub">TrinTech Digital Defense - <span id="client">%%CLIENT%%</span> - live dashboard</div></div>
+  <div>
+    <h1>SENTINEL</h1>
+    <div class="sub">TrinTech Digital Defense · <span id="clientName">%%CLIENT%%</span></div>
+  </div>
   <div class="row">
-    <span id="hbBadge" class="badge warn">...</span>
+    <span id="statusBadge" class="badge warn">Checking…</span>
     <button class="secondary" onclick="refresh()">Refresh</button>
-    <button onclick="act('detect_now')">Run detect</button>
   </div>
 </header>
 <main>
   <div class="grid" id="metrics"></div>
-  <div class="section"><h2>Controls</h2>
+
+  <div class="section report-box">
+    <h2 style="margin-top:0;color:var(--cyan)">Client security report</h2>
+    <p>Download a plain-language PDF written for managers and business owners — not technical jargon. Includes overall verdict, monitoring status, tripwires, and recommended next steps.</p>
+    <div class="row">
+      <button onclick="downloadReport()">Download PDF report</button>
+      <button class="secondary" onclick="act('client_report')">Generate only (save on server)</button>
+    </div>
+  </div>
+
+  <div class="section"><h2>Protection switches</h2>
+    <div class="card">
+      <div class="switch-row">
+        <div class="switch-label">Quiet hours<small>Pause non-critical alerts outside business hours</small></div>
+        <label class="sw"><input type="checkbox" id="swQuiet" onchange="toggleQuiet(this.checked)"><span class="slider"></span></label>
+      </div>
+      <div class="switch-row">
+        <div class="switch-label">USB monitoring<small>Alert when new USB storage is plugged in</small></div>
+        <label class="sw"><input type="checkbox" id="swUsb" onchange="toggleUsb(this.checked)"><span class="slider"></span></label>
+      </div>
+      <div class="switch-row">
+        <div class="switch-label">Always-on protection<small>Start background hunt if not already running</small></div>
+        <label class="sw"><input type="checkbox" id="swService" onchange="toggleService(this.checked)"><span class="slider"></span></label>
+      </div>
+    </div>
+  </div>
+
+  <div class="section"><h2>Quick actions</h2>
     <div class="card"><div class="row">
       <button onclick="act('tripwire_deploy')">Deploy tripwire</button>
+      <button onclick="act('deception_redeploy')">Redeploy canaries</button>
       <button onclick="act('persistence_baseline')">Persistence baseline</button>
       <button onclick="act('compute_drift')">Record drift</button>
       <button onclick="act('emit_heartbeat')">Heartbeat now</button>
-      <button class="secondary" onclick="act('quiet_on')">Quiet ON</button>
-      <button class="secondary" onclick="act('quiet_off')">Quiet OFF</button>
-      <button class="secondary" onclick="act('usb_on')">USB watch ON</button>
-      <button class="secondary" onclick="act('usb_off')">USB watch OFF</button>
+      <button class="secondary" onclick="act('detect_now')">Run detect now</button>
     </div>
     <div class="row" style="margin-top:12px">
       <input id="supType" placeholder="type e.g. usb" value="usb">
@@ -56,9 +95,10 @@ input{background:#0d1829;border:1px solid var(--line);color:var(--text);border-r
       <button onclick="approveDevice()">Approve device</button>
     </div></div>
   </div>
+
   <div class="section grid" style="grid-template-columns:1fr 1fr">
     <div class="card"><h3>Recent alerts</h3><ul class="alerts" id="alerts"></ul></div>
-    <div class="card"><h3>ATT&CK techniques</h3>
+    <div class="card"><h3>ATT&amp;CK techniques</h3>
       <table><thead><tr><th>ID</th><th>Name</th></tr></thead><tbody id="tech"></tbody></table></div>
   </div>
   <div class="section"><h2>Detection modules</h2><div class="grid" id="mods"></div></div>
@@ -69,46 +109,63 @@ input{background:#0d1829;border:1px solid var(--line);color:var(--text);border-r
     <thead><tr><th>ID</th><th>Type</th><th>Pattern</th><th></th></tr></thead>
     <tbody id="supps"></tbody></table></div></div>
 </main>
-<footer>Authorized monitoring only - Token session - TrinTech Digital Defense</footer>
+<footer>Authorized monitoring only · Session protected · TrinTech Digital Defense</footer>
 <div id="toast"></div>
 <script>
 const TOKEN = "%%TOKEN%%";
+let lastStatus = null;
+
 async function api(path, opts) {
   const sep = path.includes('?') ? '&' : '?';
   const r = await fetch(path + sep + 'token=' + encodeURIComponent(TOKEN), opts);
   if (!r.ok) throw new Error(await r.text());
+  const ct = r.headers.get('content-type') || '';
+  if (ct.includes('application/pdf')) return r.blob();
   return r.json();
 }
-function toast(msg) {
+function toast(msg, ok) {
   const t = document.getElementById('toast');
-  t.textContent = msg; t.style.display = 'block';
-  setTimeout(function(){ t.style.display = 'none'; }, 2500);
+  t.textContent = msg;
+  t.style.background = ok === false ? '#7f1d1d' : '#064e3b';
+  t.style.color = ok === false ? '#FECACA' : '#34D399';
+  t.style.display = 'block';
+  setTimeout(function(){ t.style.display = 'none'; }, 3200);
 }
 function modCard(title, obj) {
-  if (!obj || obj.error) return '<div class="card"><h3>'+title+'</h3><div class="mono">'+(obj&&obj.error||'n/a')+'</div></div>';
-  var n = obj.count; if (n==null) n = obj.new_count; if (n==null) n = (obj.events&&obj.events.length)||0;
-  var en = obj.enabled === false ? ' (off)' : '';
-  return '<div class="card"><h3>'+title+en+'</h3><div class="metric sm">'+n+'</div><div class="mono">events / findings</div></div>';
+  if (!obj || typeof obj !== 'object') return '<div class="card"><h3>'+title+'</h3><div class="metric sm">—</div></div>';
+  var on = obj.enabled != null ? obj.enabled : (obj.active != null ? obj.active : true);
+  var detail = obj.detail || obj.status || (on ? 'Active' : 'Off');
+  return '<div class="card"><h3>'+title+'</h3><div class="metric sm">'+(on?'On':'Off')+'</div><div class="mono">'+detail+'</div></div>';
 }
 async function refresh() {
   try {
     var s = await api('/api/status');
-    document.getElementById('client').textContent = s.client || 'Client';
-    var drift = s.drift || {};
-    var score = drift.latest_score;
-    var loc = (s.deadman||{}).local || {};
-    var hb = document.getElementById('hbBadge');
-    hb.className = 'badge ' + (loc.alive ? 'ok' : 'warn');
-    hb.textContent = loc.alive ? 'Sensor ALIVE' : ('Sensor ' + (loc.status||'?'));
+    lastStatus = s;
+    var age = s.heartbeat_age_seconds != null ? s.heartbeat_age_seconds : ((s.heartbeat||{}).age_seconds);
+    var alive = age != null && age < 300;
+    var badge = document.getElementById('statusBadge');
+    if (alive) { badge.className = 'badge ok'; badge.textContent = 'Protected'; }
+    else { badge.className = 'badge warn'; badge.textContent = 'Monitoring paused'; }
+
+    var can = s.canaries || {};
+    var canTxt = (can.alive != null) ? (can.alive + '/' + (can.total||can.alive)) : '—';
     document.getElementById('metrics').innerHTML =
-      '<div class="card"><h3>Baseline intact</h3><div class="metric">'+(score!=null?score:'\u2014')+'%</div><div class="mono">'+(drift.verdict||'').slice(0,120)+'</div></div>'+
-      '<div class="card"><h3>Alerts (log)</h3><div class="metric">'+(s.alert_count||0)+'</div></div>'+
-      '<div class="card"><h3>Canaries</h3><div class="metric">'+(s.canaries||0)+'</div></div>'+
+      '<div class="card"><h3>Heartbeat</h3><div class="metric">'+(alive?'Live':'—')+'</div><div class="mono">'+(age!=null?age+'s ago':'no signal')+'</div></div>'+
+      '<div class="card"><h3>Canaries</h3><div class="metric">'+canTxt+'</div></div>'+
+      '<div class="card"><h3>Drift</h3><div class="metric">'+(s.drift_score!=null?s.drift_score+'%':'—')+'</div></div>'+
+      '<div class="card"><h3>Alerts</h3><div class="metric">'+((s.alerts||[]).length||s.alerts_24h||0)+'</div></div>'+
       '<div class="card"><h3>New devices</h3><div class="metric">'+((s.radar||{}).new_count||0)+'</div></div>'+
-      '<div class="card"><h3>Tripwire</h3><div class="metric">'+((s.tripwire||{}).count||0)+'</div></div>'+
-      '<div class="card"><h3>Honey auth</h3><div class="metric">'+((s.honey||{}).count||0)+'</div></div>';
+      '<div class="card"><h3>Tripwire</h3><div class="metric">'+((s.tripwire||{}).count||0)+'</div></div>';
+
+    // Switches from status
+    var quiet = (s.quiet||{}).enabled || (s.quiet_hours&&s.quiet_hours.enabled) || false;
+    var usb = (s.usb||{}).enabled; if (usb == null) usb = (s.usb||{}).active; if (usb == null) usb = true;
+    document.getElementById('swQuiet').checked = !!quiet;
+    document.getElementById('swUsb').checked = !!usb;
+    document.getElementById('swService').checked = !!alive;
+
     document.getElementById('alerts').innerHTML =
-      (s.alerts||[]).slice(-15).reverse().map(function(a){return '<li class="mono">'+a+'</li>';}).join('') || '<li>None</li>';
+      (s.alerts||[]).slice(-15).reverse().map(function(a){return '<li class="mono">'+String(a).replace(/</g,'&lt;')+'</li>';}).join('') || '<li>None</li>';
     document.getElementById('tech').innerHTML =
       (s.techniques||[]).map(function(t){return '<tr><td>'+t.id+'</td><td>'+t.name+'</td></tr>';}).join('') || '<tr><td colspan=2>None</td></tr>';
     document.getElementById('mods').innerHTML = [
@@ -117,12 +174,12 @@ async function refresh() {
     ].join('');
     var fleet = (s.fleet||{}).clients || [];
     document.getElementById('fleet').innerHTML = fleet.map(function(r){
-      return '<tr><td>'+r.client+'</td><td>'+r.risk_score+'</td><td>'+(r.drift_score!=null?r.drift_score:'\u2014')+'</td><td>'+r.open_alerts+'</td><td>'+(r.heartbeat_ok?'OK':'!!')+'</td></tr>';
+      return '<tr><td>'+r.client+'</td><td>'+r.risk_score+'</td><td>'+(r.drift_score!=null?r.drift_score:'—')+'</td><td>'+r.open_alerts+'</td><td>'+(r.heartbeat_ok?'OK':'!!')+'</td></tr>';
     }).join('') || '<tr><td colspan=5>No agents</td></tr>';
     document.getElementById('supps').innerHTML = (s.suppressions||[]).map(function(r){
       return '<tr><td class="mono">'+r.id+'</td><td>'+r.detection_type+'</td><td class="mono">'+r.pattern+'</td><td><button class="secondary" onclick="supDel(\''+r.id+'\')">Remove</button></td></tr>';
     }).join('') || '<tr><td colspan=4>None</td></tr>';
-  } catch (e) { toast('Refresh failed: ' + e.message); }
+  } catch (e) { toast('Refresh failed: ' + e.message, false); }
 }
 async function act(action, params) {
   params = params || {};
@@ -132,10 +189,38 @@ async function act(action, params) {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify(body)
     });
-    toast(r.ok === false ? ('Error: ' + (r.error||'failed')) : (action + ' OK'));
+    if (r.ok === false) toast('Error: ' + (r.error||'failed'), false);
+    else if (r.path) toast('Saved: ' + r.path);
+    else if (r.headline) toast(r.headline + ' — report ready');
+    else toast(action + ' OK');
     await refresh();
     return r;
-  } catch (e) { toast(e.message); }
+  } catch (e) { toast(e.message, false); }
+}
+function toggleQuiet(on) { act(on ? 'quiet_on' : 'quiet_off'); }
+function toggleUsb(on) { act(on ? 'usb_on' : 'usb_off'); }
+async function toggleService(on) {
+  if (on) {
+    var r = await act('service_start');
+    if (r && r.ok) toast('Protection started ('+(r.method||'ok')+')');
+  } else {
+    toast('Turn off from terminal: kill $(cat ~/.sentinel/data/hunt.pid)', false);
+    document.getElementById('swService').checked = true; // keep on until stopped externally
+  }
+}
+async function downloadReport() {
+  try {
+    toast('Building plain-language PDF…');
+    const sep = '?token=' + encodeURIComponent(TOKEN);
+    const r = await fetch('/api/report.pdf' + sep);
+    if (!r.ok) throw new Error(await r.text());
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'Sentinel_Client_Report.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+    toast('PDF downloaded');
+  } catch (e) { toast('Report failed: ' + e.message, false); }
 }
 function suppressAdd() {
   act('suppress_add', {type: document.getElementById('supType').value, pattern: document.getElementById('supPat').value});

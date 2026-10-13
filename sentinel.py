@@ -2244,6 +2244,12 @@ def main():
 
     elif command == "canary":
         canary_watch(config, logger)
+    elif command in ("client-report", "report-client"):
+        try:
+            from modules.client_report import generate_client_pdf
+            print(generate_client_pdf())
+        except Exception as e:
+            print("[!] client-report:", e)
     elif command in ("pdf", "report-pdf"):
         generate_pdf_report(config, logger)
     elif command == "agent":
