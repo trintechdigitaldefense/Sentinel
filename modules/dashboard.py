@@ -228,77 +228,173 @@ def collect_full() -> dict:
     except Exception:
         pass
 
-    # Quiet hours
+    # Quiet hours (check all places we may have written it)
     try:
         cfg = _cfg()
-        q = (cfg.get("alerting") or {}).get("quiet_hours") or cfg.get("quiet_hours") or {}
+        q = (
+            (cfg.get("alerting") or {}).get("quiet_hours")
+            or cfg.get("quiet_hours")
+            or cfg.get("quiet")
+            or {}
+        )
         out["quiet"] = {"enabled": bool(q.get("enabled"))}
     except Exception:
         out["quiet"] = {"enabled": False}
 
+    # USB switch from config (modules may not expose enabled)
+    try:
+        cfg = _cfg()
+        usb_on = cfg.get("usb_watch")
+        if usb_on is None:
+            usb_on = (cfg.get("detection") or {}).get("usb_watch")
+        if usb_on is None:
+            usb_on = True
+        if isinstance(out.get("usb"), dict):
+            out["usb"]["enabled"] = bool(usb_on)
+        else:
+            out["usb"] = {"enabled": bool(usb_on)}
+    except Exception:
+        pass
+
     return out
 
 
+
 def run_action(action: str, params: dict) -> dict:
+    """Execute a dashboard control action. Always returns a dict with ok=True/False."""
     _, _, dash = ensure_token()
     if not dash.get("allow_control", True):
-        return {"ok": False, "error": "control disabled"}
+        return {"ok": False, "error": "control disabled in config"}
     action = (action or "").lower().strip()
+    params = params or {}
+
+    def _ok(msg=None, **extra):
+        out = {"ok": True}
+        if msg:
+            out["message"] = msg
+        out.update(extra)
+        return out
+
+    def _err(msg):
+        return {"ok": False, "error": str(msg)}
+
     try:
         if action == "ack":
             from modules.bot import ack_alert
-            return ack_alert(str(params.get("id") or params.get("alert_id") or ""))
+            r = ack_alert(str(params.get("id") or params.get("alert_id") or ""))
+            if isinstance(r, dict):
+                r.setdefault("ok", True)
+                return r
+            return _ok("acknowledged", result=r)
+
         if action == "suppress_add":
             from modules.suppressions import add_suppression
-            return add_suppression(
+            r = add_suppression(
                 str(params.get("detection_type") or params.get("type") or "GENERIC"),
                 str(params.get("pattern") or ""),
                 host=params.get("host"),
                 note=str(params.get("note") or "dashboard"),
             )
+            if isinstance(r, dict):
+                r["ok"] = True
+                r["message"] = "Suppression added"
+                return r
+            return _ok("Suppression added", result=r)
+
         if action == "suppress_del":
             from modules.suppressions import remove_rule
             rid = str(params.get("id") or params.get("rule_id") or "")
-            return {"ok": remove_rule(rid), "id": rid}
+            ok = bool(remove_rule(rid))
+            return {"ok": ok, "id": rid, "message": "Removed" if ok else "Not found"}
+
         if action == "tripwire_deploy":
             from modules.ransomware_tripwire import deploy
-            return deploy()
+            r = deploy()
+            if isinstance(r, dict):
+                r.setdefault("ok", True)
+                r.setdefault("message", "Tripwire deployed")
+                return r
+            return _ok("Tripwire deployed", result=r)
+
         if action == "quiet_on":
             c = _cfg()
-            c.setdefault("quiet", {})["enabled"] = True
+            c.setdefault("alerting", {}).setdefault("quiet_hours", {})["enabled"] = True
             c.setdefault("quiet_hours", {})["enabled"] = True
+            c.setdefault("quiet", {})["enabled"] = True
             _save_cfg(c)
-            return {"ok": True, "quiet": True}
+            return _ok("Quiet hours ON", quiet=True)
+
         if action == "quiet_off":
             c = _cfg()
-            c.setdefault("quiet", {})["enabled"] = False
+            c.setdefault("alerting", {}).setdefault("quiet_hours", {})["enabled"] = False
             c.setdefault("quiet_hours", {})["enabled"] = False
+            c.setdefault("quiet", {})["enabled"] = False
             _save_cfg(c)
-            return {"ok": True, "quiet": False}
+            return _ok("Quiet hours OFF", quiet=False)
+
         if action == "usb_on":
             c = _cfg()
             c["usb_watch"] = True
             c.setdefault("detection", {})["usb_watch"] = True
+            c.setdefault("modules", {})["usb_watch"] = True
             _save_cfg(c)
-            return {"ok": True, "usb_watch": True}
+            return _ok("USB monitoring ON", usb_watch=True)
+
         if action == "usb_off":
             c = _cfg()
             c["usb_watch"] = False
             c.setdefault("detection", {})["usb_watch"] = False
+            c.setdefault("modules", {})["usb_watch"] = False
             _save_cfg(c)
-            return {"ok": True, "usb_watch": False}
+            return _ok("USB monitoring OFF", usb_watch=False)
+
         if action == "emit_heartbeat":
-            from modules.deadman import emit_heartbeat
-            return emit_heartbeat("dashboard")
+            try:
+                from modules.deadman import emit_heartbeat
+                r = emit_heartbeat("dashboard")
+            except Exception:
+                from modules.phase5 import heartbeat_write
+                r = heartbeat_write({"source": "dashboard"})
+            if isinstance(r, dict):
+                r["ok"] = True
+                r.setdefault("message", "Heartbeat sent")
+                return r
+            return _ok("Heartbeat sent", result=r)
+
         if action == "compute_drift":
             from modules.drift import compute_score
-            return compute_score([])
+            r = compute_score([])
+            if isinstance(r, dict):
+                r["ok"] = True
+                score = r.get("score")
+                r["message"] = f"Drift recorded: {score}%" if score is not None else "Drift recorded"
+                return r
+            return _ok("Drift recorded", result=r)
+
         if action == "persistence_baseline":
             from modules.persistence_hunt import create_baseline
-            return create_baseline()
+            r = create_baseline()
+            if isinstance(r, dict):
+                r.setdefault("ok", True)
+                r.setdefault("message", "Persistence baseline saved")
+                return r
+            return _ok("Persistence baseline saved", result=r)
+
         if action == "device_approve":
             from modules.device_radar import approve
-            return approve(str(params.get("key") or ""))
+            key = str(params.get("key") or "").strip()
+            if not key:
+                return _err("Enter a device IP or MAC first")
+            r = approve(key)
+            if not isinstance(r, dict):
+                return _ok(f"Device approved: {key}", result=r)
+            if r.get("ok"):
+                r["message"] = f"Device approved: {key}"
+            else:
+                r["ok"] = False
+                r["error"] = r.get("error") or "Device not found — run a network scan first"
+            return r
+
         if action in ("detect", "detect_now"):
             bundle = {}
             for label, mod in [
@@ -315,37 +411,60 @@ def run_action(action: str, params: dict) -> dict:
                     bundle[label] = m.check()
                 except Exception as e:
                     bundle[label] = {"error": str(e)}
-            return {"ok": True, "detect": bundle}
+            return _ok("Detection pass complete", detect=bundle)
+
         if action == "refresh":
-            return {"ok": True, "status": collect_full()}
+            return _ok("Status refreshed", status=collect_full())
+
         if action in ("client_report", "generate_report", "pdf_report"):
             from modules.client_report import generate_client_pdf
             r = generate_client_pdf()
+            if not isinstance(r, dict):
+                return _err("Report generator returned nothing")
+            if not r.get("ok"):
+                return _err(r.get("error") or "PDF generation failed — pip install reportlab")
+            r["message"] = f"Report saved: {r.get('path')} ({r.get('headline', '')})"
             return r
+
         if action == "deception_redeploy":
-            try:
-                import subprocess, sys
-                root = Path(__file__).resolve().parent.parent
-                subprocess.Popen([sys.executable, str(root / "sentinel.py"), "deception"],
-                                 cwd=str(root), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                return {"ok": True, "msg": "deception redeploy started"}
-            except Exception as e:
-                return {"ok": False, "error": str(e)}
+            import subprocess, sys
+            root = Path(__file__).resolve().parent.parent
+            subprocess.Popen(
+                [sys.executable, str(root / "sentinel.py"), "deception"],
+                cwd=str(root),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return _ok("Canary redeploy started")
+
         if action == "service_start":
             try:
                 from modules.phase5 import service_install
-                return service_install()
+                r = service_install()
             except Exception as e:
-                return {"ok": False, "error": str(e)}
+                return _err(e)
+            if isinstance(r, dict):
+                r.setdefault("ok", True)
+                r.setdefault("message", f"Protection started ({r.get('method', 'ok')})")
+                return r
+            return _ok("Protection started", result=r)
+
         if action == "service_status":
             try:
                 from modules.phase5 import service_status
-                return service_status()
+                r = service_status()
             except Exception as e:
-                return {"ok": False, "error": str(e)}
-        return {"ok": False, "error": "unknown action: " + action}
+                return _err(e)
+            if isinstance(r, dict):
+                r.setdefault("ok", True)
+                r.setdefault("message", f"Service: {r.get('status', r.get('method'))}")
+                return r
+            return _ok(str(r))
+
+        return _err("unknown action: " + action)
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        return _err(f"{action} failed: {e}")
+
 
 
 def html_page(token: str, client: str) -> str:

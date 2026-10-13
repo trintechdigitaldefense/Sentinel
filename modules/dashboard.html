@@ -179,7 +179,7 @@ async function refresh() {
     document.getElementById('supps').innerHTML = (s.suppressions||[]).map(function(r){
       return '<tr><td class="mono">'+r.id+'</td><td>'+r.detection_type+'</td><td class="mono">'+r.pattern+'</td><td><button class="secondary" onclick="supDel(\''+r.id+'\')">Remove</button></td></tr>';
     }).join('') || '<tr><td colspan=4>None</td></tr>';
-  } catch (e) { toast('Refresh failed: ' + e.message, false); }
+  } catch (e) { toast('Refresh failed: ' + (e.message || e), false); }
 }
 async function act(action, params) {
   params = params || {};
@@ -189,13 +189,20 @@ async function act(action, params) {
       method: 'POST', headers: {'Content-Type':'application/json'},
       body: JSON.stringify(body)
     });
-    if (r.ok === false) toast('Error: ' + (r.error||'failed'), false);
-    else if (r.path) toast('Saved: ' + r.path);
-    else if (r.headline) toast(r.headline + ' — report ready');
-    else toast(action + ' OK');
+    if (!r || r.ok === false) {
+      toast('Error: ' + ((r && (r.error || r.message)) || 'failed'), false);
+    } else if (r.message) {
+      toast(r.message);
+    } else if (r.path) {
+      toast('Report saved on server: ' + r.path);
+    } else if (r.headline) {
+      toast(r.headline + ' — report ready');
+    } else {
+      toast(action + ' OK');
+    }
     await refresh();
     return r;
-  } catch (e) { toast(e.message, false); }
+  } catch (e) { toast(String(e.message || e), false); }
 }
 function toggleQuiet(on) { act(on ? 'quiet_on' : 'quiet_off'); }
 function toggleUsb(on) { act(on ? 'usb_on' : 'usb_off'); }
@@ -220,7 +227,7 @@ async function downloadReport() {
     a.download = 'Sentinel_Client_Report.pdf';
     document.body.appendChild(a); a.click(); a.remove();
     toast('PDF downloaded');
-  } catch (e) { toast('Report failed: ' + e.message, false); }
+  } catch (e) { toast('Report failed: ' + (e.message || e) + ' — try Generate only or: pip install reportlab', false); }
 }
 function suppressAdd() {
   act('suppress_add', {type: document.getElementById('supType').value, pattern: document.getElementById('supPat').value});
