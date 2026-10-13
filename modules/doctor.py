@@ -158,13 +158,26 @@ def check_heartbeat() -> dict:
         return _fail("heartbeat", str(e))
 
 def check_service() -> dict:
-    code, out = _run(["systemctl", "is-active", "sentinel.service"])
-    if code == 0 and "active" in out:
-        return _ok("service", "systemd sentinel.service active")
-    code2, out2 = _run(["systemctl", "--user", "is-active", "sentinel.service"])
-    if code2 == 0 and "active" in out2:
-        return _ok("service", "user systemd sentinel.service active")
+    # systemd unit names used by Sentinel over time
+    for unit in ("sentinel-hunt.service", "sentinel.service", "sentinel-central.service"):
+        code, out = _run(["systemctl", "is-active", unit])
+        if code == 0 and "active" in (out or ""):
+            return _ok("service", f"systemd {unit} active")
+        code2, out2 = _run(["systemctl", "--user", "is-active", unit])
+        if code2 == 0 and "active" in (out2 or ""):
+            return _ok("service", f"user systemd {unit} active")
+    # Background / Termux fallback (service-install without systemd)
+    import os
+    pidfile = _data() / "hunt.pid"
+    if pidfile.exists():
+        try:
+            pid = int(pidfile.read_text().strip())
+            os.kill(pid, 0)  # raises if not running
+            return _ok("service", f"background hunt running (pid {pid})")
+        except (ValueError, ProcessLookupError, PermissionError, OSError):
+            return _warn("service", "hunt.pid present but process not running — re-run: python3 sentinel.py service-install")
     return _warn("service", "not active — run: python3 sentinel.py service-install")
+
 
 def check_modules() -> dict:
     root = Path(__file__).resolve().parent
