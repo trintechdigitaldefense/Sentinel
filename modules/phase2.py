@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """Sentinel Phase 2 — Deception Layer (loads phase2_a + phase2_b)."""
 from pathlib import Path
 _d = Path(__file__).resolve().parent

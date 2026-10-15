@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """Sentinel Phase 4 — Hard to Copy (compact)"""
 from __future__ import annotations
 import json, os, socket, subprocess, shutil, zipfile

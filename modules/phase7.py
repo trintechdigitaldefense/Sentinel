@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """Sentinel Phase 7 — multi-host central, Windows agent, quiet hours, v2.6 release."""
 from __future__ import annotations
 import json, os, socket

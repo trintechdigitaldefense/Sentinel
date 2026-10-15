@@ -1,0 +1,17 @@
+SENTINEL — Authorized Defensive Use License
+Copyright (c) 2026 TrinTech Digital Defense (Trinidad & Tobago)
+
+Permission is granted to use, copy, modify, and deploy this software solely for
+authorized defensive security monitoring on systems you own or are contracted
+to protect. This includes detection, alerting, reporting, deception (canaries),
+and opt-in containment configured by the system owner.
+
+You may NOT:
+  - Use this software for unauthorized access, surveillance, or offensive operations
+  - Redistribute as a competing commercial product without a written agreement
+  - Remove this license notice or copyright headers
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. TrinTech Digital
+Defense is not liable for damages arising from use or inability to use the software.
+
+For commercial MSP licensing or redistribution rights, contact TrinTech Digital Defense.

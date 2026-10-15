@@ -1,3 +1,4 @@
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """Alert severity scoring model (feature 6).
 
 INFO     — routine status

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """SENTINEL Client Dashboard — visibility + control with login + optional TLS."""
 from __future__ import annotations
 import hashlib

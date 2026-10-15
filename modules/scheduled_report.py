@@ -1,3 +1,4 @@
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """Scheduled client PDF reporting (feature 12)."""
 from __future__ import annotations
 

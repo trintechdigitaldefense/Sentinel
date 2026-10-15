@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """Sentinel Phase 5 — hygiene, WhatsApp digest, heartbeat, dashboard, autosubnet."""
 from __future__ import annotations
 import sys

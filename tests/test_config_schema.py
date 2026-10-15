@@ -1,3 +1,4 @@
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 from modules.config_schema import parse_config, ConfigError, SentinelConfig, validate
 
 

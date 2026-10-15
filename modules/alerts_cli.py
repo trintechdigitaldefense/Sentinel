@@ -1,3 +1,4 @@
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """Alert list / ack / suppress helpers (feature 6)."""
 from __future__ import annotations
 

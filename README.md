@@ -1,35 +1,45 @@
-# SENTINEL v3.0
+# SENTINEL v3.1
 
 **TrinTech Digital Defense** — continuous monitoring and early warning for Caribbean SMBs.
 
-Authorized defensive use only. Not for unauthorized access or offensive operations.
+Authorized defensive use only. See [LICENSE](LICENSE).
 
 ## What it does
 
 - File integrity monitoring (FIM) and persistence hunting
 - Reverse-shell / suspicious process detection
-- Canary deception (digital tripwires)
+- Canary deception (digital tripwires), optional canary SMB share
 - Multi-channel alerts (WhatsApp, email, webhook, syslog)
-- Local dashboard and plain-language PDF reports
-- Optional MSP central server + Windows agent
+- Local dashboard (admin / viewer roles) and plain-language PDF reports
+- Optional MSP central server with per-agent API keys
+- Backup / restore, Docker packaging, Windows agent
 
-## Quick start
+## Install
 
 ```bash
-# Private repo — clone with credentials, or:
 git clone https://github.com/trintechdigitaldefense/Sentinel.git
 cd Sentinel
 python3 setup.py
 python3 sentinel.py          # interactive menu
 python3 sentinel.py doctor
-python3 sentinel.py hunt     # continuous protection
-python3 sentinel.py dash     # local dashboard
 ```
 
-One-liner (when install.sh is reachable with auth):
+Optional always-on:
 
 ```bash
-curl -sSL <install.sh-url> | bash
+python3 sentinel.py service-install
+```
+
+One-line installer (verify checksum first — see [VERIFY.md](VERIFY.md)):
+
+```bash
+curl -sSL https://raw.githubusercontent.com/trintechdigitaldefense/Sentinel/main/install.sh | bash
+```
+
+Docker:
+
+```bash
+docker compose up -d
 ```
 
 ## CLI shortcuts
@@ -40,56 +50,69 @@ curl -sSL <install.sh-url> | bash
 | `start` / `scan` | Network scan + deception |
 | `hunt` | Continuous persistence hunting |
 | `deception` | Deploy canaries |
+| `deception --smb-share` | Opt-in canary SMB share (Linux) |
 | `integrity` | FIM baseline / check |
 | `doctor` | Health check |
 | `dash` / `dashboard` | Local control UI |
 | `pdf` / `client-report` | PDF reports |
 | `service-install` | Always-on (systemd or background) |
-| `alerts` | List / triage alerts (v3) |
+| `alerts` | List / triage alerts |
 | `config` / `config --wizard` | Show or build config |
-| `enroll --server URL --key KEY` | Point agent at central |
+| `enroll --server URL --key KEY` | Enroll with central (gets unique agent key) |
+| `backup --out file.enc` | Encrypted backup |
+| `restore file.enc` | Restore from backup |
 | `watchdog` | Restart hunt if it dies |
-| `report --schedule weekly` | Scheduled client PDF |
+| `evidence export --case NAME` | Signed evidence bundle |
+| `schedule-report weekly` | Scheduled client PDF |
 
 ## Config (`~/.sentinel/config.json`)
 
-Key sections:
-
-- `network.subnets` / `auto_detect`
-- `alerting.whatsapp|email|webhook|syslog` + `dedup_minutes` + `quiet_hours`
-- `response.*` — containment (all default **false**)
-- `threat_intel.*` — AbuseIPDB / OTX keys
-- `dashboard.*` — port, bind, auth
-- `central.*` — MSP server URL + API key
-- `logging.level` / `retention_days`
+| Section | Keys |
+|---------|------|
+| `client_name` | Display name |
+| `network` | `subnets[]`, `auto_detect` |
+| `alerting` | `whatsapp`, `email`, `webhook`, `syslog`, `quiet_hours`, `dedup_minutes` |
+| `response` | `enabled`, `kill_process`, `block_ip`, `disable_user` (all default **false**) |
+| `threat_intel` | `enabled`, `abuseipdb_key`, `otx_key`, `cache_hours` |
+| `dashboard` | `port`, `bind`, `username`, `password`, `role` (`admin`\|`viewer`), `allow_control` |
+| `central` | `enabled`, `server_url`, `api_key` (per-agent after enroll) |
+| `deception` | `smb_share` (default false) |
+| `logging` | `level`, `json_files`, `retention_days` |
+| `agent` | `shared_token`, `mode`, `agent_id` |
 
 Validate: `python3 -c "from modules.config_schema import load_config; load_config()"`
 
 ## Central (MSP)
 
 ```bash
-python3 -m sentinel_central.server --port 8443 --key YOUR_SECRET
-# agents:
-python3 sentinel.py enroll --server https://host:8443 --key YOUR_SECRET
+python3 -m sentinel_central.server --port 8443 --master-key YOUR_MASTER
+# enroll each site (issues unique agent key):
+python3 sentinel.py enroll --server https://host:8443 --key YOUR_MASTER
+# revoke one agent:
+python3 -m sentinel_central.server --revoke AGENT_ID --master-key YOUR_MASTER
 ```
 
-## Windows agent
+## Backup / restore
 
-```bat
-cd agents
-install.bat https://central:8443 YOUR_SECRET
+```bash
+python3 sentinel.py backup --out /path/sentinel-backup.enc
+python3 sentinel.py restore /path/sentinel-backup.enc
 ```
+
+## Verify releases
+
+See [VERIFY.md](VERIFY.md) for SHA-256 checksums of tags and `install.sh`.
 
 ## Tests
 
 ```bash
-pip install -r requirements.txt pytest ruff
+pip install -r requirements.txt pytest
 pytest -q
 ```
 
-## License / legal
+## Legal
 
 For authorized security monitoring on systems you own or are contracted to protect.
 Reference applicable law including the Trinidad and Tobago Cybercrime Act as relevant.
 
-© TrinTech Digital Defense
+© 2026 TrinTech Digital Defense — [LICENSE](LICENSE)

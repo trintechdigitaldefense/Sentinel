@@ -1,3 +1,4 @@
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """Health watchdog + heartbeat (feature 14)."""
 from __future__ import annotations
 

@@ -1,0 +1,21 @@
+services:
+  sentinel:
+    build: .
+    container_name: sentinel
+    restart: unless-stopped
+    ports:
+      - "8792:8792"
+    volumes:
+      - sentinel-data:/data
+    environment:
+      - SENTINEL_DIR=/data
+    # Uncomment if network discovery requires it (document why):
+    # cap_add:
+    #   - NET_RAW
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  sentinel-data:

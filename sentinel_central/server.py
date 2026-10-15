@@ -1,7 +1,9 @@
-"""HTTPS-capable agent event collector + multi-client SQLite store (feature 10).
+# © 2026 TrinTech Digital Defense — authorized defensive use only
+"""SENTINEL central management server — per-agent API keys (MSP mode).
 
-Run: python3 -m sentinel_central.server --port 8443 --key SECRET
-Agents POST /v1/events with header X-API-Key.
+Run:
+  python3 -m sentinel_central.server --port 8443 --master-key SECRET
+  python3 -m sentinel_central.server --revoke AGENT_ID --master-key SECRET
 """
 from __future__ import annotations
 
@@ -17,6 +19,7 @@ from urllib.parse import parse_qs, urlparse
 
 DATA = Path(os.environ.get("SENTINEL_CENTRAL_DIR", Path.home() / ".sentinel-central"))
 DB = DATA / "central.db"
+MASTER = os.environ.get("SENTINEL_MASTER_KEY", "")
 
 
 def init_db() -> None:
@@ -25,19 +28,12 @@ def init_db() -> None:
     con.execute(
         """CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        client_id TEXT,
-        ts TEXT,
-        severity TEXT,
-        title TEXT,
-        detail TEXT,
-        payload TEXT
+        client_id TEXT, ts TEXT, severity TEXT, title TEXT, detail TEXT, payload TEXT
         )"""
     )
     con.execute(
         """CREATE TABLE IF NOT EXISTS heartbeats (
-        client_id TEXT PRIMARY KEY,
-        last_seen TEXT,
-        meta TEXT
+        client_id TEXT PRIMARY KEY, last_seen TEXT, meta TEXT
         )"""
     )
     con.commit()
@@ -73,13 +69,10 @@ def upsert_hb(client_id: str, meta: dict) -> None:
 
 
 class Handler(BaseHTTPRequestHandler):
-    api_key: str = ""
+    master_key: str = ""
 
     def log_message(self, *a):
         pass
-
-    def _auth(self) -> bool:
-        return (self.headers.get("X-API-Key") or "") == self.api_key
 
     def _read(self) -> dict:
         n = int(self.headers.get("Content-Length") or 0)
@@ -98,13 +91,40 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _auth_agent(self) -> tuple[bool, str]:
+        from modules.agent_keys import verify_key, list_agents
+        key = self.headers.get("X-API-Key") or ""
+        agent_id = self.headers.get("X-Client-Id") or ""
+        if self.master_key and key == self.master_key:
+            return True, agent_id or "master"
+        if verify_key(agent_id, key):
+            return True, agent_id
+        # key-only scan
+        if verify_key("", key):
+            return True, agent_id or "unknown"
+        return False, ""
+
     def do_POST(self):
-        if not self._auth():
-            self._send(401, {"error": "unauthorized"})
-            return
         u = urlparse(self.path)
         body = self._read()
-        client_id = body.get("client_id") or self.headers.get("X-Client-Id") or "unknown"
+        key = self.headers.get("X-API-Key") or ""
+
+        if u.path in ("/v1/enroll", "/api/enroll"):
+            if key != self.master_key:
+                self._send(401, {"error": "master key required for enroll"})
+                return
+            from modules.agent_keys import issue_key
+            aid = body.get("agent_id") or ""
+            resp = issue_key(aid, self.master_key, key)
+            self._send(200 if resp.get("ok") else 400, resp)
+            return
+
+        ok, client_id = self._auth_agent()
+        if not ok:
+            self._send(401, {"error": "unauthorized or revoked"})
+            return
+        client_id = body.get("client_id") or client_id or "unknown"
+
         if u.path in ("/v1/events", "/api/events"):
             insert_event(client_id, body)
             self._send(200, {"ok": True})
@@ -116,8 +136,9 @@ class Handler(BaseHTTPRequestHandler):
         self._send(404, {"error": "not found"})
 
     def do_GET(self):
-        if not self._auth():
-            self._send(401, {"error": "unauthorized"})
+        ok, _ = self._auth_agent()
+        if not ok:
+            self._send(401, {"error": "unauthorized or revoked"})
             return
         u = urlparse(self.path)
         qs = parse_qs(u.query)
@@ -125,8 +146,9 @@ class Handler(BaseHTTPRequestHandler):
             con = sqlite3.connect(DB)
             rows = con.execute("SELECT client_id, last_seen, meta FROM heartbeats").fetchall()
             con.close()
+            from modules.agent_keys import list_agents
             clients = [{"client_id": r[0], "last_seen": r[1], "meta": json.loads(r[2] or "{}")} for r in rows]
-            self._send(200, {"clients": clients})
+            self._send(200, {"clients": clients, "agents": list_agents()})
             return
         if u.path in ("/v1/events", "/api/events"):
             client = (qs.get("client") or [None])[0]
@@ -154,12 +176,20 @@ def main():
     ap = argparse.ArgumentParser(description="SENTINEL central server")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=8443)
-    ap.add_argument("--key", required=True, help="Shared API key")
-    ap.add_argument("--cert", default="", help="TLS cert path (optional)")
-    ap.add_argument("--keyfile", default="", help="TLS key path (optional)")
+    ap.add_argument("--master-key", "--key", dest="master_key", default=os.environ.get("SENTINEL_MASTER_KEY", ""))
+    ap.add_argument("--cert", default="")
+    ap.add_argument("--keyfile", default="")
+    ap.add_argument("--revoke", default="", help="Revoke agent_id and exit")
     args = ap.parse_args()
+    if not args.master_key:
+        print("[!] --master-key required")
+        raise SystemExit(1)
+    if args.revoke:
+        from modules.agent_keys import revoke
+        print(revoke(args.revoke, args.master_key, args.master_key))
+        return
     init_db()
-    Handler.api_key = args.key
+    Handler.master_key = args.master_key
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)
     if args.cert and args.keyfile:
         ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)

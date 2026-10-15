@@ -1,3 +1,4 @@
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """Structured logging with daily rotation (feature 4)."""
 from __future__ import annotations
 

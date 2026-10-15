@@ -1,3 +1,4 @@
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """Plain-language PDF security report for non-technical clients."""
 from __future__ import annotations
 

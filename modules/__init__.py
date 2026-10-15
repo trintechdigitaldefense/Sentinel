@@ -1,3 +1,4 @@
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 # Sentinel extension modules — TrinTech Digital Defense
 try:
     from .phase1 import (

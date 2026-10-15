@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """FEATURE 02 — MITRE ATT&CK tags for Sentinel detections."""
 from __future__ import annotations
 from typing import Optional

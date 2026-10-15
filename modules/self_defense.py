@@ -1,3 +1,4 @@
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """Self-integrity and tamper protection (feature 13)."""
 from __future__ import annotations
 

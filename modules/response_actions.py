@@ -1,3 +1,4 @@
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """Opt-in containment actions (feature 7). Default ALL OFF."""
 from __future__ import annotations
 

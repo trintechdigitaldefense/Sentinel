@@ -1,3 +1,4 @@
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """SENTINEL config schema + validation (feature 3).
 
 Uses dataclasses + manual checks so pydantic is optional.

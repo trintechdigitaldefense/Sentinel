@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """
 Sentinel v2.2.0 — Phase 1 Wired Line of Defense Engine
 TrinTech Digital Defense | Cybersecurity Research
@@ -10,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.0.0"
+__version__ = "3.1.0"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2516,7 +2517,32 @@ def main():
         except Exception as e:
             print("[!] win-agent:", e)
 
+    
+    elif command in ("backup",):
+        try:
+            from modules.backup_restore import backup
+            out = "sentinel-backup.enc"
+            if "--out" in args:
+                out = args[args.index("--out") + 1]
+            pw = "sentinel"
+            if "--pass" in args:
+                pw = args[args.index("--pass") + 1]
+            print(backup(out, pw))
+        except Exception as e:
+            print("[!] backup:", e)
+    elif command in ("restore",):
+        try:
+            from modules.backup_restore import restore
+            path = args[0] if args else ""
+            force = "--force" in args
+            pw = "sentinel"
+            if "--pass" in args:
+                pw = args[args.index("--pass") + 1]
+            print(restore(path, pw, force=force))
+        except Exception as e:
+            print("[!] restore:", e)
     elif command in ("enroll",):
+
         try:
             from modules.enroll import enroll
             srv = args[args.index("--server") + 1] if "--server" in args else ""
@@ -2567,6 +2593,17 @@ def main():
             print(verify(P(__file__).resolve().parent))
         except Exception as e:
             print("[!] self-defense:", e)
+
+    
+    elif command in ("smb-canary", "deception-smb"):
+        try:
+            from modules.smb_canary import deploy_smb_canary, check_smb_canaries
+            if "--check" in args:
+                print(check_smb_canaries())
+            else:
+                print(deploy_smb_canary())
+        except Exception as e:
+            print("[!] smb-canary:", e)
 
     elif command in ("doctor", "health", "check"):
         try:

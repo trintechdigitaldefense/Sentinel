@@ -1,25 +1,22 @@
 # Changelog
 
+## 3.1.0 — 2026-10-15
+
+### Trust
+- LICENSE (authorized defensive use) + copyright headers on source files
+- README updated for public repo; single install path; legacy `install-sentinel.sh` removed
+- VERIFY.md + SHA256SUMS for install artifacts
+- pytest expanded (40+); CI fails on test failure
+
+### MSP / product
+- Per-agent API keys on central (issue / verify / revoke); enroll prefers HTTPS
+- Encrypted backup / restore (`backup`, `restore`)
+- Opt-in canary SMB share (`smb-canary`)
+- Dashboard RBAC helpers (admin vs viewer)
+- Dockerfile, docker-compose.yml, UNRAID.md
+
 ## 3.0.0 — 2026-10-15
 
-### Breaking / architecture
-- Removed base64 `engine_chunks`, `assemble_engine.py`, and all `wire_*` / `fix_*` / `restore_*` scripts.
-- `sentinel.py` is plain, reviewable source. `setup.py` is dependency-check + config init only.
-
-### Added
-- Config schema validation (`modules/config_schema.py`) with wizard helpers
-- Structured JSON logging with daily rotation (`modules/logging_setup.py`)
-- Multi-channel alerting: WhatsApp, SMTP, webhook, syslog + deduplication
-- Severity scoring model (INFO→CRITICAL)
-- Opt-in containment actions (kill process, block IP, disable user) — default OFF
-- Threat intel enrichment (AbuseIPDB, OTX) with 24h cache
-- Central management server (`sentinel_central`) for MSP multi-client mode
-- Full Windows agent (`agents/sentinel_win_agent.py`) + `install.bat`
-- Scheduled reporting helper (`modules/scheduled_report.py`)
-- Self-defense core hash verification (`modules/self_defense.py`)
-- Watchdog / heartbeat (`modules/watchdog.py`)
-- pytest suite + GitHub Actions CI
-- One-line `install.sh`
-
-### Security
-- Authorized defensive use only. No offensive capabilities.
+- Plain source tree (no base64 assembly)
+- Config schema, structured logging, multi-channel alerting, severity, containment, threat intel
+- Central server, Windows agent, scheduled reports, self-defense, watchdog

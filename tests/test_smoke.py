@@ -1,3 +1,4 @@
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """Smoke tests — SENTINEL must import and compile core paths."""
 from __future__ import annotations
 

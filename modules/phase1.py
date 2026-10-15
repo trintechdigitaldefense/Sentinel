@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """
 Sentinel Phase 1 modules — TrinTech Digital Defense
 Import and wire from sentinel.py main / send_alert / agent paths.

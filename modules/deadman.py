@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """FEATURE 11 — Heartbeat dead-man's switch (sensor offline detection)."""
 from __future__ import annotations
 import json

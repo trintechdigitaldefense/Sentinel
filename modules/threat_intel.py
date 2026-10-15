@@ -1,3 +1,4 @@
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """AbuseIPDB + OTX enrichment with 24h cache (feature 8)."""
 from __future__ import annotations
 

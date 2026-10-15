@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """FEATURE 01 polish — PDF drift report with matplotlib trend chart."""
 from __future__ import annotations
 import io

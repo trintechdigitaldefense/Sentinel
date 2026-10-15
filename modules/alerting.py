@@ -1,3 +1,4 @@
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """Multi-channel alerting engine with deduplication (feature 5)."""
 from __future__ import annotations
 

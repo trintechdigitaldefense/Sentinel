@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """FEATURE 06 — SMB/RDP anomaly / lateral movement heuristics."""
 from __future__ import annotations
 import re

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """SENTINEL doctor — single green/red readiness check for client installs."""
 from __future__ import annotations
 import json

@@ -1,3 +1,4 @@
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """
 SENTINEL Windows Agent (feature 11) — pure stdlib + optional pywin32.
 

@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """FEATURE 13 — Portable rules engine (JSON/YAML)."""
 from __future__ import annotations
 import json

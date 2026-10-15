@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# © 2026 TrinTech Digital Defense — authorized defensive use only
 """Sentinel Phase 6 — always-on service + scheduled WhatsApp digests."""
 from __future__ import annotations
 import os, shutil, subprocess, textwrap
