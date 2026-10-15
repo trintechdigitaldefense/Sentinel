@@ -1,102 +1,95 @@
-# Sentinel — Continuous Line of Defense
+# SENTINEL v3.0
 
-**TrinTech Digital Defense** · Trinidad & Tobago 🇹🇹
+**TrinTech Digital Defense** — continuous monitoring and early warning for Caribbean SMBs.
 
-Always-on monitoring and early warning for local SMB networks that do not have a full SOC.
+Authorized defensive use only. Not for unauthorized access or offensive operations.
 
-Sentinel detects reverse shells, watches critical files, deploys canary decoys, and provides clear alerts and reports. Pair it with **Mirage** for active deception and with **FortifyOne** for the initial professional network audit.
+## What it does
 
----
+- File integrity monitoring (FIM) and persistence hunting
+- Reverse-shell / suspicious process detection
+- Canary deception (digital tripwires)
+- Multi-channel alerts (WhatsApp, email, webhook, syslog)
+- Local dashboard and plain-language PDF reports
+- Optional MSP central server + Windows agent
 
-## Quick Start
+## Quick start
 
 ```bash
+# Private repo — clone with credentials, or:
 git clone https://github.com/trintechdigitaldefense/Sentinel.git
 cd Sentinel
 python3 setup.py
-python3 sentinel.py
+python3 sentinel.py          # interactive menu
+python3 sentinel.py doctor
+python3 sentinel.py hunt     # continuous protection
+python3 sentinel.py dash     # local dashboard
 ```
 
-**Requirements:** Python 3.10+ · Linux or Termux/Ubuntu
+One-liner (when install.sh is reachable with auth):
 
----
-
-## Main Menu
-
-| # | Action |
-|---|--------|
-| **1** | **Continuous protection** — scan + canaries, then stay hunting |
-| 2 | Quick network scan (one-shot) |
-| 3 | Hunt only (continuous) |
-| 4 | Deploy deception / canaries |
-| 5 | Integrity baseline (FIM) |
-| 6 | Process / reverse-shell scan |
-| 7 | Report |
-| 8 | Phase 4 (Caribbean pack, playbooks, evidence) |
-| 0 | Exit |
-
-CLI shortcuts:
 ```bash
-python3 sentinel.py hunt
-python3 sentinel.py integrity
-python3 sentinel.py evidence --hours 24
-python3 sentinel.py pdf
+curl -sSL <install.sh-url> | bash
 ```
 
----
+## CLI shortcuts
 
-## Recommended Client Deployment
+| Command | Purpose |
+|---------|---------|
+| `python3 sentinel.py` | Numbered menu |
+| `start` / `scan` | Network scan + deception |
+| `hunt` | Continuous persistence hunting |
+| `deception` | Deploy canaries |
+| `integrity` | FIM baseline / check |
+| `doctor` | Health check |
+| `dash` / `dashboard` | Local control UI |
+| `pdf` / `client-report` | PDF reports |
+| `service-install` | Always-on (systemd or background) |
+| `alerts` | List / triage alerts (v3) |
+| `config` / `config --wizard` | Show or build config |
+| `enroll --server URL --key KEY` | Point agent at central |
+| `watchdog` | Restart hunt if it dies |
+| `report --schedule weekly` | Scheduled client PDF |
 
-1. Run `python3 setup.py`
-2. Set scan range in `~/.sentinel/config.json` → `network.scan_subnets`
-3. Build FIM baseline (menu 5)
-4. Start continuous protection (menu 1) or run under systemd
-5. Deliver reports via menu 7 / PDF
+## Config (`~/.sentinel/config.json`)
 
-**Best placement:** always-on office server, mini PC, or Raspberry Pi on the main LAN.
+Key sections:
 
-Typical clients: small offices, retail, clinics, professional services, NGOs.
+- `network.subnets` / `auto_detect`
+- `alerting.whatsapp|email|webhook|syslog` + `dedup_minutes` + `quiet_hours`
+- `response.*` — containment (all default **false**)
+- `threat_intel.*` — AbuseIPDB / OTX keys
+- `dashboard.*` — port, bind, auth
+- `central.*` — MSP server URL + API key
+- `logging.level` / `retention_days`
 
----
+Validate: `python3 -c "from modules.config_schema import load_config; load_config()"`
 
-## What Clients Actually Get
+## Central (MSP)
 
-- Continuous process, SSH, and FIM monitoring
-- Canary files (fake credentials, .env, keys) that alert on touch
-- Reverse-shell pattern detection
-- Clear PDF / evidence output
-- Caribbean-oriented checks and response playbooks
-- Simple numbered menu — no deep CLI knowledge required
+```bash
+python3 -m sentinel_central.server --port 8443 --key YOUR_SECRET
+# agents:
+python3 sentinel.py enroll --server https://host:8443 --key YOUR_SECRET
+```
 
-**Honest limits**
-- Not a full EDR or SIEM replacement
-- Network visibility depends on placement and permissions
-- Authorized use only
+## Windows agent
 
----
+```bat
+cd agents
+install.bat https://central:8443 YOUR_SECRET
+```
 
-## Continuous Protection Package
+## Tests
 
-| Component | Role |
-|-----------|------|
-| **FortifyOne** | Professional point-in-time network audit |
-| **Sentinel** | Continuous monitoring & early warning |
-| **Mirage** | Active deception layer (fake services + honey tokens) |
+```bash
+pip install -r requirements.txt pytest ruff
+pytest -q
+```
 
-Together these form a practical offering for Trinidad & Tobago and Caribbean SMBs.
+## License / legal
 
----
+For authorized security monitoring on systems you own or are contracted to protect.
+Reference applicable law including the Trinidad and Tobago Cybercrime Act as relevant.
 
-## Contact
-
-**TrinTech Digital Defense**  
-Email: trintechdigitaldefense@gmail.com  
-WhatsApp: +1 (868) 362-0679  
-Web: https://trintechdigitaldefense.github.io
-
----
-
-Authorized defensive use only.  
-Unauthorized access is illegal under the Trinidad & Tobago Cybercrime Act and applicable law.
-
-*Defend. Detect. Dominate.*
+© TrinTech Digital Defense

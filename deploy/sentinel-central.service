@@ -1,20 +1,14 @@
 [Unit]
-Description=Sentinel Central - TrinTech Digital Defense
+Description=SENTINEL Central Management Server
 After=network.target
 
 [Service]
 Type=simple
-User=root
 WorkingDirectory=/opt/sentinel
-ExecStart=/usr/bin/python3 /opt/sentinel/sentinel.py central
+ExecStart=/usr/bin/env python3 -m sentinel_central.server --port 8443 --key CHANGE_ME
 Restart=always
 RestartSec=10
-StandardOutput=journal
-StandardError=journal
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ReadWritePaths=/root/.sentinel
+Environment=PYTHONUNBUFFERED=1
 
 [Install]
 WantedBy=multi-user.target

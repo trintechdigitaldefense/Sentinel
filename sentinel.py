@@ -2516,7 +2516,58 @@ def main():
         except Exception as e:
             print("[!] win-agent:", e)
 
-    
+    elif command in ("enroll",):
+        try:
+            from modules.enroll import enroll
+            srv = args[args.index("--server") + 1] if "--server" in args else ""
+            key = args[args.index("--key") + 1] if "--key" in args else ""
+            if not srv or not key:
+                print("Usage: sentinel enroll --server URL --key KEY")
+            else:
+                print(enroll(srv, key))
+        except Exception as e:
+            print("[!] enroll:", e)
+
+    elif command in ("watchdog",):
+        try:
+            from modules.watchdog import run_watchdog
+            import json
+            from pathlib import Path as P
+            cfg = {}
+            cp = P.home() / ".sentinel" / "config.json"
+            if cp.exists():
+                cfg = json.loads(cp.read_text())
+            print("[*] Watchdog running — Ctrl+C to stop")
+            run_watchdog(P(__file__).resolve().parent, cfg.get("central") or {})
+        except Exception as e:
+            print("[!] watchdog:", e)
+
+    elif command in ("schedule-report",):
+        try:
+            from modules.scheduled_report import run_scheduled
+            import json
+            from pathlib import Path as P
+            sch = "weekly"
+            if "--schedule" in args:
+                sch = args[args.index("--schedule") + 1]
+            elif args:
+                sch = args[0]
+            cfg = {}
+            cp = P.home() / ".sentinel" / "config.json"
+            if cp.exists():
+                cfg = json.loads(cp.read_text())
+            print(run_scheduled(sch, (cfg.get("alerting") or {}).get("email")))
+        except Exception as e:
+            print("[!] schedule-report:", e)
+
+    elif command in ("self-defense", "selfdef"):
+        try:
+            from modules.self_defense import verify
+            from pathlib import Path as P
+            print(verify(P(__file__).resolve().parent))
+        except Exception as e:
+            print("[!] self-defense:", e)
+
     elif command in ("doctor", "health", "check"):
         try:
             from modules.doctor import run_doctor
