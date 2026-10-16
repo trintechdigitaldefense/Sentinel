@@ -1,5 +1,7 @@
 # SENTINEL v3.1
 
+[![ci](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml)
+
 **TrinTech Digital Defense** — continuous monitoring and early warning for Caribbean SMBs.
 
 Authorized defensive use only. See [LICENSE](LICENSE).
@@ -113,6 +115,6 @@ pytest -q
 ## Legal
 
 For authorized security monitoring on systems you own or are contracted to protect.
-Reference applicable law including the Trinidad and Tobago Cybercrime Act as relevant.
+Reference the Trinidad & Tobago Computer Misuse Act and applicable laws.
 
 © 2026 TrinTech Digital Defense — [LICENSE](LICENSE)
