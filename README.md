@@ -16,6 +16,17 @@ Authorized defensive use only. See [LICENSE](LICENSE).
 - Optional MSP central server with per-agent API keys
 - Backup / restore, Docker packaging, Windows agent
 
+## Current status (post Phase 0)
+
+Phases 1–4 are complete. Phase 0 discovery (2026-10-24) locked the direction: we improve this product, we do not replace it.
+
+**Next up**
+- **Phase 5** — Central hardening (tenant/agent isolation + audit events)
+- **Phase 6** — First read-only external connector (Wazuh preferred)
+- **Phase 7** — Case / triage workflow + stronger evidence export
+
+See [ROADMAP.md](ROADMAP.md) and [PHASE0.md](PHASE0.md) for the full plan.
+
 ## Install
 
 ```bash
