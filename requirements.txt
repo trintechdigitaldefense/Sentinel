@@ -1,5 +1,5 @@
 # SENTINEL v3.0 — core is stdlib; optional extras below
-reportlab>=4.0,<5
+reportlab>=5.0.1,<6
 requests>=2.28,<3
 # optional dashboard (feature 9 may use stdlib HTTP; fastapi listed if upgraded later)
 # fastapi>=0.110
