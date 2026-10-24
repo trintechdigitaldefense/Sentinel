@@ -1,4 +1,4 @@
-# SENTINEL v3.1
+# SENTINEL v3.2.1
 
 [![ci](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml)
 
@@ -20,17 +20,18 @@ Authorized defensive use only. See [LICENSE](LICENSE).
 
 ## Current status
 
-**Phases 0–7 complete** (2026-10-24).
+**Phases 0–8 complete** (2026-10-24) — ship-ready wire.
 
-See [ROADMAP.md](ROADMAP.md), [PHASE5.md](PHASE5.md), [PHASE6.md](PHASE6.md), [PHASE7.md](PHASE7.md).
+See [ROADMAP.md](ROADMAP.md), [PHASE8.md](PHASE8.md), [docs/PHASE8_ACCEPTANCE.md](docs/PHASE8_ACCEPTANCE.md).
 
 ## Install
 
 ```bash
 git clone https://github.com/trintechdigitaldefense/Sentinel.git
 cd Sentinel
-python3 setup.py
-python3 sentinel.py          # interactive menu
+python3 setup.py             # wires cases menu + dashboard open-cases UI
+python3 scripts/phase8_smoke.py
+python3 sentinel.py          # interactive menu (Cases 16/17)
 python3 sentinel.py doctor
 ```
 
@@ -63,10 +64,11 @@ docker compose up -d
 | `deception --smb-share` | Opt-in canary SMB share (Linux) |
 | `integrity` | FIM baseline / check |
 | `doctor` | Health check |
-| `dash` / `dashboard` | Local control UI |
+| `dash` / `dashboard` | Local control UI (open cases) |
 | `pdf` / `client-report` | PDF reports |
 | `service-install` | Always-on (systemd or background) |
 | `alerts` | List / triage alerts |
+| `cases list` | Open cases (Phase 7/8) |
 | `config` / `config --wizard` | Show or build config |
 | `enroll --server URL --key KEY` | Enroll with central (gets unique agent key) |
 | `backup --out file.enc` | Encrypted backup |
@@ -75,71 +77,17 @@ docker compose up -d
 | `evidence export --case NAME` | Signed evidence bundle |
 | `schedule-report weekly` | Scheduled client PDF |
 
-## Cases (Phase 7)
+## Cases (Phase 7/8)
 
 ```bash
-python3 -c "from modules.cases_cli import main; main(['create','--title','Canary hit','--severity','high'])"
-python3 -c "from modules.cases_cli import main; main(['list','--status','new'])"
-python3 -c "from modules.cases_cli import main; main(['status','CASE-ID','investigating'])"
-python3 -c "from modules.cases_cli import main; main(['assign','CASE-ID','jason'])"
-python3 -c "from modules.cases_cli import main; main(['note','CASE-ID','--body','Checking FIM'])"
-python3 -c "from modules.cases_cli import main; main(['evidence','CASE-ID'])"
+python3 setup.py
+python3 scripts/phase8_smoke.py
+python3 sentinel.py cases list
+python3 -c "from modules.connectors.cli import main; main(['fetch','--source','sentinel_local','--auto-case'])"
 ```
 
-## Connectors (Phase 6)
+Dashboard: `python3 sentinel.py dash` → Open cases metric + table.
 
-```bash
-python3 -c "from modules.connectors.cli import main; main(['health','--source','sentinel_local'])"
-python3 -c "from modules.connectors.cli import main; main(['fetch','--source','sentinel_local','--limit','10'])"
-```
+## License
 
-## Config (`~/.sentinel/config.json`)
-
-| Section | Keys |
-|---------|------|
-| `client_name` | Display name |
-| `network` | `subnets[]`, `auto_detect` |
-| `alerting` | `whatsapp`, `email`, `webhook`, `syslog`, `quiet_hours`, `dedup_minutes` |
-| `response` | `enabled`, `kill_process`, `block_ip`, `disable_user` (all default **false**) |
-| `threat_intel` | `enabled`, `abuseipdb_key`, `otx_key`, `cache_hours` |
-| `dashboard` | `port`, `bind`, `username`, `password`, `role` (`admin`\|`viewer`), `allow_control` |
-| `central` | `enabled`, `server_url`, `api_key` (per-agent after enroll) |
-| `deception` | `smb_share` (default false) |
-| `logging` | `level`, `json_files`, `retention_days` |
-| `agent` | `shared_token`, `mode`, `agent_id` |
-
-Validate: `python3 -c "from modules.config_schema import load_config; load_config()"`
-
-## Central (MSP) — Phase 5 hardened
-
-```bash
-python3 -m sentinel_central.server --port 8443 --master-key YOUR_MASTER
-python3 sentinel.py enroll --server https://host:8443 --key YOUR_MASTER
-python3 -m sentinel_central.server --revoke AGENT_ID --master-key YOUR_MASTER
-curl -H "X-API-Key: YOUR_MASTER" https://host:8443/v1/audit
-```
-
-## Backup / restore
-
-```bash
-python3 sentinel.py backup --out /path/sentinel-backup.enc
-python3 sentinel.py restore /path/sentinel-backup.enc
-```
-
-## Verify releases
-
-See [VERIFY.md](VERIFY.md) for SHA-256 checksums of tags and `install.sh`.
-
-## Tests
-
-```bash
-pip install -r requirements.txt pytest
-pytest -q
-```
-
-## Legal
-
-For authorized security monitoring on systems you own or are contracted to protect.
-Reference the Trinidad & Tobago Computer Misuse Act and applicable laws.
-
-© 2026 TrinTech Digital Defense — [LICENSE](LICENSE)
+Authorized defensive use only — TrinTech Digital Defense. See [LICENSE](LICENSE).
