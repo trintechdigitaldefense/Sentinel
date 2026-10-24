@@ -114,5 +114,22 @@ def cases_command(args, print_fn=print):
 
         source = rest[0] if rest else "sentinel_local"
         print_fn(json.dumps(fetch_and_maybe_case(source=source), indent=2))
+    elif sub in ("correlate", "dual-pilot", "pilot"):
+        from modules.dual_pilot import run_pilot, ensure_pilot_config
+
+        if sub == "pilot" or (rest and rest[0] == "setup"):
+            ensure_pilot_config()
+        promote = "--no-promote" not in rest
+        print_fn(json.dumps(run_pilot(promote=promote), indent=2, default=str))
+    elif sub == "ai-summary":
+        from modules.ai_assist import summarize_case
+
+        cid = rest[0] if rest else ""
+        print_fn(json.dumps(summarize_case(cid), indent=2))
+    elif sub == "response-plan":
+        from modules.gated_response import plan_for_case_id
+
+        cid = rest[0] if rest else ""
+        print_fn(json.dumps(plan_for_case_id(cid), indent=2))
     else:
         print_fn(f"Unknown cases subcommand: {sub}")
