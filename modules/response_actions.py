@@ -42,7 +42,7 @@ def _hint(action: str, target: str) -> str:
     if action == "kill_process":
         return "Process already terminated; restart service manually if legitimate"
     if action == "block_ip":
-        return f"sudo iptables -D INPUT -s {target} -j DROP  # or nft delete"
+        return f"sudo iptables -D INPUT -s {target} -j DROP  # or nft delete / sentinel firewall unblock"
     if action == "disable_user":
         return f"sudo usermod -U {target}  # re-enable"
     return ""
@@ -61,10 +61,15 @@ def kill_process(pid: int, cfg: dict) -> dict:
 def block_ip(ip: str, cfg: dict) -> dict:
     if not (cfg or {}).get("enabled") or not (cfg or {}).get("block_ip"):
         return {"ok": False, "error": "block_ip disabled in config.response"}
+    try:
+        from modules import firewall as fw
+        r = fw.block_ip(ip, confirm=True, reason="response_actions", source="response_actions")
+        return _record("block_ip", str(ip), bool(r.get("ok")), str(r)[:500])
+    except Exception:
+        pass
     ip = (ip or "").strip()
     if not ip:
         return {"ok": False, "error": "empty ip"}
-    # prefer iptables, fall back to nft
     try:
         r = subprocess.run(
             ["iptables", "-I", "INPUT", "-s", ip, "-j", "DROP"],
