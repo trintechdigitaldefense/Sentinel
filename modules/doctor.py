@@ -176,7 +176,11 @@ def check_service() -> dict:
             os.kill(pid, 0)  # raises if not running
             return _ok("service", f"background hunt running (pid {pid})")
         except (ValueError, ProcessLookupError, PermissionError, OSError):
-            return _warn("service", "hunt.pid present but process not running — re-run: python3 sentinel.py service-install")
+            try:
+                pidfile.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return _warn("service", "stale hunt.pid removed — re-run: python3 sentinel.py service-install")
     return _warn("service", "not active — run: python3 sentinel.py service-install")
 
 

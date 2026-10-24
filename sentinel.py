@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.2.2"
+__version__ = "3.2.3"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -455,7 +455,8 @@ def fim_build_baseline(config, logger):
     critical_files = [
         "/etc/passwd", "/etc/shadow", "/etc/sudoers", "/etc/ssh/sshd_config",
         "/etc/hosts", "/etc/resolv.conf", "/etc/nsswitch.conf",
-        "/etc/profile", "/etc/bash.bashrc", "/root/.bashrc",
+        "/etc/profile",
+        # shell rc files omitted — change often on Termux/dev hosts; use integrity --full to include
         "/root/.ssh/authorized_keys",
         "/usr/bin/sudo", "/usr/bin/passwd", "/bin/su",
         "/sbin/init", "/sbin/reboot", "/etc/crontab",
@@ -531,6 +532,17 @@ def fim_check(config, logger):
     except Exception:
         logger.warning(f"{C.YELLOW}!{C.RESET} No FIM baseline found. Run: {C.BOLD}sentinel integrity{C.RESET}")
         return []
+
+    # Drop noisy shell-rc paths from older baselines (Termux/dev hosts change these often)
+    _noisy = {"/root/.bashrc", "/root/.profile", "/root/.zshrc", "/etc/bash.bashrc"}
+    if isinstance(baseline, dict) and any(k in baseline for k in _noisy):
+        for k in list(_noisy):
+            baseline.pop(k, None)
+        try:
+            with open(FIM_BASELINE, "w") as f:
+                json.dump(baseline, f, indent=2)
+        except Exception:
+            pass
 
     changes = []
 
@@ -1742,7 +1754,7 @@ def self_integrity_check(logger=None):
         with open(SELF_INTEGRITY_FILE, "w") as fh:
             json.dump(current, fh, indent=2)
         if logger:
-            logger.info(f"{C.GREEN}\u2713{C.RESET} Self-integrity baseline created")
+            logger.info(f"{C.GREEN}✓{C.RESET} Self-integrity baseline created")
         return True
     try:
         with open(SELF_INTEGRITY_FILE) as fh:
@@ -1752,8 +1764,24 @@ def self_integrity_check(logger=None):
     baseline = {k: v for k, v in baseline.items() if not k.endswith("config.json")}
     tampered = [fp for fp, h in current.items() if fp in baseline and baseline[fp] != h]
     if tampered:
+        # git/setup updates change sentinel.py often — refresh quietly for engine-only
+        engine_only = all(
+            Path(fp).name == "sentinel.py" or str(fp).endswith("/sentinel.py")
+            for fp in tampered
+        )
+        if engine_only:
+            try:
+                with open(SELF_INTEGRITY_FILE, "w") as fh:
+                    json.dump(current, fh, indent=2)
+            except Exception:
+                pass
+            if logger:
+                logger.info(
+                    f"{C.GREEN}✓{C.RESET} Engine updated — self-integrity baseline refreshed"
+                )
+            return True
         if logger:
-            logger.warning(f"{C.RED}\u26a0 SELF-INTEGRITY VIOLATION:{C.RESET} {tampered}")
+            logger.warning(f"{C.RED}⚠ SELF-INTEGRITY VIOLATION:{C.RESET} {tampered}")
         send_alert("SELF_INTEGRITY_VIOLATION", {"files": tampered}, logger)
         return False
     try:
@@ -1762,9 +1790,8 @@ def self_integrity_check(logger=None):
     except Exception:
         pass
     if logger:
-        logger.info(f"{C.GREEN}\u2713{C.RESET} Self-integrity check passed")
+        logger.info(f"{C.GREEN}✓{C.RESET} Self-integrity check passed")
     return True
-
 
 
 

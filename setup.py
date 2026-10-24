@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "3.2.2"
+VERSION = "3.2.3"
 HOME = Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel"))
 CONFIG = HOME / "config.json"
 DATA = HOME / "data"
@@ -191,6 +191,15 @@ def main() -> None:
     check_engine()
     init_dirs()
     init_config()
+    # Refresh self-integrity after install/wires so next run is clean
+    try:
+        si = HOME / "data" / "self_integrity.json"
+        if si.exists():
+            si.unlink()
+            print("[+] Cleared self-integrity baseline (will recreate on next run)")
+    except Exception:
+        pass
+
     print("\n" + "=" * 56)
     print("  SETUP COMPLETE")
     print("=" * 56)

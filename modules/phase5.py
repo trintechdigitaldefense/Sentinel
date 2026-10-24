@@ -360,6 +360,17 @@ def service_install() -> dict:
     data = _data()
     data.mkdir(parents=True, exist_ok=True)
     pidfile = data / "hunt.pid"
+    # Clear stale pid from previous crashed hunt
+    if pidfile.exists():
+        try:
+            old = int(pidfile.read_text().strip())
+            import os as _os
+            _os.kill(old, 0)
+        except Exception:
+            try:
+                pidfile.unlink()
+            except Exception:
+                pass
     logfile = data / "hunt_bg.log"
 
     # stop previous bg hunt if any
@@ -381,6 +392,11 @@ def service_install() -> dict:
     pidfile.write_text(str(proc.pid))
     try:
         heartbeat_write({"source": "service-install-bg"})
+    except Exception:
+        pass
+    try:
+        from modules.deadman import emit_heartbeat
+        emit_heartbeat(source="service-install")
     except Exception:
         pass
     return {
