@@ -1,0 +1,24 @@
+--- a/server.py
++++ b/server.py
+@@ -68,4 +68,21 @@
+     con.execute("CREATE INDEX IF NOT EXISTS idx_events_client ON events(client_id)")
+     con.execute("CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_events(ts)")
++
++    con.execute(
++        """CREATE TABLE IF NOT EXISTS case_summaries (
++        id INTEGER PRIMARY KEY AUTOINCREMENT,
++        client_id TEXT NOT NULL,
++        case_id TEXT NOT NULL,
++        title TEXT,
++        status TEXT,
++        severity TEXT,
++        assignee TEXT,
++        updated_at TEXT,
++        payload TEXT,
++        UNIQUE(client_id, case_id)
++        )"""
++    )
++    con.execute("CREATE INDEX IF NOT EXISTS idx_cases_client ON case_summaries(client_id)")
++
+     con.commit()
+     con.close()
