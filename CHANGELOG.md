@@ -1,17 +1,23 @@
 # Changelog
 
+## 3.7.0 — 2026-10-24
+
+### Phase 13 — Host Firewall Control Plane
+- `modules/firewall.py` — nft/iptables host FW manager (dry-run default)
+- Profiles: hardening, web_server, ssh_only
+- Audit log + managed blocks + rule backup
+- CLI: `sentinel firewall` / `python3 -m modules.firewall`
+- Tests: `tests/test_firewall.py` · smoke: `scripts/firewall_smoke.py`
+- Docs: PHASE13.md · Firewall cheatsheet
+
 ## 3.6.0 — 2026-10-24
 
 ### Phase 12 — Foundations
-- `modules/tenants.py` — MSP tenant registry
-- `modules/auto_response.py` — policy auto-response with audit + kill-switch (never silent; default off)
-- `modules/ueba_lite.py` — host velocity scoring (not enterprise UEBA)
-- `scripts/phase12_smoke.py`, `PHASE12.md`
+- tenants, policy auto_response (never silent), UEBA-lite
 
 ## 3.5.1 — 2026-10-24
 
 ### Dual-connector pilot wire
-- dual_pilot, correlation asset_id/occurred_at fix, lab AI key
 
 ## 3.5.0 — 2026-10-24
 
