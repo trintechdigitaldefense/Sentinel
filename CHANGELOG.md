@@ -2,15 +2,20 @@
 
 ## 3.2.0 — 2026-10-24
 
-### Phase 0–7 product line completion
-- **Phase 0** — Discovery inventory locked; direction fixed to improve existing Sentinel
+### Product line (Phases 0–7)
+- **Phase 0** — Discovery inventory; improve existing Sentinel (not replace)
 - **Phase 5** — Central hardening: agent isolation, fail-closed auth, audit_events, `/v1/audit`
-- **Phase 6** — Read-only connectors: contract + normalized schema, `sentinel_local` reference, Wazuh skeleton
-- **Phase 7** — Cases: durable SQLite cases, status/assign/notes, evidence zip + sha256, per-case audit
+- **Phase 6** — Read-only connectors: contract + normalized schema, `sentinel_local`, Wazuh skeleton
+- **Phase 7** — Cases: SQLite cases, status/assign/notes, evidence zip + sha256, per-case audit
+
+### Cases integration
+- Auto-open cases from critical engine alerts (`case_hooks`) and connector `--auto-case`
+- Dashboard status includes `cases_open` / `cases_open_count` (`dashboard_enrich`)
+- Menu / CLI wire via `scripts/apply_cases_wire.py` (runs from `setup.py` / `install.sh`)
+- `python3 sentinel.py cases list|create|status|assign|note|evidence`
 
 ### Docs
-- PHASE0.md, PHASE5.md, PHASE6.md, PHASE7.md
-- ROADMAP.md and README.md updated
+- PHASE0–PHASE7.md, docs/CASES_INTEGRATION.md, ROADMAP updated
 
 ## 3.1.0 — 2026-10-15
 
