@@ -16,16 +16,15 @@ Authorized defensive use only. See [LICENSE](LICENSE).
 - Optional MSP central server with per-agent API keys
 - Backup / restore, Docker packaging, Windows agent
 
-## Current status (post Phase 0)
+## Current status
 
-Phases 1–4 are complete. Phase 0 discovery (2026-10-24) locked the direction: we improve this product, we do not replace it.
+Phases 0–5 complete. Central server is hardened (agent isolation + audit trail).
 
 **Next up**
-- **Phase 5** — Central hardening (tenant/agent isolation + audit events)
 - **Phase 6** — First read-only external connector (Wazuh preferred)
 - **Phase 7** — Case / triage workflow + stronger evidence export
 
-See [ROADMAP.md](ROADMAP.md) and [PHASE0.md](PHASE0.md) for the full plan.
+See [ROADMAP.md](ROADMAP.md), [PHASE0.md](PHASE0.md), [PHASE5.md](PHASE5.md).
 
 ## Install
 
@@ -95,7 +94,7 @@ docker compose up -d
 
 Validate: `python3 -c "from modules.config_schema import load_config; load_config()"`
 
-## Central (MSP)
+## Central (MSP) — Phase 5 hardened
 
 ```bash
 python3 -m sentinel_central.server --port 8443 --master-key YOUR_MASTER
@@ -103,7 +102,11 @@ python3 -m sentinel_central.server --port 8443 --master-key YOUR_MASTER
 python3 sentinel.py enroll --server https://host:8443 --key YOUR_MASTER
 # revoke one agent:
 python3 -m sentinel_central.server --revoke AGENT_ID --master-key YOUR_MASTER
+# audit trail (master key):
+curl -H "X-API-Key: YOUR_MASTER" https://host:8443/v1/audit
 ```
+
+Agent data paths require the per-agent key. Master key is rejected on `/v1/events` and `/v1/heartbeat`.
 
 ## Backup / restore
 

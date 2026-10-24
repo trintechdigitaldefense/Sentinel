@@ -17,12 +17,12 @@ Behavioral baseline · Caribbean threat pack · playbooks · evidence pack · of
 ## Phase 0 — Discovery ✅ (2026-10-24)
 Inventory of v3.1 capabilities and gaps. Direction locked: improve the existing product line, not replace it. See [PHASE0.md](PHASE0.md).
 
-## Phase 5 — Central Hardening (next)
+## Phase 5 — Central Hardening ✅ (2026-10-24)
 Stronger tenant/agent isolation on the MSP central server.  
 Server-side membership + role checks. Audit events for enroll, revoke, config changes, sensitive actions.  
-Fail-closed authorization. Synthetic data only until isolation tests pass.
+Fail-closed authorization. See [PHASE5.md](PHASE5.md).
 
-## Phase 6 — First Connector
+## Phase 6 — First Connector (next)
 Read-only connector interface. Prefer Wazuh (or Sentinel’s own normalized events as the reference implementation).  
 Normalize into a common alert schema. Pagination, retries, dedup, connector health.  
 No autonomous response from external sources in this phase.

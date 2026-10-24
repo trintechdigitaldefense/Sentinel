@@ -1,12 +1,15 @@
 # © 2026 TrinTech Digital Defense — authorized defensive use only
-"""Per-agent API key issue / verify / revoke for central MSP mode."""
+"""Per-agent API key issue / verify / revoke for central MSP mode.
+
+Phase 5: added resolve_agent_id() for key-only auth without trusting client headers.
+"""
 from __future__ import annotations
 
 import hashlib
 import json
 import os
 import secrets
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -51,7 +54,7 @@ def issue_key(agent_id: str, master_key: str, provided_master: str) -> dict:
     data = _load()
     data.setdefault("agents", {})[agent_id] = {
         "key_hash": _hash(raw),
-        "created": datetime.now().isoformat(),
+        "created": datetime.now(timezone.utc).isoformat(),
         "revoked": False,
     }
     _save(data)
@@ -59,18 +62,31 @@ def issue_key(agent_id: str, master_key: str, provided_master: str) -> dict:
 
 
 def verify_key(agent_id: str, api_key: str) -> bool:
+    if not api_key:
+        return False
     data = _load()
     rec = (data.get("agents") or {}).get(agent_id or "")
     if not rec or rec.get("revoked"):
-        # also allow lookup by scanning hashes if agent_id missing
-        if not agent_id:
-            h = _hash(api_key)
-            for aid, r in (data.get("agents") or {}).items():
-                if not r.get("revoked") and r.get("key_hash") == h:
-                    return True
-            return False
         return False
     return secrets.compare_digest(rec.get("key_hash") or "", _hash(api_key))
+
+
+def resolve_agent_id(api_key: str) -> Optional[str]:
+    """Return agent_id for a valid non-revoked key, or None.
+
+    Used when the client does not (or must not) supply X-Client-Id.
+    Never trusts a client-supplied agent_id alone.
+    """
+    if not api_key:
+        return None
+    h = _hash(api_key)
+    data = _load()
+    for aid, r in (data.get("agents") or {}).items():
+        if r.get("revoked"):
+            continue
+        if secrets.compare_digest(r.get("key_hash") or "", h):
+            return aid
+    return None
 
 
 def revoke(agent_id: str, master_key: str, provided_master: str) -> dict:
@@ -80,7 +96,7 @@ def revoke(agent_id: str, master_key: str, provided_master: str) -> dict:
     if agent_id not in (data.get("agents") or {}):
         return {"ok": False, "error": "unknown agent"}
     data["agents"][agent_id]["revoked"] = True
-    data["agents"][agent_id]["revoked_at"] = datetime.now().isoformat()
+    data["agents"][agent_id]["revoked_at"] = datetime.now(timezone.utc).isoformat()
     _save(data)
     return {"ok": True, "agent_id": agent_id, "revoked": True}
 
