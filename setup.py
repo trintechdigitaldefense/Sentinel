@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "3.2.0"
+VERSION = "3.2.1"
 HOME = Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel"))
 CONFIG = HOME / "config.json"
 DATA = HOME / "data"
@@ -56,6 +56,23 @@ def apply_cases_wire() -> None:
             print(f"[!] cases wire exit {e.code}")
     except Exception as e:
         print(f"[!] cases wire: {e}")
+
+
+def apply_dashboard_cases() -> None:
+    """Inject open-cases UI into dashboard.html if needed."""
+    script = ROOT / "scripts" / "apply_dashboard_cases.py"
+    if not script.exists():
+        print("[=] dashboard cases script not present — skip")
+        return
+    try:
+        import runpy
+
+        runpy.run_path(str(script), run_name="__main__")
+    except SystemExit as e:
+        if e.code not in (0, None):
+            print(f"[!] dashboard cases exit {e.code}")
+    except Exception as e:
+        print(f"[!] dashboard cases: {e}")
 
 
 def check_deps() -> None:
@@ -170,7 +187,7 @@ def main() -> None:
         print("\n[=] Check-only mode — no writes")
         return
     apply_cases_wire()
-    # re-check engine after wire
+    apply_dashboard_cases()
     check_engine()
     init_dirs()
     init_config()
@@ -178,10 +195,9 @@ def main() -> None:
     print("  SETUP COMPLETE")
     print("=" * 56)
     print("  python3 sentinel.py          # interactive menu (incl. Cases 16/17)")
-    print("  python3 sentinel.py doctor   # health check")
-    print("  python3 sentinel.py hunt     # continuous protect")
+    print("  python3 scripts/phase8_smoke.py")
     print("  python3 sentinel.py cases list")
-    print("  python3 sentinel.py dash     # local dashboard (open cases)")
+    print("  python3 sentinel.py dash     # open cases on UI")
     print()
 
 
