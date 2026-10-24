@@ -1,37 +1,24 @@
-# Phase 13 — Host Firewall Control Plane
+# Phase 13.1 — Host Firewall Control Plane (enhanced)
 
-**Sentinel 3.7.0** · TrinTech Digital Defense · 2026-10-24
+**Sentinel 3.7.1** · TrinTech Digital Defense · 2026-10-24
 
-## Scope (honest)
+## Scope
 
-Host firewall manager on the agent machine (nftables preferred, iptables fallback).
+Host firewall manager (nftables preferred, iptables fallback) on the agent host.
 
 **Not** a perimeter router/firewall appliance.
 
-## Features
+## Enhancements (13.1)
 
-- Block / unblock source IPs (INPUT)
-- Allow / deny ports
-- Profiles: default, hardening, web_server, ssh_only
-- Dry-run by default; `--confirm` applies
-- Audit log + managed block list + rule backup
+- IP **and CIDR** blocks with strict validation
+- `apply-managed` re-apply after reboot
+- `enable` / `disable` managed plane
+- `lab_lockdown` profile
+- `max_blocks` safety limit
+- `response_actions.block_ip` routes through this plane
+- `setup.py` + `apply_firewall_cli.py` wiring
+- Richer status/doctor/audit
 
 ## Commands
 
-```bash
-python3 -m modules.firewall status
-python3 -m modules.firewall block 203.0.113.10
-python3 -m modules.firewall block 203.0.113.10 --confirm
-python3 -m modules.firewall allow-port 443 --confirm
-python3 -m modules.firewall profile hardening
-python3 -m modules.firewall backup
-python3 -m modules.firewall audit
-python3 -m modules.firewall doctor
-python3 sentinel.py firewall status
-```
-
-## Safety
-
-- Refuses localhost / empty IPs
-- Audit: `~/.sentinel/data/firewall_audit.jsonl`
-- State: `~/.sentinel/data/firewall/managed_blocks.json`
+See `docs/Sentinel_Firewall_Cheatsheet.md` and the PDF cheatsheet.

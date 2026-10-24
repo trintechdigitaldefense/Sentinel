@@ -1,51 +1,33 @@
-# SENTINEL — Host Firewall Cheatsheet
+# SENTINEL Host Firewall — Overview & Cheatsheet (13.1)
 
-**TrinTech Digital Defense · Phase 13 · v3.7.0**  
-Authorized defensive use only.
+**TrinTech Digital Defense · v3.7.1** · Authorized defensive use only.
 
 ## Overview
 
-Host packet-filter control (nftables preferred, iptables fallback) on the agent machine.
+Host packet-filter control on the agent machine (nftables / iptables). Block IPs/CIDRs, allow/deny ports, profiles, apply-managed after reboot, audit trail.
 
-**Not** a perimeter/router firewall (pfSense/FortiGate).
-
-**Safety:** dry-run by default. Add `--confirm` to apply. Localhost IPs refused.  
-Audit: `~/.sentinel/data/firewall_audit.jsonl`
-
-## Commands
-
-| Command | What it does |
-|---------|----------------|
-| `sentinel firewall status` | Backend + rules preview |
-| `sentinel firewall block <ip>` | Dry-run block source IP |
-| `sentinel firewall block <ip> --confirm` | Apply DROP |
-| `sentinel firewall unblock <ip> --confirm` | Remove managed block |
-| `sentinel firewall allow-port 443 --confirm` | ACCEPT tcp/443 |
-| `sentinel firewall deny-port 445 --confirm` | DROP tcp/445 |
-| `sentinel firewall profiles` | List profiles |
-| `sentinel firewall profile hardening` | Dry-run deny 135/139/445/3389 |
-| `sentinel firewall profile hardening --confirm` | Apply |
-| `sentinel firewall backup` | Snapshot ruleset |
-| `sentinel firewall managed` | Managed IPs/ports |
-| `sentinel firewall audit` | Recent audit events |
-| `sentinel firewall doctor` | Health |
-| `python3 -m modules.firewall status` | Module entrypoint |
-
-## Profiles
-
-| Profile | Intent |
-|---------|--------|
-| default | Track managed blocks only |
-| hardening | Deny 135,139,445,3389/tcp |
-| web_server | Allow 80/443 tcp |
-| ssh_only | Allow 22 tcp (keep console access) |
+**Not** a perimeter/router firewall.
 
 ## Safe sequence
 
-1. `sentinel firewall status`
-2. `sentinel firewall backup`
-3. Dry-run change (no `--confirm`)
-4. Apply with `--confirm` (needs privileges)
-5. `sentinel firewall audit`
+1. `python3 scripts/apply_firewall_cli.py`
+2. `python3 sentinel.py firewall status`
+3. `python3 sentinel.py firewall backup`
+4. Dry-run: `firewall block 203.0.113.10`
+5. Apply: `firewall block 203.0.113.10 --confirm`
+6. After reboot: `firewall apply-managed --confirm`
+7. `firewall audit` · `firewall doctor`
 
-*DEFEND. DETECT. DOMINATE.* 🇹🇹
+## Commands
+
+| Command | Purpose |
+|---------|---------|
+| status | Backend + preview |
+| block / unblock | DROP source IP or CIDR |
+| allow-port / deny-port | Port policy |
+| profile hardening|web_server|ssh_only|lab_lockdown | Profiles |
+| apply-managed | Re-apply saved rules |
+| enable / disable | Managed plane |
+| backup / managed / audit / doctor / ensure | Ops |
+
+*DEFEND. DETECT. DOMINATE.*
