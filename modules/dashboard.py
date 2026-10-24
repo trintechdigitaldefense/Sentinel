@@ -1,16 +1,45 @@
 #!/usr/bin/env python3
 # © 2026 TrinTech Digital Defense — authorized defensive use only
-"""SENTINEL Client Dashboard — visibility + control with login + optional TLS."""
+"""SENTINEL Client Dashboard — visibility + control with login + optional TLS.
+
+Bootstraps dashboard_impl.py from the last known-good commit if missing,
+then enriches status with open cases (Phase 7).
+"""
 from __future__ import annotations
 
-# Re-export implementation
-from modules.dashboard_impl import *  # noqa: F401,F403
-from modules.dashboard_impl import collect_full as _collect_full_impl
-from modules.dashboard_impl import start_dashboard, ensure_token, run_action, html_page, login_page
+import importlib.util
+import urllib.request
+from pathlib import Path
+
+GOOD = (
+    "https://raw.githubusercontent.com/trintechdigitaldefense/Sentinel/"
+    "41c636831b439a058001a1c3830eb2f4550d4df4/modules/dashboard.py"
+)
+HERE = Path(__file__).resolve().parent
+
+
+def _ensure_impl() -> Path:
+    target = HERE / "dashboard_impl.py"
+    if target.exists() and target.stat().st_size > 1000:
+        return target
+    data = urllib.request.urlopen(GOOD, timeout=30).read()
+    target.write_bytes(data)
+    return target
+
+
+_ensure_impl()
+_spec = importlib.util.spec_from_file_location("dashboard_impl", HERE / "dashboard_impl.py")
+_mod = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_mod)
+
+# Re-export public API from implementation
+for _name in dir(_mod):
+    if not _name.startswith("_"):
+        globals()[_name] = getattr(_mod, _name)
 
 
 def collect_full():
-    out = _collect_full_impl()
+    out = _mod.collect_full()
     try:
         from modules.dashboard_enrich import enrich
 
