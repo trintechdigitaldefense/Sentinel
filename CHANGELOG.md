@@ -1,9 +1,18 @@
 # Changelog
 
+## 3.2.1 — 2026-10-24
+
+### Phase 8 — Ship-ready wire
+- Dashboard open-cases metric + table (`scripts/apply_dashboard_cases.py`)
+- `scripts/phase8_smoke.py` acceptance smoke
+- `docs/PHASE8_ACCEPTANCE.md` 10-minute checklist
+- `PHASE8.md` + ROADMAP Phase 8 complete
+- Full dashboard status enrich for `cases_open` via `dashboard_enrich`
+
 ## 3.2.0 — 2026-10-24
 
 ### Product line (Phases 0–7)
-- **Phase 0** — Discovery inventory; improve existing Sentinel (not replace)
+- **Phase 0** — Discovery inventory; improve existing product line, not replace
 - **Phase 5** — Central hardening: agent isolation, fail-closed auth, audit_events, `/v1/audit`
 - **Phase 6** — Read-only connectors: contract + normalized schema, `sentinel_local`, Wazuh skeleton
 - **Phase 7** — Cases: SQLite cases, status/assign/notes, evidence zip + sha256, per-case audit
