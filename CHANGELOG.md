@@ -1,26 +1,30 @@
 # Changelog
 
+## 3.5.0 — 2026-10-24
+
+### Phase 11 — Correlation · AI assist · gated response
+- `modules/correlation.py` / `fleet_correlate.py` — multi-source time/host bundles → cases
+- `modules/ai_assist.py` — offline or optional LLM case notes (no auto-response)
+- `modules/gated_response.py` — recommendations; execute requires confirm + policy
+- **Not** a full cloud SIEM or silent autonomous response
+
 ## 3.4.0 — 2026-10-24
 
 ### Phase 10 — Operational cadence
-- `modules/digest_cron.py` — daily open-cases digest (crontab or systemd user timer)
-- `modules/connector_enable.py` — enable Wazuh/local + fetch with auto-case
-- `modules/central_cases_cli.py` — master-key list of central case summaries
-- `scripts/phase10_smoke.py`, `PHASE10.md`
+- Digest cron, connector enablement, central cases CLI
 
 ## 3.3.0 — 2026-10-24
 
 ### Phase 9 — MSP daily use
-- Open-cases digest, client notes, central cases sync, false_positive → suppression
+- Digests, client notes, central sync, false_positive → suppression
 
 ## 3.2.1 — 2026-10-24
 
 ### Phase 8 — Ship-ready wire
-- Dashboard open-cases UI, phase8_smoke, acceptance checklist
 
 ## 3.2.0 — 2026-10-24
 
-Phases 0–7 product line on existing Sentinel engine.
+Phases 0–7 on existing Sentinel engine.
 
 ## 3.1.0 — 2026-10-15
 
