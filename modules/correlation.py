@@ -29,10 +29,16 @@ def _parse_ts(value: Any) -> Optional[datetime]:
 
 
 def _host_key(alert: dict) -> str:
-    for k in ("host", "hostname", "agent_name", "agent_id", "source_host"):
+    for k in ("host", "hostname", "agent_name", "agent_id", "source_host", "asset_id"):
         v = alert.get(k)
         if v:
             return str(v).strip().lower()
+    extra = alert.get("extra") or {}
+    if isinstance(extra, dict):
+        for k in ("host", "hostname", "agent_name", "agent_id"):
+            v = extra.get(k)
+            if v:
+                return str(v).strip().lower()
     return "unknown"
 
 
@@ -60,7 +66,14 @@ def correlate(
     for host, items in by_host.items():
         timed = []
         for a in items:
-            ts = _parse_ts(a.get("observed_at") or a.get("ts") or a.get("timestamp") or a.get("created_at"))
+            ts = _parse_ts(
+                a.get("observed_at")
+                or a.get("occurred_at")
+                or a.get("received_at")
+                or a.get("ts")
+                or a.get("timestamp")
+                or a.get("created_at")
+            )
             timed.append((ts or datetime.now(timezone.utc), a))
         timed.sort(key=lambda x: x[0])
 

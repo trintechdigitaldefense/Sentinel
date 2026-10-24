@@ -1,22 +1,25 @@
 # Changelog
 
+## 3.5.1 — 2026-10-24
+
+### Dual-connector pilot wire
+- `modules/dual_pilot.py` + `scripts/dual_connector_pilot.py` (Sentinel-local + Wazuh)
+- Correlation fix: `asset_id` / `occurred_at` host+time keys
+- Default window 45m; lab synthetic alerts when Wazuh unreachable
+- Lab AI key via `--ai-key` (offline default)
+
 ## 3.5.0 — 2026-10-24
 
 ### Phase 11 — Correlation · AI assist · gated response
-- `modules/correlation.py` / `fleet_correlate.py` — multi-source time/host bundles → cases
-- `modules/ai_assist.py` — offline or optional LLM case notes (no auto-response)
-- `modules/gated_response.py` — recommendations; execute requires confirm + policy
-- **Not** a full cloud SIEM or silent autonomous response
+- correlation / fleet_correlate / ai_assist / gated_response
 
 ## 3.4.0 — 2026-10-24
 
 ### Phase 10 — Operational cadence
-- Digest cron, connector enablement, central cases CLI
 
 ## 3.3.0 — 2026-10-24
 
 ### Phase 9 — MSP daily use
-- Digests, client notes, central sync, false_positive → suppression
 
 ## 3.2.1 — 2026-10-24
 

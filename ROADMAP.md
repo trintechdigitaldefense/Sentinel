@@ -27,12 +27,13 @@ See [PHASE9.md](PHASE9.md).
 See [PHASE10.md](PHASE10.md).
 
 ## Phase 11 — Correlation · AI assist · gated response ✅ (2026-10-24)
-Multi-source time/host correlation · optional AI case notes · recommendations with explicit confirm.  
-**Not** a full cloud SIEM or silent autonomous response.  
 See [PHASE11.md](PHASE11.md).
 
+## Dual-connector pilot ✅ (2026-10-24)
+`scripts/dual_connector_pilot.py` — Sentinel-local + Wazuh, 45m window, lab synthetic fallback, optional `--ai-key`.
+
 ## Next
-Live dual-connector pilot (Sentinel + Wazuh) · tune correlation windows · optional AI key in lab only.
+Production Wazuh credentials on a real tenant · fleet multi-site digest view.
 
 ## Still deferred
 Full multi-tenant cloud SIEM replacement · silent autonomous response · broad TI enrichment · UEBA-scale correlation.
