@@ -31,6 +31,14 @@ See [PHASE6.md](PHASE6.md).
 Durable cases, assignment, status, notes, evidence pack export, per-case audit.  
 See [PHASE7.md](PHASE7.md).
 
+## Phase 8 — Ship-ready wire ✅ (2026-10-24)
+Field acceptance path: dashboard open-cases UI, `scripts/phase8_smoke.py`,
+install-time cases wire, 10-minute checklist.  
+See [PHASE8.md](PHASE8.md) and [docs/PHASE8_ACCEPTANCE.md](docs/PHASE8_ACCEPTANCE.md).
+
+## Next (Phase 9 — MSP daily use)
+Open-cases in WhatsApp/digest · case→client note templates · central read-only case list · suppressions linked to false_positive cases.
+
 ## Deferred
 Full multi-tenant cloud SIEM replacement, autonomous response, AI summarization, broad threat-intel enrichment, complex cross-source correlation.
 
