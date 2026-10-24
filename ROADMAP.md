@@ -2,17 +2,17 @@
 
 **TrinTech Digital Defense**
 
-## Phase 1–4 ✅ · Phase 0–11 ✅ · Dual-connector pilot ✅
+## Phase 1–4 ✅ · Phase 0–12 ✅ · Dual-connector pilot ✅
 
-## Phase 12 — Foundations ✅ (2026-10-24)
-Tenant registry · policy-gated auto-response (never silent) · UEBA-lite host scores.  
-**Not** full cloud SIEM / silent autonomy / enterprise UEBA.  
-See [PHASE12.md](PHASE12.md).
+## Phase 13 — Host Firewall ✅ (2026-10-24)
+Host firewall control plane (nft/iptables), profiles, audit, dry-run default.  
+**Not** a perimeter network firewall appliance.  
+See [PHASE13.md](PHASE13.md).
 
 ## Next
-Production Wazuh tenant pilots · optional central tenant labels on case sync · tune UEBA-lite windows.
+Production Wazuh pilots · EdgeCheck (score client router FW) · mail/phish → cases
 
 ## Still deferred
-Full multi-tenant cloud SIEM replacement · silent autonomous response · UEBA-scale correlation / identity UEBA.
+Full multi-tenant cloud SIEM · silent autonomous response · enterprise UEBA · perimeter FW appliance product
 
 *DEFEND. DETECT. DOMINATE.* 🇹🇹
