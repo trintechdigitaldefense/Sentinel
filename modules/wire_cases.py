@@ -131,5 +131,27 @@ def cases_command(args, print_fn=print):
 
         cid = rest[0] if rest else ""
         print_fn(json.dumps(plan_for_case_id(cid), indent=2))
+    elif sub in ("tenants", "tenant-list"):
+        from modules import tenants
+
+        if rest and rest[0] == "create":
+            name = " ".join(rest[1:]) or "Client"
+            print_fn(json.dumps(tenants.create_tenant(name), indent=2))
+        else:
+            print_fn(json.dumps(tenants.list_tenants(), indent=2))
+    elif sub == "ueba":
+        from modules.ueba_lite import score_hosts
+
+        print_fn(json.dumps(score_hosts(), indent=2))
+    elif sub == "auto-response":
+        from modules.auto_response import maybe_auto_respond, evaluate_case
+        from modules import cases as cm
+
+        cid = rest[0] if rest else ""
+        if rest and rest[0] == "eval" and len(rest) > 1:
+            c = cm.get_case(rest[1])
+            print_fn(json.dumps(evaluate_case(c or {}), indent=2))
+        else:
+            print_fn(json.dumps(maybe_auto_respond(cid), indent=2))
     else:
         print_fn(f"Unknown cases subcommand: {sub}")
