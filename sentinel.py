@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.1.0"
+__version__ = "3.2.2"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2107,6 +2107,19 @@ def main():
         print(f"{C.GREEN}{C.BOLD}All tracking data reset.{C.RESET} Run 'sentinel start' to begin fresh.")
 
     elif command == "info":
+
+        def _fim_count():
+            try:
+                if not FIM_BASELINE.exists():
+                    return 0
+                data = json.loads(FIM_BASELINE.read_text())
+                if isinstance(data, dict):
+                    files = data.get("files") or data.get("paths") or data
+                    return len(files) if hasattr(files, "__len__") else 0
+                return len(data) if hasattr(data, "__len__") else 0
+            except Exception:
+                return 0
+
         devices = load_devices()
         total_scans = devices.get("total_scans", 0)
         device_count = len(devices.get("devices", {}))
@@ -2128,7 +2141,7 @@ def main():
   {C.BOLD}OS:{C.RESET}           {run_cmd(['uname', '-a'], timeout=5).strip()}
 
 {C.BOLD}LINE OF DEFENSE:{C.RESET}
-  {C.BOLD}FIM:{C.RESET}         {C.GREEN}{'✓' if FIM_BASELINE.exists() else '✗'} Baseline: {len(json.load(open(FIM_BASELINE))) if FIM_BASELINE.exists() else 0} files
+  {C.BOLD}FIM:{C.RESET}         {C.GREEN}{'✓' if FIM_BASELINE.exists() else '✗'} Baseline: {_fim_count()} files
   {C.BOLD}Processes:{C.RESET}   {C.GREEN}✓ Active{C.RESET}
   {C.BOLD}SSH Block:{C.RESET}    {C.GREEN}{'✓' if SSH_BLOCKLIST_FILE.exists() else '✗'} {len(_load_blocklist().get('blocked', {}))} IPs blocked
   {C.BOLD}Outbound:{C.RESET}     {C.GREEN}✓ Active{C.RESET}
@@ -2412,9 +2425,12 @@ def main():
                 print("[!] service-status:", e)
     elif command in ("digest-cron", "schedule-digest"):
         try:
-            from modules.phase5 import install_digest_cron
-            sch = "weekly" if "--weekly" in args else "daily"
-            print(install_digest_cron(sch))
+            from modules.digest_cron import install as install_digest_cron
+            # daily default; --weekly →  weekly-style hour still once/day but noted
+            hour = 8
+            if "--weekly" in args:
+                hour = 8  # same install path; cron still daily open-cases digest
+            print(install_digest_cron(hour=hour, minute=0, prefer="auto"))
         except Exception as e:
             print("[!] digest-cron:", e)
 
@@ -2557,7 +2573,7 @@ def main():
     elif command in ("watchdog",):
         try:
             from modules.watchdog import run_watchdog
-            import json
+            # json is imported at module level
             from pathlib import Path as P
             cfg = {}
             cp = P.home() / ".sentinel" / "config.json"
@@ -2571,7 +2587,7 @@ def main():
     elif command in ("schedule-report",):
         try:
             from modules.scheduled_report import run_scheduled
-            import json
+            # json is imported at module level
             from pathlib import Path as P
             sch = "weekly"
             if "--schedule" in args:
