@@ -30,7 +30,7 @@ def cases_command(args, print_fn=print):
     import json
 
     try:
-        import modules.phase9_hooks  # noqa: F401 — false_positive → suppression
+        import modules.phase9_hooks  # noqa: F401
     except Exception:
         pass
 
@@ -93,5 +93,26 @@ def cases_command(args, print_fn=print):
         from modules.cases_sync import sync_open_cases_to_central
 
         print_fn(json.dumps(sync_open_cases_to_central(), indent=2))
+    elif sub in ("digest-cron", "install-digest"):
+        from modules.digest_cron import install
+
+        hour, minute = 8, 0
+        if rest:
+            try:
+                hour = int(rest[0])
+                if len(rest) > 1:
+                    minute = int(rest[1])
+            except ValueError:
+                pass
+        print_fn(json.dumps(install(hour=hour, minute=minute), indent=2))
+    elif sub == "digest-run":
+        from modules.digest_cron import run_digest_job
+
+        print_fn(json.dumps(run_digest_job(via="auto"), indent=2))
+    elif sub == "connector-fetch":
+        from modules.connector_enable import fetch_and_maybe_case
+
+        source = rest[0] if rest else "sentinel_local"
+        print_fn(json.dumps(fetch_and_maybe_case(source=source), indent=2))
     else:
         print_fn(f"Unknown cases subcommand: {sub}")
