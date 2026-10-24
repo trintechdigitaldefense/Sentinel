@@ -1,0 +1,31 @@
+--- a/bot.py
++++ b/bot.py
+@@ -148,6 +148,8 @@
+                 "DEADMAN — sensor offline check\n"
+                 "ACK <id> — acknowledge alert id\n"
+                 "SNAPSHOT — evidence capture\n"
++                "CASES — open cases digest\n"
++                "DIGEST — send open-cases to channels\n"
+             )
+         return _status_text()
+     if up in ("DRIFT", "/DRIFT"):
+@@ -183,6 +185,20 @@
+         return f"Acknowledged {r['acked']} (total acked: {r['total_acked']})"
+     if up in ("SNAPSHOT", "/SNAPSHOT"):
+         return _snapshot()
++    if up in ("CASES", "/CASES", "CASE", "/CASE"):
++        try:
++            from modules.msp_digest import format_digest
++            return format_digest()
++        except Exception as e:
++            return f"CASES error: {e}"
++    if up in ("DIGEST", "/DIGEST"):
++        try:
++            from modules.msp_digest import send_digest
++            r = send_digest(via="auto")
++            if r.get("ok"):
++                return "Digest sent.\n" + (r.get("text") or "")[:1500]
++            return "Digest attempted.\n" + str(r)[:1500]
++        except Exception as e:
++            return f"DIGEST error: {e}"
+     return "Unknown command. Send HELP for list."
