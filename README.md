@@ -14,17 +14,17 @@ Authorized defensive use only. See [LICENSE](LICENSE).
 - Multi-channel alerts (WhatsApp, email, webhook, syslog)
 - Local dashboard (admin / viewer roles) and plain-language PDF reports
 - Optional MSP central server with per-agent API keys
+- Read-only connectors (Sentinel local + Wazuh skeleton)
 - Backup / restore, Docker packaging, Windows agent
 
 ## Current status
 
-Phases 0–5 complete. Central server is hardened (agent isolation + audit trail).
+Phases 0–6 complete.
 
 **Next up**
-- **Phase 6** — First read-only external connector (Wazuh preferred)
 - **Phase 7** — Case / triage workflow + stronger evidence export
 
-See [ROADMAP.md](ROADMAP.md), [PHASE0.md](PHASE0.md), [PHASE5.md](PHASE5.md).
+See [ROADMAP.md](ROADMAP.md), [PHASE5.md](PHASE5.md), [PHASE6.md](PHASE6.md).
 
 ## Install
 
@@ -77,6 +77,18 @@ docker compose up -d
 | `evidence export --case NAME` | Signed evidence bundle |
 | `schedule-report weekly` | Scheduled client PDF |
 
+## Connectors (Phase 6)
+
+```bash
+# Local reference connector
+python3 -c "from modules.connectors.cli import main; main(['health','--source','sentinel_local'])"
+python3 -c "from modules.connectors.cli import main; main(['fetch','--source','sentinel_local','--limit','10'])"
+
+# Wazuh (lab credentials via env)
+# export WAZUH_URL=https://lab:55000 WAZUH_USER=readonly WAZUH_PASSWORD=...
+python3 -c "from modules.connectors.cli import main; main(['health','--source','wazuh'])"
+```
+
 ## Config (`~/.sentinel/config.json`)
 
 | Section | Keys |
@@ -98,11 +110,8 @@ Validate: `python3 -c "from modules.config_schema import load_config; load_confi
 
 ```bash
 python3 -m sentinel_central.server --port 8443 --master-key YOUR_MASTER
-# enroll each site (issues unique agent key):
 python3 sentinel.py enroll --server https://host:8443 --key YOUR_MASTER
-# revoke one agent:
 python3 -m sentinel_central.server --revoke AGENT_ID --master-key YOUR_MASTER
-# audit trail (master key):
 curl -H "X-API-Key: YOUR_MASTER" https://host:8443/v1/audit
 ```
 

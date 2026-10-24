@@ -22,12 +22,12 @@ Stronger tenant/agent isolation on the MSP central server.
 Server-side membership + role checks. Audit events for enroll, revoke, config changes, sensitive actions.  
 Fail-closed authorization. See [PHASE5.md](PHASE5.md).
 
-## Phase 6 — First Connector (next)
-Read-only connector interface. Prefer Wazuh (or Sentinel’s own normalized events as the reference implementation).  
-Normalize into a common alert schema. Pagination, retries, dedup, connector health.  
-No autonomous response from external sources in this phase.
+## Phase 6 — First Connector ✅ (2026-10-24)
+Read-only connector interface + normalized alert schema.  
+Sentinel-local reference connector + Wazuh skeleton.  
+See [PHASE6.md](PHASE6.md).
 
-## Phase 7 — Case & Triage Workflow
+## Phase 7 — Case & Triage Workflow (next)
 Durable cases, assignment, status changes, notes.  
 Improved evidence export and operator-facing triage from the dashboard / CLI.  
 Audit every sensitive case action.
