@@ -15,7 +15,7 @@ Dashboard · multi-tenant · WhatsApp **+1-868-362-0679** · weekly report · he
 Behavioral baseline · Caribbean threat pack · playbooks · evidence pack · offline queue
 
 ## Phase 0 — Discovery ✅ (2026-10-24)
-Inventory of v3.1 capabilities and gaps. Direction locked: improve the existing product line, not replace it. See [PHASE0.md](PHASE0.md).
+See [PHASE0.md](PHASE0.md).
 
 ## Phase 5 — Central Hardening ✅ (2026-10-24)
 See [PHASE5.md](PHASE5.md).
@@ -30,11 +30,14 @@ See [PHASE7.md](PHASE7.md).
 See [PHASE8.md](PHASE8.md).
 
 ## Phase 9 — MSP daily use ✅ (2026-10-24)
-Open-cases digest (WhatsApp/Telegram) · client note templates · central read-only case list · false_positive → suppression.  
 See [PHASE9.md](PHASE9.md).
 
+## Phase 10 — Operational cadence ✅ (2026-10-24)
+Scheduled digests · connector enablement · central cases CLI.  
+See [PHASE10.md](PHASE10.md).
+
 ## Next
-Pilot real connector credentials · digest cron on more sites · optional central case UI polish.
+Field pilots with live Wazuh (or primary tool) credentials · multi-site digest fleet view.
 
 ## Deferred
 Full multi-tenant cloud SIEM replacement, autonomous response, AI summarization, broad threat-intel enrichment, complex cross-source correlation.
