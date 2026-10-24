@@ -1,9 +1,10 @@
 # © 2026 TrinTech Digital Defense — authorized defensive use only
-"""CLI helpers for connectors (Phase 6).
+"""CLI helpers for connectors (Phase 6 + Phase 7 auto-case).
 
-Usage (from repo root or installed package):
+Usage:
   python3 -c "from modules.connectors.cli import main; main()" health
   python3 -c "from modules.connectors.cli import main; main()" fetch --source sentinel_local --limit 20
+  python3 -c "from modules.connectors.cli import main; main()" fetch --source sentinel_local --auto-case
 """
 from __future__ import annotations
 
@@ -29,6 +30,7 @@ def main(argv: list[str] | None = None) -> int:
     p_f.add_argument("--url", default=None, help="Wazuh URL override")
     p_f.add_argument("--user", default=None, help="Wazuh user")
     p_f.add_argument("--password", default=None, help="Wazuh password")
+    p_f.add_argument("--auto-case", action="store_true", help="Open cases for high/critical alerts")
 
     args = ap.parse_args(argv)
     cfg = {}
@@ -52,6 +54,16 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "fetch":
         alerts, nxt = conn.fetch_events(cursor=args.cursor, since=args.since, limit=args.limit)
+        opened = []
+        if getattr(args, "auto_case", False):
+            try:
+                from modules.case_hooks import maybe_open_case_from_normalized
+                for a in alerts:
+                    r = maybe_open_case_from_normalized(a.to_dict())
+                    if r and r.get("ok"):
+                        opened.append(r["case"]["id"])
+            except Exception as e:
+                opened = [{"error": str(e)}]
         print(
             json.dumps(
                 {
@@ -59,6 +71,7 @@ def main(argv: list[str] | None = None) -> int:
                     "source": conn.name,
                     "count": len(alerts),
                     "next_cursor": nxt,
+                    "cases_opened": opened,
                     "alerts": [a.to_dict() for a in alerts],
                 },
                 indent=2,
