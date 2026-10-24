@@ -1,17 +1,21 @@
 # Changelog
 
+## 3.6.0 — 2026-10-24
+
+### Phase 12 — Foundations
+- `modules/tenants.py` — MSP tenant registry
+- `modules/auto_response.py` — policy auto-response with audit + kill-switch (never silent; default off)
+- `modules/ueba_lite.py` — host velocity scoring (not enterprise UEBA)
+- `scripts/phase12_smoke.py`, `PHASE12.md`
+
 ## 3.5.1 — 2026-10-24
 
 ### Dual-connector pilot wire
-- `modules/dual_pilot.py` + `scripts/dual_connector_pilot.py` (Sentinel-local + Wazuh)
-- Correlation fix: `asset_id` / `occurred_at` host+time keys
-- Default window 45m; lab synthetic alerts when Wazuh unreachable
-- Lab AI key via `--ai-key` (offline default)
+- dual_pilot, correlation asset_id/occurred_at fix, lab AI key
 
 ## 3.5.0 — 2026-10-24
 
 ### Phase 11 — Correlation · AI assist · gated response
-- correlation / fleet_correlate / ai_assist / gated_response
 
 ## 3.4.0 — 2026-10-24
 
