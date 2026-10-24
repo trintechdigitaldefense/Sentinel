@@ -19,18 +19,17 @@ Inventory of v3.1 capabilities and gaps. Direction locked: improve the existing 
 
 ## Phase 5 — Central Hardening ✅ (2026-10-24)
 Stronger tenant/agent isolation on the MSP central server.  
-Server-side membership + role checks. Audit events for enroll, revoke, config changes, sensitive actions.  
-Fail-closed authorization. See [PHASE5.md](PHASE5.md).
+Server-side membership + role checks. Audit events for enroll, revoke, sensitive actions.  
+See [PHASE5.md](PHASE5.md).
 
 ## Phase 6 — First Connector ✅ (2026-10-24)
 Read-only connector interface + normalized alert schema.  
-Sentinel-local reference connector + Wazuh skeleton.  
+Sentinel-local reference + Wazuh skeleton.  
 See [PHASE6.md](PHASE6.md).
 
-## Phase 7 — Case & Triage Workflow (next)
-Durable cases, assignment, status changes, notes.  
-Improved evidence export and operator-facing triage from the dashboard / CLI.  
-Audit every sensitive case action.
+## Phase 7 — Case & Triage Workflow ✅ (2026-10-24)
+Durable cases, assignment, status, notes, evidence pack export, per-case audit.  
+See [PHASE7.md](PHASE7.md).
 
 ## Deferred
 Full multi-tenant cloud SIEM replacement, autonomous response, AI summarization, broad threat-intel enrichment, complex cross-source correlation.

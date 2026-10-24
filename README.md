@@ -15,16 +15,14 @@ Authorized defensive use only. See [LICENSE](LICENSE).
 - Local dashboard (admin / viewer roles) and plain-language PDF reports
 - Optional MSP central server with per-agent API keys
 - Read-only connectors (Sentinel local + Wazuh skeleton)
+- Case / triage workflow with evidence packs
 - Backup / restore, Docker packaging, Windows agent
 
 ## Current status
 
-Phases 0–6 complete.
+**Phases 0–7 complete** (2026-10-24).
 
-**Next up**
-- **Phase 7** — Case / triage workflow + stronger evidence export
-
-See [ROADMAP.md](ROADMAP.md), [PHASE5.md](PHASE5.md), [PHASE6.md](PHASE6.md).
+See [ROADMAP.md](ROADMAP.md), [PHASE5.md](PHASE5.md), [PHASE6.md](PHASE6.md), [PHASE7.md](PHASE7.md).
 
 ## Install
 
@@ -77,16 +75,22 @@ docker compose up -d
 | `evidence export --case NAME` | Signed evidence bundle |
 | `schedule-report weekly` | Scheduled client PDF |
 
+## Cases (Phase 7)
+
+```bash
+python3 -c "from modules.cases_cli import main; main(['create','--title','Canary hit','--severity','high'])"
+python3 -c "from modules.cases_cli import main; main(['list','--status','new'])"
+python3 -c "from modules.cases_cli import main; main(['status','CASE-ID','investigating'])"
+python3 -c "from modules.cases_cli import main; main(['assign','CASE-ID','jason'])"
+python3 -c "from modules.cases_cli import main; main(['note','CASE-ID','--body','Checking FIM'])"
+python3 -c "from modules.cases_cli import main; main(['evidence','CASE-ID'])"
+```
+
 ## Connectors (Phase 6)
 
 ```bash
-# Local reference connector
 python3 -c "from modules.connectors.cli import main; main(['health','--source','sentinel_local'])"
 python3 -c "from modules.connectors.cli import main; main(['fetch','--source','sentinel_local','--limit','10'])"
-
-# Wazuh (lab credentials via env)
-# export WAZUH_URL=https://lab:55000 WAZUH_USER=readonly WAZUH_PASSWORD=...
-python3 -c "from modules.connectors.cli import main; main(['health','--source','wazuh'])"
 ```
 
 ## Config (`~/.sentinel/config.json`)
@@ -114,8 +118,6 @@ python3 sentinel.py enroll --server https://host:8443 --key YOUR_MASTER
 python3 -m sentinel_central.server --revoke AGENT_ID --master-key YOUR_MASTER
 curl -H "X-API-Key: YOUR_MASTER" https://host:8443/v1/audit
 ```
-
-Agent data paths require the per-agent key. Master key is rejected on `/v1/events` and `/v1/heartbeat`.
 
 ## Backup / restore
 

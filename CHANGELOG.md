@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.2.0 — 2026-10-24
+
+### Phase 0–7 product line completion
+- **Phase 0** — Discovery inventory locked; direction fixed to improve existing Sentinel
+- **Phase 5** — Central hardening: agent isolation, fail-closed auth, audit_events, `/v1/audit`
+- **Phase 6** — Read-only connectors: contract + normalized schema, `sentinel_local` reference, Wazuh skeleton
+- **Phase 7** — Cases: durable SQLite cases, status/assign/notes, evidence zip + sha256, per-case audit
+
+### Docs
+- PHASE0.md, PHASE5.md, PHASE6.md, PHASE7.md
+- ROADMAP.md and README.md updated
+
 ## 3.1.0 — 2026-10-15
 
 ### Trust
