@@ -29,6 +29,11 @@ def cases_command(args, print_fn=print):
     """Handle `sentinel cases ...` subcommands."""
     import json
 
+    try:
+        import modules.phase9_hooks  # noqa: F401 — false_positive → suppression
+    except Exception:
+        pass
+
     from modules import cases as cases_mod
 
     sub = args[0] if args else "list"
@@ -68,5 +73,25 @@ def cases_command(args, print_fn=print):
     elif sub == "evidence":
         cid = rest[0] if rest else input("  Case ID: ").strip()
         print_fn(json.dumps(cases_mod.export_evidence(cid), indent=2))
+    elif sub in ("digest", "digest-send"):
+        from modules.msp_digest import format_digest, send_digest
+
+        if sub == "digest":
+            print_fn(format_digest())
+        else:
+            print_fn(json.dumps(send_digest(via="auto"), indent=2))
+    elif sub == "client-note":
+        from modules.client_notes import save_client_note
+
+        cid = rest[0] if rest else input("  Case ID: ").strip()
+        name = rest[1] if len(rest) > 1 else "Client"
+        r = save_client_note(cid, client_name=name)
+        print_fn(r.get("note") if r.get("ok") else json.dumps(r, indent=2))
+        if r.get("path"):
+            print_fn(f"Saved: {r['path']}")
+    elif sub == "sync":
+        from modules.cases_sync import sync_open_cases_to_central
+
+        print_fn(json.dumps(sync_open_cases_to_central(), indent=2))
     else:
         print_fn(f"Unknown cases subcommand: {sub}")
