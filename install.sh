@@ -22,6 +22,11 @@ else
 fi
 cd "$DEST"
 python3 setup.py
+# Ensure cases wire is applied (also invoked from setup.py)
+if [ -f scripts/apply_cases_wire.py ]; then
+  python3 scripts/apply_cases_wire.py || true
+fi
 echo
 echo "Done. Run:  cd $DEST && python3 sentinel.py"
+echo "Cases:      python3 sentinel.py cases list"
 echo "Optional:   python3 sentinel.py service-install"

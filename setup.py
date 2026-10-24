@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # © 2026 TrinTech Digital Defense — authorized defensive use only
-"""SENTINEL installer — dependency check + config init (v3.0.0 path).
+"""SENTINEL installer — dependency check + config init + cases wire.
 
 Usage:
   python3 setup.py
@@ -16,13 +16,12 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "3.1.0"
+VERSION = "3.2.0"
 HOME = Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel"))
 CONFIG = HOME / "config.json"
 DATA = HOME / "data"
 LOGS = HOME / "logs"
 
-REQUIRED = ["pathlib"]  # stdlib markers; real optional deps listed below
 OPTIONAL = {
     "reportlab": "PDF client reports",
     "requests": "threat intel HTTP (optional)",
@@ -40,6 +39,23 @@ def check_engine() -> bool:
         return False
     print(f"[+] Engine OK ({ENGINE.stat().st_size} bytes)")
     return True
+
+
+def apply_cases_wire() -> None:
+    """Wire menu / send_alert / cases command into sentinel.py if needed."""
+    script = ROOT / "scripts" / "apply_cases_wire.py"
+    if not script.exists():
+        print("[=] cases wire script not present — skip")
+        return
+    try:
+        import runpy
+
+        runpy.run_path(str(script), run_name="__main__")
+    except SystemExit as e:
+        if e.code not in (0, None):
+            print(f"[!] cases wire exit {e.code}")
+    except Exception as e:
+        print(f"[!] cases wire: {e}")
 
 
 def check_deps() -> None:
@@ -67,10 +83,7 @@ def default_config() -> dict:
     return {
         "version": VERSION,
         "client_name": "Client",
-        "network": {
-            "subnets": [],
-            "auto_detect": True,
-        },
+        "network": {"subnets": [], "auto_detect": True},
         "alerting": {
             "whatsapp": {"enabled": False, "phone": "", "apikey": ""},
             "email": {
@@ -113,15 +126,8 @@ def default_config() -> dict:
             "api_key": "",
             "heartbeat_seconds": 300,
         },
-        "logging": {
-            "level": "INFO",
-            "json_files": True,
-            "retention_days": 30,
-        },
-        "agent": {
-            "shared_token": "",
-            "mode": "standalone",
-        },
+        "logging": {"level": "INFO", "json_files": True, "retention_days": 30},
+        "agent": {"shared_token": "", "mode": "standalone"},
     }
 
 
@@ -130,7 +136,6 @@ def init_config() -> None:
         try:
             existing = json.loads(CONFIG.read_text())
             print(f"[=] Config exists ({CONFIG})")
-            # merge missing top-level keys only
             base = default_config()
             changed = False
             for k, v in base.items():
@@ -164,15 +169,19 @@ def main() -> None:
     if "--check" in sys.argv:
         print("\n[=] Check-only mode — no writes")
         return
+    apply_cases_wire()
+    # re-check engine after wire
+    check_engine()
     init_dirs()
     init_config()
     print("\n" + "=" * 56)
     print("  SETUP COMPLETE")
     print("=" * 56)
-    print("  python3 sentinel.py          # interactive menu")
+    print("  python3 sentinel.py          # interactive menu (incl. Cases 16/17)")
     print("  python3 sentinel.py doctor   # health check")
     print("  python3 sentinel.py hunt     # continuous protect")
-    print("  python3 sentinel.py dash     # local dashboard")
+    print("  python3 sentinel.py cases list")
+    print("  python3 sentinel.py dash     # local dashboard (open cases)")
     print()
 
 
