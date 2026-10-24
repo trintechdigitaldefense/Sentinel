@@ -20,6 +20,7 @@ def main() -> int:
 
     err = []
     try:
+        import modules.phase9_hooks  # noqa: F401
         from modules import cases
         from modules.msp_digest import format_digest
         from modules.client_notes import save_client_note

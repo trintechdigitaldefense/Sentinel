@@ -31,6 +31,7 @@ def test_digest_and_client_note(env):
 
 
 def test_false_positive_suppression(env):
+    import modules.phase9_hooks  # noqa: F401
     from modules import cases, suppressions
 
     cases.init_db()
