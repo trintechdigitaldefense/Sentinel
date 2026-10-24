@@ -1,25 +1,23 @@
 # © 2026 TrinTech Digital Defense — authorized defensive use only
-"""Sentinel Host Firewall Control Plane (Phase 13).
+"""Sentinel Host Firewall Control Plane (Phase 13.1 enhanced).
 
-This is a HOST firewall manager (iptables/nftables on the machine running
-Sentinel). It is NOT a network perimeter appliance (pfSense/FortiGate).
+HOST firewall manager (nftables preferred, iptables fallback).
+NOT a perimeter/router appliance.
 
-Safety:
-- dry_run default for destructive changes unless confirm=True
-- every change audited to ~/.sentinel/data/firewall_audit.jsonl
-- profiles stored under ~/.sentinel/data/firewall/
-- never flushes all rules unless explicit confirm + --danger-flush
+Safety: dry-run unless confirm; audit log; max_blocks; refuse loopback.
 """
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
-import re
 import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+VERSION = "13.1.0"
 
 
 def _home() -> Path:
@@ -42,13 +40,23 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _cfg() -> dict:
+    p = _home() / "config.json"
+    if p.exists():
+        try:
+            return json.loads(p.read_text()).get("firewall") or {}
+        except Exception:
+            pass
+    return {}
+
+
 def _audit(action: str, detail: dict, ok: bool = True) -> None:
-    rec = {"ts": _now(), "action": action, "ok": ok, "detail": detail}
+    rec = {"ts": _now(), "action": action, "ok": ok, "detail": detail, "version": VERSION}
     with open(_audit_path(), "a") as f:
         f.write(json.dumps(rec) + "\n")
 
 
-def _run(cmd: list[str], timeout: int = 15) -> dict:
+def _run(cmd: list[str], timeout: int = 20) -> dict:
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
         return {
@@ -65,38 +73,16 @@ def _run(cmd: list[str], timeout: int = 15) -> dict:
 
 
 def backend() -> str:
+    prefer = (_cfg().get("backend") or "auto").lower()
+    if prefer == "nft" and shutil.which("nft"):
+        return "nft"
+    if prefer == "iptables" and shutil.which("iptables"):
+        return "iptables"
     if shutil.which("nft"):
         return "nft"
     if shutil.which("iptables"):
         return "iptables"
     return "none"
-
-
-def status() -> dict:
-    b = backend()
-    out: dict[str, Any] = {
-        "ok": True,
-        "backend": b,
-        "note": "Host firewall control — not a perimeter network firewall",
-        "dry_run_default": True,
-    }
-    if b == "none":
-        out["ok"] = False
-        out["error"] = "neither nft nor iptables found"
-        return out
-    if b == "nft":
-        r = _run(["nft", "list", "ruleset"])
-        out["ruleset_preview"] = "\n".join((r.get("stdout") or "").splitlines()[:40])
-        out["ruleset_ok"] = r["ok"]
-    else:
-        r = _run(["iptables", "-L", "-n", "-v"])
-        out["ruleset_preview"] = "\n".join((r.get("stdout") or "").splitlines()[:40])
-        out["ruleset_ok"] = r["ok"]
-    blocks = _load_blocks()
-    out["managed_blocks"] = len(blocks.get("ips") or [])
-    out["managed_port_allows"] = len(blocks.get("ports_allow") or [])
-    out["profile"] = blocks.get("profile") or "default"
-    return out
 
 
 def _blocks_path() -> Path:
@@ -105,12 +91,24 @@ def _blocks_path() -> Path:
 
 def _load_blocks() -> dict:
     p = _blocks_path()
+    default = {
+        "ips": [],
+        "cidrs": [],
+        "ports_allow": [],
+        "ports_deny": [],
+        "profile": "default",
+        "enabled": True,
+        "updated": _now(),
+    }
     if not p.exists():
-        return {"ips": [], "ports_allow": [], "ports_deny": [], "profile": "default", "updated": _now()}
+        return default
     try:
-        return json.loads(p.read_text())
+        data = json.loads(p.read_text())
+        for k, v in default.items():
+            data.setdefault(k, v)
+        return data
     except Exception:
-        return {"ips": [], "ports_allow": [], "ports_deny": [], "profile": "default", "updated": _now()}
+        return default
 
 
 def _save_blocks(data: dict) -> None:
@@ -118,78 +116,164 @@ def _save_blocks(data: dict) -> None:
     _blocks_path().write_text(json.dumps(data, indent=2))
 
 
-_IP_RE = re.compile(r"^(?:\d{1,3}\.){3}\d{1,3}$|^[0-9a-fA-F:]+$")
+def _max_blocks() -> int:
+    try:
+        return int(_cfg().get("max_blocks") or 200)
+    except Exception:
+        return 200
 
 
-def _valid_ip(ip: str) -> bool:
-    ip = (ip or "").strip()
-    if not ip or ip in ("0.0.0.0", "::", "127.0.0.1", "::1"):
-        return False
-    if not _IP_RE.match(ip):
-        return False
-    if "." in ip:
-        parts = ip.split(".")
-        if len(parts) != 4:
-            return False
-        try:
-            return all(0 <= int(p) <= 255 for p in parts)
-        except ValueError:
-            return False
-    return True
+def _parse_target(target: str) -> tuple[str, str]:
+    t = (target or "").strip()
+    if not t:
+        raise ValueError("empty target")
+    low = t.lower()
+    if low in ("0.0.0.0", "::", "127.0.0.1", "::1", "localhost"):
+        raise ValueError("refused localhost/unspecified")
+    if "/" in t:
+        net = ipaddress.ip_network(t, strict=False)
+        if net.is_loopback or net.is_unspecified:
+            raise ValueError("refused loopback/unspecified net")
+        if net.prefixlen == 0:
+            raise ValueError("refused /0")
+        return "cidr", str(net)
+    ip = ipaddress.ip_address(t)
+    if ip.is_loopback or ip.is_unspecified or ip.is_multicast:
+        raise ValueError("refused loopback/unspecified/multicast")
+    return "ip", str(ip)
 
 
-def block_ip(ip: str, confirm: bool = False, reason: str = "") -> dict:
-    ip = (ip or "").strip()
-    if not _valid_ip(ip):
-        return {"ok": False, "error": "invalid or refused IP", "ip": ip}
+def ensure_backend_ready() -> dict:
+    b = backend()
+    if b == "none":
+        return {"ok": False, "error": "neither nft nor iptables found"}
+    if b == "nft":
+        _run(["nft", "add", "table", "inet", "sentinel"])
+        r = _run(
+            [
+                "nft", "add", "chain", "inet", "sentinel", "input",
+                "{", "type", "filter", "hook", "input", "priority", "-5", ";",
+                "policy", "accept", ";", "}",
+            ]
+        )
+        ok = r["ok"] or "exists" in (r.get("stderr") or "").lower() or r["code"] in (0, 1)
+        return {"ok": ok, "backend": b, "detail": r}
+    return {"ok": True, "backend": b}
+
+
+def status() -> dict:
+    b = backend()
+    blocks = _load_blocks()
+    out: dict[str, Any] = {
+        "ok": True,
+        "version": VERSION,
+        "backend": b,
+        "enabled": blocks.get("enabled", True),
+        "profile": blocks.get("profile") or "default",
+        "managed_ips": len(blocks.get("ips") or []),
+        "managed_cidrs": len(blocks.get("cidrs") or []),
+        "managed_port_allows": len(blocks.get("ports_allow") or []),
+        "managed_port_denies": len(blocks.get("ports_deny") or []),
+        "max_blocks": _max_blocks(),
+        "note": "Host firewall control — not a perimeter network firewall",
+        "dry_run_default": True,
+    }
+    if b == "none":
+        out["ok"] = False
+        out["error"] = "neither nft nor iptables found"
+        return out
+    if b == "nft":
+        r = _run(["nft", "list", "table", "inet", "sentinel"])
+        if not r["ok"]:
+            r = _run(["nft", "list", "ruleset"])
+        out["ruleset_preview"] = "\n".join((r.get("stdout") or "").splitlines()[:50])
+        out["ruleset_ok"] = bool(r.get("stdout"))
+    else:
+        r = _run(["iptables", "-L", "INPUT", "-n", "-v", "--line-numbers"])
+        out["ruleset_preview"] = "\n".join((r.get("stdout") or "").splitlines()[:50])
+        out["ruleset_ok"] = r["ok"]
+    return out
+
+
+def block_ip(target: str, confirm: bool = False, reason: str = "", source: str = "cli") -> dict:
+    try:
+        kind, norm = _parse_target(target)
+    except ValueError as e:
+        return {"ok": False, "error": str(e), "target": target}
+
     b = backend()
     if not confirm:
-        _audit("block_ip_dry_run", {"ip": ip, "reason": reason, "backend": b})
+        _audit("block_dry_run", {"target": norm, "kind": kind, "reason": reason, "backend": b, "source": source})
         return {
             "ok": True,
             "dry_run": True,
-            "would": f"block {ip} on INPUT",
+            "would": f"block {norm} on INPUT",
+            "kind": kind,
             "backend": b,
-            "hint": "pass confirm=True to apply",
+            "hint": "pass --confirm to apply",
         }
     if b == "none":
         return {"ok": False, "error": "no firewall backend"}
-    if b == "nft":
-        _run(["nft", "add", "table", "inet", "sentinel"])
-        _run(["nft", "add", "chain", "inet", "sentinel", "input", "{", "type", "filter", "hook", "input", "priority", "0", ";", "policy", "accept", ";", "}"])
-        if ":" in ip:
-            r = _run(["nft", "insert", "rule", "inet", "sentinel", "input", "ip6", "saddr", ip, "drop"])
-        else:
-            r = _run(["nft", "insert", "rule", "inet", "sentinel", "input", "ip", "saddr", ip, "drop"])
-    else:
-        r = _run(["iptables", "-I", "INPUT", "1", "-s", ip, "-j", "DROP", "-m", "comment", "--comment", "sentinel-block"])
+
     data = _load_blocks()
-    if ip not in data["ips"]:
-        data["ips"].append(ip)
-        _save_blocks(data)
-    _audit("block_ip", {"ip": ip, "reason": reason, "backend": b, "result": r}, ok=r.get("ok", False))
-    return {"ok": r.get("ok", False), "ip": ip, "backend": b, "applied": True, "detail": r}
+    if not data.get("enabled", True):
+        return {"ok": False, "error": "firewall managed plane disabled — enable first"}
+
+    total = len(data.get("ips") or []) + len(data.get("cidrs") or [])
+    already = norm in (data.get("ips") or []) or norm in (data.get("cidrs") or [])
+    if not already and total >= _max_blocks():
+        return {"ok": False, "error": f"max_blocks {_max_blocks()} reached"}
+
+    ready = ensure_backend_ready()
+    if not ready.get("ok"):
+        return {"ok": False, "error": "backend not ready", "detail": ready}
+
+    if b == "nft":
+        fam = "ip6" if ":" in norm.split("/")[0] else "ip"
+        r = _run(["nft", "insert", "rule", "inet", "sentinel", "input", fam, "saddr", norm, "drop", "comment", "sentinel"])
+    else:
+        r = _run(["iptables", "-I", "INPUT", "1", "-s", norm, "-j", "DROP", "-m", "comment", "--comment", "sentinel-block"])
+
+    if kind == "cidr":
+        if norm not in data["cidrs"]:
+            data["cidrs"].append(norm)
+    else:
+        if norm not in data["ips"]:
+            data["ips"].append(norm)
+    _save_blocks(data)
+    _audit("block", {"target": norm, "kind": kind, "reason": reason, "backend": b, "source": source, "result": r}, ok=r.get("ok", False))
+    return {"ok": r.get("ok", False), "target": norm, "kind": kind, "backend": b, "applied": True, "detail": r, "source": source}
 
 
-def unblock_ip(ip: str, confirm: bool = False) -> dict:
-    ip = (ip or "").strip()
+def unblock_ip(target: str, confirm: bool = False) -> dict:
+    try:
+        kind, norm = _parse_target(target)
+    except ValueError:
+        norm = (target or "").strip()
+        kind = "ip"
+        if not norm:
+            return {"ok": False, "error": "empty target"}
+
     if not confirm:
-        return {"ok": True, "dry_run": True, "would": f"unblock {ip}"}
+        return {"ok": True, "dry_run": True, "would": f"unblock {norm}"}
+
     b = backend()
     results = []
     if b == "iptables":
-        for _ in range(5):
-            r = _run(["iptables", "-D", "INPUT", "-s", ip, "-j", "DROP"])
+        for _ in range(8):
+            r = _run(["iptables", "-D", "INPUT", "-s", norm, "-j", "DROP"])
             results.append(r)
             if not r["ok"]:
                 break
     elif b == "nft":
-        results.append(_run(["nft", "list", "table", "inet", "sentinel"]))
+        results.append({"ok": True, "note": "removed from managed list"})
+
     data = _load_blocks()
-    data["ips"] = [x for x in data.get("ips") or [] if x != ip]
+    data["ips"] = [x for x in data.get("ips") or [] if x != norm]
+    data["cidrs"] = [x for x in data.get("cidrs") or [] if x != norm]
     _save_blocks(data)
-    _audit("unblock_ip", {"ip": ip, "results": results})
-    return {"ok": True, "ip": ip, "applied": True, "note": "removed from managed list; verify with status"}
+    _audit("unblock", {"target": norm, "kind": kind, "results": results})
+    return {"ok": True, "target": norm, "applied": True, "backend": b}
 
 
 def allow_port(port: int, proto: str = "tcp", confirm: bool = False) -> dict:
@@ -207,11 +291,11 @@ def allow_port(port: int, proto: str = "tcp", confirm: bool = False) -> dict:
     b = backend()
     if b == "none":
         return {"ok": False, "error": "no firewall backend"}
+    ensure_backend_ready()
     if b == "iptables":
         r = _run(["iptables", "-I", "INPUT", "1", "-p", proto, "--dport", str(port), "-j", "ACCEPT", "-m", "comment", "--comment", "sentinel-allow-port"])
     else:
-        _run(["nft", "add", "table", "inet", "sentinel"])
-        r = _run(["nft", "insert", "rule", "inet", "sentinel", "input", proto, "dport", str(port), "accept"])
+        r = _run(["nft", "insert", "rule", "inet", "sentinel", "input", proto, "dport", str(port), "accept", "comment", "sentinel"])
     data = _load_blocks()
     key = f"{proto}/{port}"
     if key not in (data.get("ports_allow") or []):
@@ -226,31 +310,41 @@ def deny_port(port: int, proto: str = "tcp", confirm: bool = False) -> dict:
         port = int(port)
     except Exception:
         return {"ok": False, "error": "bad port"}
+    if port < 1 or port > 65535:
+        return {"ok": False, "error": "port out of range"}
+    proto = (proto or "tcp").lower()
     if not confirm:
         return {"ok": True, "dry_run": True, "would": f"deny {proto}/{port} INPUT", "backend": backend()}
     b = backend()
     if b == "none":
         return {"ok": False, "error": "no firewall backend"}
+    ensure_backend_ready()
     if b == "iptables":
         r = _run(["iptables", "-I", "INPUT", "1", "-p", proto, "--dport", str(port), "-j", "DROP", "-m", "comment", "--comment", "sentinel-deny-port"])
     else:
-        r = _run(["nft", "insert", "rule", "inet", "sentinel", "input", proto, "dport", str(port), "drop"])
+        r = _run(["nft", "insert", "rule", "inet", "sentinel", "input", proto, "dport", str(port), "drop", "comment", "sentinel"])
     data = _load_blocks()
     key = f"{proto}/{port}"
-    data.setdefault("ports_deny", []).append(key)
-    _save_blocks(data)
+    if key not in (data.get("ports_deny") or []):
+        data.setdefault("ports_deny", []).append(key)
+        _save_blocks(data)
     _audit("deny_port", {"port": port, "proto": proto, "result": r}, ok=r.get("ok", False))
     return {"ok": r.get("ok", False), "port": port, "proto": proto, "applied": True}
 
 
 PROFILES = {
-    "default": {"description": "Track managed blocks only; do not change policy", "actions": []},
+    "default": {"description": "Track managed blocks only; no policy change", "actions": []},
     "hardening": {
-        "description": "Deny common risky inbound (135,139,445,3389) if not needed",
+        "description": "Deny common risky inbound Windows/SMB/RDP ports if not needed",
         "deny_ports": [(135, "tcp"), (139, "tcp"), (445, "tcp"), (3389, "tcp")],
     },
-    "web_server": {"description": "Allow 80/443 tcp", "allow_ports": [(80, "tcp"), (443, "tcp")]},
-    "ssh_only": {"description": "Allow 22 tcp (ensure you have console access first)", "allow_ports": [(22, "tcp")]},
+    "web_server": {"description": "Allow HTTP/HTTPS inbound", "allow_ports": [(80, "tcp"), (443, "tcp")]},
+    "ssh_only": {"description": "Allow SSH 22/tcp — ensure console access first", "allow_ports": [(22, "tcp")]},
+    "lab_lockdown": {
+        "description": "Lab: deny SMB/RDP/RPC + allow SSH",
+        "deny_ports": [(135, "tcp"), (139, "tcp"), (445, "tcp"), (3389, "tcp")],
+        "allow_ports": [(22, "tcp")],
+    },
 }
 
 
@@ -277,6 +371,49 @@ def apply_profile(name: str, confirm: bool = False) -> dict:
     return {"ok": True, "profile": name, "results": results, "applied": True}
 
 
+def apply_managed(confirm: bool = False) -> dict:
+    data = _load_blocks()
+    if not confirm:
+        return {
+            "ok": True,
+            "dry_run": True,
+            "would_apply_ips": list(data.get("ips") or []),
+            "would_apply_cidrs": list(data.get("cidrs") or []),
+            "ports_allow": list(data.get("ports_allow") or []),
+            "ports_deny": list(data.get("ports_deny") or []),
+        }
+    if not data.get("enabled", True):
+        return {"ok": False, "error": "managed plane disabled"}
+    ensure_backend_ready()
+    results = []
+    for ip in list(data.get("ips") or []):
+        results.append(block_ip(ip, confirm=True, reason="apply_managed", source="apply_managed"))
+    for cidr in list(data.get("cidrs") or []):
+        results.append(block_ip(cidr, confirm=True, reason="apply_managed", source="apply_managed"))
+    for key in list(data.get("ports_allow") or []):
+        try:
+            proto, port_s = key.split("/")
+            results.append(allow_port(int(port_s), proto, confirm=True))
+        except Exception as e:
+            results.append({"ok": False, "error": str(e), "key": key})
+    for key in list(data.get("ports_deny") or []):
+        try:
+            proto, port_s = key.split("/")
+            results.append(deny_port(int(port_s), proto, confirm=True))
+        except Exception as e:
+            results.append({"ok": False, "error": str(e), "key": key})
+    _audit("apply_managed", {"count": len(results)})
+    return {"ok": True, "applied": True, "results_count": len(results)}
+
+
+def set_enabled(enabled: bool) -> dict:
+    data = _load_blocks()
+    data["enabled"] = bool(enabled)
+    _save_blocks(data)
+    _audit("set_enabled", {"enabled": bool(enabled)})
+    return {"ok": True, "enabled": bool(enabled)}
+
+
 def backup_rules() -> dict:
     b = backend()
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -288,15 +425,17 @@ def backup_rules() -> dict:
     else:
         return {"ok": False, "error": "no backend"}
     path.write_text(r.get("stdout") or "")
-    _audit("backup_rules", {"path": str(path), "backend": b})
-    return {"ok": True, "path": str(path), "backend": b, "bytes": path.stat().st_size}
+    meta = _data() / f"managed_backup_{ts}.json"
+    meta.write_text(json.dumps(_load_blocks(), indent=2))
+    _audit("backup_rules", {"path": str(path), "meta": str(meta), "backend": b})
+    return {"ok": True, "path": str(path), "meta": str(meta), "backend": b, "bytes": path.stat().st_size}
 
 
 def list_managed() -> dict:
     return {"ok": True, **_load_blocks()}
 
 
-def audit_tail(n: int = 20) -> dict:
+def audit_tail(n: int = 30) -> dict:
     p = _audit_path()
     if not p.exists():
         return {"ok": True, "events": []}
@@ -316,11 +455,15 @@ def doctor() -> dict:
     if st.get("backend") == "none":
         issues.append({"severity": "high", "issue": "No nft/iptables backend on host"})
     elif not st.get("ruleset_ok"):
-        issues.append({"severity": "medium", "issue": "Could not list ruleset (need root?)"})
+        issues.append({"severity": "medium", "issue": "Could not list ruleset (need root/capabilities?)"})
+    if not st.get("enabled", True):
+        issues.append({"severity": "medium", "issue": "Managed firewall plane disabled"})
     return {
         "ok": len([i for i in issues if i["severity"] == "high"]) == 0,
+        "version": VERSION,
         "backend": st.get("backend"),
-        "managed_blocks": st.get("managed_blocks"),
+        "managed_ips": st.get("managed_ips"),
+        "managed_cidrs": st.get("managed_cidrs"),
         "issues": issues,
         "note": st.get("note"),
     }
@@ -332,40 +475,50 @@ def cli(argv: list[str]) -> int:
         return 0
     cmd = argv[0]
     rest = argv[1:]
+    conf = "--confirm" in rest
+    rest_f = [x for x in rest if x != "--confirm"]
+
     if cmd == "status":
         print(json.dumps(status(), indent=2))
     elif cmd == "block":
-        ip = rest[0] if rest else ""
-        conf = "--confirm" in rest
-        print(json.dumps(block_ip(ip, confirm=conf), indent=2))
+        target = rest_f[0] if rest_f else ""
+        print(json.dumps(block_ip(target, confirm=conf), indent=2))
     elif cmd == "unblock":
-        ip = rest[0] if rest else ""
-        conf = "--confirm" in rest
-        print(json.dumps(unblock_ip(ip, confirm=conf), indent=2))
+        target = rest_f[0] if rest_f else ""
+        print(json.dumps(unblock_ip(target, confirm=conf), indent=2))
     elif cmd == "allow-port":
-        port = int(rest[0]) if rest else 0
-        conf = "--confirm" in rest
+        port = int(rest_f[0]) if rest_f else 0
         print(json.dumps(allow_port(port, confirm=conf), indent=2))
     elif cmd == "deny-port":
-        port = int(rest[0]) if rest else 0
-        conf = "--confirm" in rest
+        port = int(rest_f[0]) if rest_f else 0
         print(json.dumps(deny_port(port, confirm=conf), indent=2))
     elif cmd == "profiles":
         print(json.dumps(list_profiles(), indent=2))
     elif cmd == "profile":
-        name = rest[0] if rest else "default"
-        conf = "--confirm" in rest
+        name = rest_f[0] if rest_f else "default"
         print(json.dumps(apply_profile(name, confirm=conf), indent=2))
+    elif cmd == "apply-managed":
+        print(json.dumps(apply_managed(confirm=conf), indent=2))
+    elif cmd == "enable":
+        print(json.dumps(set_enabled(True), indent=2))
+    elif cmd == "disable":
+        print(json.dumps(set_enabled(False), indent=2))
     elif cmd == "backup":
         print(json.dumps(backup_rules(), indent=2))
     elif cmd == "managed":
         print(json.dumps(list_managed(), indent=2))
     elif cmd == "audit":
-        print(json.dumps(audit_tail(30), indent=2))
+        print(json.dumps(audit_tail(40), indent=2))
     elif cmd == "doctor":
         print(json.dumps(doctor(), indent=2))
+    elif cmd == "ensure":
+        print(json.dumps(ensure_backend_ready(), indent=2))
     else:
         print(f"unknown firewall command: {cmd}")
+        print(
+            "usage: status|block|unblock|allow-port|deny-port|profiles|profile|"
+            "apply-managed|enable|disable|backup|managed|audit|doctor|ensure [--confirm]"
+        )
         return 1
     return 0
 
