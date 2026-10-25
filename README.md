@@ -82,7 +82,8 @@ python3 sentinel.py doctor
 | `python3 sentinel.py firewall block <ip>` | Dry-run block (add `--confirm` to apply) |
 | `python3 sentinel.py firewall protect-operator --confirm` | Lockout guard ACCEPT rules |
 | `python3 sentinel.py doctor` | Health check |
-| `python3 sentinel.py pilot` | Full pilot validation (doctor + baselines + probes) |
+| `python3 sentinel.py pilot` | Full pilot validation workflow |
+| `python3 sentinel.py pilot --fix` | Pilot + create missing baselines |
 | `python3 sentinel.py dash` | Local dashboard |
 | `python3 sentinel.py offline flush` | Replay queued alerts |
 
@@ -107,6 +108,7 @@ Cheatsheet: [docs/Sentinel_Firewall_Cheatsheet.md](docs/Sentinel_Firewall_Cheats
 
 - Config: `~/.sentinel/config.json` · Data/logs: `~/.sentinel/`
 - Threat model: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)
+- Pilot workflow: [docs/PILOT.md](docs/PILOT.md)
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
 - Roadmap / phases: [ROADMAP.md](ROADMAP.md) · [PHASE13.md](PHASE13.md)
 

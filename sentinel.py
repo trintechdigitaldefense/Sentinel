@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.5.1"
+__version__ = "3.5.2"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2740,7 +2740,17 @@ def main():
     elif command in ("pilot", "pilot-check"):
         try:
             from modules.pilot_check import run_pilot
-            print(run_pilot(logger))
+            fix = "--fix" in args
+            quiet = "--json" in args
+            result = run_pilot(
+                logger=logger,
+                fix=fix,
+                quiet_json=quiet,
+                deploy_deception_fn=deploy_deception if fix else None,
+                config=config if fix else None,
+            )
+            if quiet:
+                print(json.dumps(result, indent=2, default=str))
         except Exception as e:
             print("[!] pilot:", e)
 

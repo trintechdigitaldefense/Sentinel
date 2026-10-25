@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.5.2] — 2026-10-25
+
+### Pilot validation workflow
+- Full phased pilot: preflight → baselines → deception → detection → service
+- Go/No-Go checklist + `~/.sentinel/data/pilot_report.json`
+- `sentinel pilot --fix` creates missing persistence/SUID baselines
+- docs/PILOT.md on-site runbook
+
 ## [3.5.0] — 2026-10-25
 
 ### Product hygiene
