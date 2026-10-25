@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.10.2"
+__version__ = "3.11.0"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2968,6 +2968,17 @@ def main():
                 print_inventory(r)
         except Exception as e:
             print("[!] visibility:", e)
+
+    elif command in ("field-soak", "soak", "fieldsoak"):
+        try:
+            from modules.field_soak import run_field_soak, print_report
+            confirm = "--confirm" in args or "-y" in args
+            result = run_field_soak(confirm=confirm, logger=logger)
+            print_report(result)
+            if "--json" in args:
+                print(json.dumps(result, indent=2, default=str))
+        except Exception as e:
+            print("[!] field-soak:", e)
 
     elif command in ("pilot", "pilot-check"):
         try:

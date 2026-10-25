@@ -1,7 +1,7 @@
 # SENTINEL
 
 [![CI](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-3.10.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.11.0-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-Authorized%20defensive%20use-red)](LICENSE)
 
 **TrinTech Digital Defense** — continuous host monitoring and early warning for Caribbean SMBs.
@@ -24,16 +24,17 @@
 | **Ops** | Doctor, systemd/service-install, dashboard, backup/restore, Docker |
 
 ```
-  MAIN MENU
+  MAIN MENU (stable)
   ------------------------------------------------------
-   1  START continuous protection
-   4  Deploy deception / canaries
-   5  Integrity baseline (FIM + SUID)
-   8  Detection tools → (SUID, persistence, behavioral, sim)
-  16  Pilot validation
-  17  Doctor
-  18  Firewall tools →
-  19  Ops (PDF, dashboard, cases) →
+   1   START continuous protection
+   4   Deploy deception / canaries
+   5   Integrity baseline (FIM + SUID)
+   8   Detection tools →
+  16   Pilot validation
+  17   Doctor
+  18   Firewall tools →
+  19   Ops (PDF, dashboard, cases) →
+  20   Field soak (friendly site)
 ```
 
 *(Run `python3 sentinel.py` for the full numbered menu.)*
@@ -94,6 +95,7 @@ python3 sentinel.py doctor
 | `python3 sentinel.py siem splunk health` | Test HEC connectivity |
 | `python3 sentinel.py pilot` | Full pilot validation workflow |
 | `python3 sentinel.py pilot --fix` | Pilot + create missing baselines |
+| `python3 sentinel.py field-soak --confirm` | Friendly-site soak (canary/sim/channels) |
 | `python3 sentinel.py sim --list` | Threat-actor simulation scenarios |
 | `python3 sentinel.py sim --scenario all --confirm` | Run defensive detection probes |
 | `python3 sentinel.py dash` | Local dashboard |
@@ -124,6 +126,8 @@ Cheatsheet: [docs/Sentinel_Firewall_Cheatsheet.md](docs/Sentinel_Firewall_Cheats
 - Threat simulation: [docs/THREAT_SIM.md](docs/THREAT_SIM.md)
 - SIEM logging: [docs/SIEM.md](docs/SIEM.md)
 - Splunk HEC: [docs/SPLUNK.md](docs/SPLUNK.md)
+- Field soak: [docs/FIELD_SOAK.md](docs/FIELD_SOAK.md)
+- Sales pack: [docs/SALES_PACK.md](docs/SALES_PACK.md)
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
 - Roadmap / phases: [ROADMAP.md](ROADMAP.md) · [PHASE13.md](PHASE13.md)
 
@@ -152,3 +156,13 @@ GitHub Actions runs on every push/PR to `main`: compile → ruff (critical) → 
 ## License
 
 Authorized defensive use only — **TrinTech Digital Defense**. See [LICENSE](LICENSE).
+
+
+## Product focus (v3.11)
+
+Feature set is **frozen for pilot** unless a paid engagement requires a change:
+
+1. Field soak on 1–2 friendly sites  
+2. Sales pack + fixed pilot price ([docs/SALES_PACK.md](docs/SALES_PACK.md))  
+3. Multi-host MSP polish only after pilot demand  
+

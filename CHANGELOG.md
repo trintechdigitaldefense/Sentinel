@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.11.0] — 2026-10-25
+
+### Pilot readiness freeze
+- `field-soak` command + docs/FIELD_SOAK.md (canary, sim, WhatsApp/Splunk channel check)
+- docs/SALES_PACK.md — one-page runbook + fixed pilot pricing guide
+- README version badge stabilized to 3.11.0; menu notes field soak
+- Explicit product focus: no feature sprawl until pilots complete
+
 ## [3.10.2] — 2026-10-25
 
 ### Splunk HEC integration
