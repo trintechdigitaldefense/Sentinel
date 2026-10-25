@@ -42,6 +42,9 @@ Continuous host monitoring and early warning for your server — canaries, shell
 
 ## Client go-live runbook (one page)
 
+**Printable PDF:** [SENTINEL_One_Page_Runbook.md](RUNBOOK_ONE_PAGE.md) · [SENTINEL_One_Page_Runbook.pdf](SENTINEL_One_Page_Runbook.pdf)
+
+
 ```text
 1. Written authorization (scope: host IP, monitoring only)
 2. git clone + python3 setup.py
