@@ -65,7 +65,7 @@ def collect_full() -> dict:
         "ts": datetime.now(timezone.utc).isoformat(),
         "host": socket.gethostname(),
         "product": "SENTINEL",
-        "version": "3.11.1",
+        "version": "3.12.1",
     }
     try:
         out["local_ip"] = socket.gethostbyname(socket.gethostname())
@@ -138,6 +138,16 @@ def collect_full() -> dict:
     except Exception as e:
         out["firewall"] = {"error": str(e)}
 
+    # Go-live report (last host setup)
+    gl = _data() / "go_live_report.json"
+    if gl.exists():
+        try:
+            out["go_live"] = json.loads(gl.read_text())
+        except Exception as e:
+            out["go_live"] = {"error": str(e)}
+    else:
+        out["go_live"] = {"ok": False, "note": "run: python3 sentinel.py go-live"}
+
     # Config flags (no secrets)
     cfg = _cfg()
     out["config_flags"] = {
@@ -146,6 +156,7 @@ def collect_full() -> dict:
         "deception": bool((cfg.get("deception") or {}).get("active", True)),
         "dashboard_control": bool((cfg.get("dashboard") or {}).get("allow_control", True)),
     }
+    out["control"] = bool((cfg.get("dashboard") or {}).get("allow_control", True))
     return out
 
 
@@ -169,16 +180,34 @@ def _html(token: str, data: dict) -> str:
             .replace('"', "&quot;")
         )
 
+    control = bool(data.get("control", True))
+    go_live = data.get("go_live") or {}
     crit_rows = ""
     for it in open_crit[:15]:
+        aid = esc(it.get("id"))
+        ack_cell = (
+            f"<button class='btn btn-sm' onclick=\"ackCritical('{aid}')\">ACK</button>"
+            if control
+            else "<span class='muted'>view-only</span>"
+        )
         crit_rows += (
-            f"<tr><td><code>{esc(it.get('id'))}</code></td>"
+            f"<tr><td><code>{aid}</code></td>"
             f"<td class='crit'>{esc(it.get('type'))}</td>"
             f"<td>{esc(it.get('count'))}</td>"
-            f"<td>{esc(str(it.get('last_seen') or '')[:19])}</td></tr>"
+            f"<td>{esc(str(it.get('last_seen') or '')[:19])}</td>"
+            f"<td>{ack_cell}</td></tr>"
         )
     if not crit_rows:
-        crit_rows = "<tr><td colspan='4' class='muted'>No open critical alerts</td></tr>"
+        crit_rows = "<tr><td colspan='5' class='muted'>No open critical alerts</td></tr>"
+
+    gl_ok = go_live.get("ok")
+    gl_badge = "on" if gl_ok else "warn"
+    gl_label = "READY" if gl_ok else ("PARTIAL" if go_live.get("steps") else "NOT RUN")
+    gl_steps = go_live.get("steps") or []
+    gl_summary = ", ".join(
+        f"{s.get('step')}={'ok' if s.get('ok') else 'fail'}"
+        for s in gl_steps[:6]
+    ) or go_live.get("note") or "—"
 
     alert_rows = ""
     for a in recent[:12]:
@@ -243,6 +272,8 @@ th {{ color:var(--muted); font-weight:600; font-size:.72rem; text-transform:uppe
 }}
 .btn.secondary {{ background:#334155; }}
 .btn:hover {{ filter:brightness(1.08); }}
+.btn-sm {{ padding:.25rem .55rem; font-size:.75rem; background:#be123c; }}
+.btn:disabled {{ opacity:.5; cursor:not-allowed; }}
 .section {{ margin-top:1.25rem; }}
 footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:center; }}
 </style>
@@ -275,11 +306,19 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
   </div>
 
   <div class="section card">
-    <h2>Open critical alerts</h2>
+    <h2>Open critical alerts {'· control' if control else '· view-only'}</h2>
     <table>
-      <tr><th>ID</th><th>Type</th><th>Count</th><th>Last seen</th></tr>
+      <tr><th>ID</th><th>Type</th><th>Count</th><th>Last seen</th><th>Action</th></tr>
       {crit_rows}
     </table>
+    {('<div class="actions"><button class="btn secondary" onclick="ackAllCritical()">ACK all critical</button></div>' if control and open_crit else '')}
+  </div>
+
+  <div class="section card">
+    <h2>Host go-live status</h2>
+    <p><span class="badge {gl_badge}">{gl_label}</span>
+       <span class="muted"> last setup · run <code>python3 sentinel.py go-live</code> on host</span></p>
+    <p class="mono">{esc(gl_summary)}</p>
   </div>
 
   <div class="section card">
@@ -302,8 +341,30 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
 </div>
 <footer>TrinTech Digital Defense · Authorized defensive use only · Dashboard token required</footer>
 <script>
-// soft auto-refresh every 30s
-setTimeout(function(){{ location.href = location.pathname + location.search; }}, 30000);
+const TOKEN = "{esc(token)}";
+async function ackCritical(id) {{
+  if (!confirm("Acknowledge critical " + id + "?")) return;
+  const r = await fetch("/api/critical/ack?token=" + encodeURIComponent(TOKEN), {{
+    method: "POST",
+    headers: {{"Content-Type": "application/json"}},
+    body: JSON.stringify({{id: id}})
+  }});
+  const j = await r.json();
+  if (!r.ok || !j.ok) {{ alert("ACK failed: " + (j.error || r.status)); return; }}
+  location.reload();
+}}
+async function ackAllCritical() {{
+  if (!confirm("Acknowledge ALL open critical alerts?")) return;
+  const r = await fetch("/api/critical/ack-all?token=" + encodeURIComponent(TOKEN), {{
+    method: "POST",
+    headers: {{"Content-Type": "application/json"}},
+    body: "{{}}"
+  }});
+  const j = await r.json();
+  if (!r.ok || !j.ok) {{ alert("ACK all failed: " + (j.error || r.status)); return; }}
+  location.reload();
+}}
+setTimeout(function(){{ location.href = location.pathname + location.search; }}, 45000);
 </script>
 </body>
 </html>
@@ -335,23 +396,71 @@ class _Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _read_json_body(self) -> dict:
+        try:
+            n = int(self.headers.get("Content-Length") or 0)
+        except Exception:
+            n = 0
+        raw = self.rfile.read(n) if n > 0 else b"{}"
+        try:
+            return json.loads(raw.decode("utf-8") or "{}")
+        except Exception:
+            return {}
+
     def do_GET(self):
         if not self._auth_ok():
             self._send(401, b"Unauthorized - add ?token=...")
             return
         path = urlparse(self.path).path
         data = collect_full()
+        data["control"] = bool(self.allow_control)
         try:
             from modules.dashboard_enrich import enrich
             enrich(data)
         except Exception:
             pass
+        if path in ("/api/critical", "/api/critical/"):
+            body = json.dumps(data.get("critical") or {}, indent=2, default=str).encode()
+            self._send(200, body, "application/json")
+            return
+        if path in ("/api/go-live", "/api/golive"):
+            body = json.dumps(data.get("go_live") or {}, indent=2, default=str).encode()
+            self._send(200, body, "application/json")
+            return
         if path.startswith("/api/"):
             body = json.dumps(data, indent=2, default=str).encode()
             self._send(200, body, "application/json")
             return
         html = _html(self.token, data)
         self._send(200, html.encode("utf-8"))
+
+    def do_POST(self):
+        if not self._auth_ok():
+            self._send(401, b'{"ok":false,"error":"unauthorized"}', "application/json")
+            return
+        path = urlparse(self.path).path
+        if not self.allow_control:
+            self._send(403, b'{"ok":false,"error":"view-only mode"}', "application/json")
+            return
+        body_in = self._read_json_body()
+        try:
+            from modules.critical_alerts import ack, ack_all
+            if path.rstrip("/").endswith("ack-all") or path.endswith("/api/critical/ack-all"):
+                result = ack_all(actor="dashboard")
+            elif "ack" in path:
+                aid = body_in.get("id") or body_in.get("alert_id") or ""
+                if not aid:
+                    self._send(400, b'{"ok":false,"error":"id required"}', "application/json")
+                    return
+                result = ack(str(aid), actor="dashboard")
+            else:
+                self._send(404, b'{"ok":false,"error":"unknown endpoint"}', "application/json")
+                return
+            payload = json.dumps(result, default=str).encode()
+            self._send(200 if result.get("ok") else 400, payload, "application/json")
+        except Exception as e:
+            err = json.dumps({"ok": False, "error": str(e)}).encode()
+            self._send(500, err, "application/json")
 
 
 def start_dashboard(port: int | None = None, bind: str = "127.0.0.1"):

@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.12.1] — 2026-10-25
+
+### Dashboard
+- Critical alert **ACK / ACK all** from the UI (control mode)
+- **Go-live status** panel from last `go-live` report
+- API: `GET /api/critical`, `GET /api/go-live`, `POST /api/critical/ack`, `POST /api/critical/ack-all`
+- View-only mode respects `dashboard.allow_control: false`
+
 ## [3.12.0] — 2026-10-25
 
 ### Host operational setup
