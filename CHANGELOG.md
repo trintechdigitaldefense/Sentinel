@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.6.1] — 2026-10-25
+
+### Menu + CLI wiring
+- Interactive menu expanded: Detection, Firewall, Ops submenus; Pilot + Doctor on main
+- Wired `firewall` / `fw` and `cases` CLI into sentinel.py (were missing)
+- Help text lists firewall, cases, pilot, sim
+
 ## [3.5.2] — 2026-10-25
 
 ### Pilot validation workflow

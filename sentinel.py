@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.6.0"
+__version__ = "3.6.1"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -1944,7 +1944,7 @@ def print_banner():
 
 
 def interactive_menu(config=None, logger=None):
-    """Numbered menu — option 1 = start + continuous hunt."""
+    """Numbered menu — full feature surface, submenus for advanced tools."""
     import subprocess
     import sys as _sys
     from pathlib import Path as _Path
@@ -1965,28 +1965,70 @@ def interactive_menu(config=None, logger=None):
         run("hunt")
 
     main_items = [
-        ("1",  "START continuous protection (scan once + stay hunting)", ("__continuous__",)),
+        ("1",  "START continuous protection (scan + hunt)", ("__continuous__",)),
         ("2",  "Quick network scan (one-shot)", ("scan",)),
         ("3",  "Hunt only (continuous) — Ctrl+C to stop", ("hunt",)),
         ("4",  "Deploy deception / canary traps", ("deception",)),
-        ("5",  "Integrity baseline (FIM)", ("integrity",)),
+        ("5",  "Integrity baseline (FIM + SUID)", ("integrity",)),
         ("6",  "Scan suspicious processes", ("processes",)),
         ("7",  "Show full report", ("report",)),
-        ("8",  "Phase 4 tools (baseline, Caribbean, playbooks...)", ("__phase4__",)),
+        ("8",  "Detection tools →", ("__detect__",)),
         ("9",  "System info", ("info",)),
         ("10", "View alerts", ("alerts",)),
         ("11", "Hardening audit", ("hardening",)),
         ("12", "Status", ("status",)),
-        ("13", "Always-on service (systemd)", ("service-install",)),
+        ("13", "Always-on service (install)", ("service-install",)),
         ("14", "Service status", ("service-status",)),
-        ("15", "Schedule WhatsApp digest (daily cron)", ("digest-cron",)),
+        ("15", "Schedule WhatsApp digest", ("digest-cron",)),
+        ("16", "Pilot validation workflow", ("pilot",)),
+        ("17", "Doctor (health check)", ("doctor",)),
+        ("18", "Firewall tools →", ("__firewall__",)),
+        ("19", "Ops (PDF, dashboard, cases, sim) →", ("__ops__",)),
+        ("20", "Phase 4 advanced tools →", ("__phase4__",)),
         ("0",  "Exit", ("__exit__",)),
+    ]
+
+    detect_items = [
+        ("1", "SUID / SGID inventory check", ("suid",)),
+        ("2", "Persistence baseline", ("persistence-baseline",)),
+        ("3", "Persistence check (drift)", ("persistence",)),
+        ("4", "Behavioral reverse-shell scan", ("behavioral",)),
+        ("5", "Realtime FIM watch (inotify)", ("watch",)),
+        ("6", "Canary check", ("canary",)),
+        ("7", "Threat-actor simulation (list)", ("sim", "--list")),
+        ("8", "Threat-actor simulation (all, needs confirm)", ("__sim_all__",)),
+        ("0", "Back to main menu", ("__back__",)),
+    ]
+
+    firewall_items = [
+        ("1", "Firewall status", ("firewall", "status")),
+        ("2", "Doctor (firewall plane)", ("firewall", "doctor")),
+        ("3", "Show operator IPs (lockout guard)", ("firewall", "operator-ips")),
+        ("4", "Protect operator (dry-run)", ("firewall", "protect-operator")),
+        ("5", "Protect operator APPLY", ("__fw_protect__",)),
+        ("6", "List profiles", ("firewall", "profiles")),
+        ("7", "Block IP dry-run example", ("firewall", "block", "203.0.113.50")),
+        ("8", "Audit tail", ("firewall", "audit")),
+        ("0", "Back to main menu", ("__back__",)),
+    ]
+
+    ops_items = [
+        ("1", "PDF report", ("pdf",)),
+        ("2", "Client plain-language report", ("client-report",)),
+        ("3", "Dashboard (local UI)", ("dashboard",)),
+        ("4", "Dashboard URL + token", ("dashboard-url",)),
+        ("5", "Cases — list open", ("cases", "list")),
+        ("6", "Offline alert queue status", ("offline",)),
+        ("7", "Offline queue flush", ("offline", "flush")),
+        ("8", "Evidence pack (24h)", ("evidence", "--hours", "24")),
+        ("9", "Pilot --fix (create baselines)", ("pilot", "--fix")),
+        ("0", "Back to main menu", ("__back__",)),
     ]
 
     p4_items = [
         ("1", "Phase 4 self-check", ("phase4",)),
         ("2", "Build behavioral baseline", ("baseline",)),
-        ("3", "Check vs baseline (anomalies)", ("baseline", "check")),
+        ("3", "Check vs baseline", ("baseline", "check")),
         ("4", "Caribbean / T&T threat pack", ("caribbean",)),
         ("5", "List response playbooks", ("playbook",)),
         ("6", "Export evidence pack (24h)", ("evidence", "--hours", "24")),
@@ -2026,8 +2068,22 @@ def interactive_menu(config=None, logger=None):
             if args[0] == "__phase4__":
                 loop(p4_items, "PHASE 4 — Advanced tools")
                 continue
+            if args[0] == "__detect__":
+                loop(detect_items, "DETECTION TOOLS")
+                continue
+            if args[0] == "__firewall__":
+                loop(firewall_items, "HOST FIREWALL")
+                continue
+            if args[0] == "__ops__":
+                loop(ops_items, "OPS — Reports & control")
+                continue
             if args[0] == "__continuous__":
                 run_continuous_defense()
+            elif args[0] == "__sim_all__":
+                print(f"  {C.YELLOW}Requires confirmation — running sim --scenario all --confirm{C.RESET}")
+                run("sim", "--scenario", "all", "--confirm")
+            elif args[0] == "__fw_protect__":
+                run("firewall", "protect-operator", "--confirm")
             else:
                 run(*args)
             try:
@@ -3073,7 +3129,28 @@ def main():
         except Exception as e:
             print("[!] dashboard-url:", e)
 
+    elif command in ("firewall", "fw"):
+        try:
+            from modules.firewall import cli as fw_cli
+            raise SystemExit(fw_cli(args))
+        except SystemExit as e:
+            raise
+        except Exception as e:
+            print("[!] firewall:", e)
+
+    elif command in ("cases", "case"):
+        try:
+            from modules.cases_cli import main as cases_main
+            # cases_cli expects subcommand first (list, create, ...)
+            sub = args if args else ["list"]
+            raise SystemExit(cases_main(sub))
+        except SystemExit:
+            raise
+        except Exception as e:
+            print("[!] cases:", e)
+
     elif command == "uninstall":
+
         uninstall_sentinel(logger)
     else:
         logger.error(f"{C.RED}✗ Unknown command: {command}{C.RESET}")

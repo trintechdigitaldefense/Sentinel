@@ -1,7 +1,7 @@
 # SENTINEL
 
 [![CI](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-3.6.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.6.1-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-Authorized%20defensive%20use-red)](LICENSE)
 
 **TrinTech Digital Defense** — continuous host monitoring and early warning for Caribbean SMBs.
@@ -26,14 +26,14 @@
 ```
   MAIN MENU
   ------------------------------------------------------
-   1  START continuous protection (scan once + stay hunting)
-   2  Quick network scan (one-shot)
-   3  Hunt only (continuous)
-   4  Deploy deception / canary traps
-   5  Integrity baseline (FIM)
-   ...
-  13  Always-on service
-  15  Schedule WhatsApp digest
+   1  START continuous protection
+   4  Deploy deception / canaries
+   5  Integrity baseline (FIM + SUID)
+   8  Detection tools → (SUID, persistence, behavioral, sim)
+  16  Pilot validation
+  17  Doctor
+  18  Firewall tools →
+  19  Ops (PDF, dashboard, cases) →
 ```
 
 *(Run `python3 sentinel.py` for the full numbered menu.)*
