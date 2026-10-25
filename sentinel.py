@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.13.2"
+__version__ = "3.13.3"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -3307,17 +3307,94 @@ def main():
         try:
             import time as _time
             from modules.realtime_threat import snapshot
+
+            PRESETS = {"fast": 5, "normal": 10, "slow": 30, "hunt": 60, "idle": 120}
             interval = 10
-            for a in args:
-                if a.isdigit():
-                    interval = max(5, int(a))
-            print(f"[*] Real-time monitor every {interval}s — Ctrl+C to stop")
+            once = False
+            as_json = False
+            emit = False
+            quiet = False
+            show_help = False
+            i = 0
+            while i < len(args):
+                a = args[i]
+                al = a.lower()
+                if al in ("-h", "--help", "help"):
+                    show_help = True
+                elif al in ("--once", "-1", "once"):
+                    once = True
+                elif al in ("--json", "-j"):
+                    as_json = True
+                elif al in ("--emit", "--alert", "--alerts"):
+                    emit = True
+                elif al in ("--quiet", "-q"):
+                    quiet = True
+                elif al in ("--interval", "-i") and i + 1 < len(args):
+                    i += 1
+                    try:
+                        interval = max(3, int(args[i]))
+                    except ValueError:
+                        print("[!] --interval needs an integer seconds value")
+                        return
+                elif al.startswith("--interval="):
+                    try:
+                        interval = max(3, int(al.split("=", 1)[1]))
+                    except ValueError:
+                        print("[!] --interval needs an integer seconds value")
+                        return
+                elif al.startswith("-i") and len(al) > 2 and al[2:].isdigit():
+                    interval = max(3, int(al[2:]))
+                elif al in PRESETS:
+                    interval = PRESETS[al]
+                elif a.isdigit():
+                    interval = max(3, int(a))
+                i += 1
+
+            if show_help:
+                print("""
+SENTINEL real-time monitor
+  python3 sentinel.py monitor [options] [interval|preset]
+
+Options:
+  -i, --interval N   Poll every N seconds (min 3, default 10)
+  --once / -1        Single snapshot then exit
+  --json / -j        JSON lines (one object per poll)
+  --emit             Forward shell hits through alert path when possible
+  --quiet / -q       Only print when threats > 0 or level != CLEAR
+  -h, --help         This help
+
+Presets:
+  fast=5s   normal=10s   slow=30s   hunt=60s   idle=120s
+
+Examples:
+  python3 sentinel.py monitor
+  python3 sentinel.py monitor 15
+  python3 sentinel.py monitor --interval 20
+  python3 sentinel.py monitor -i 5 --json
+  python3 sentinel.py monitor fast
+  python3 sentinel.py monitor slow --quiet
+  python3 sentinel.py monitor --once
+""")
+                return
+
+            if not as_json:
+                print(f"[*] Real-time monitor every {interval}s — Ctrl+C to stop"
+                      + (" (quiet)" if quiet else "")
+                      + (" (emit alerts)" if emit else ""))
             while True:
-                snap = snapshot(emit_alerts=False)
-                print(f"{snap.get('ts','')[:19]}  level={snap.get('level')}  "
-                      f"threats={snap.get('threat_count')}  score={snap.get('score')}")
-                for t in (snap.get("threats") or [])[:5]:
-                    print(f"   · {t.get('severity')} {t.get('type')} {str(t.get('cmd') or t.get('detail') or '')[:80]}")
+                snap = snapshot(emit_alerts=emit, send_alert=None, logger=logger)
+                level = snap.get("level") or "CLEAR"
+                count = int(snap.get("threat_count") or 0)
+                if as_json:
+                    print(json.dumps(snap, default=str))
+                elif not quiet or count > 0 or level not in ("CLEAR", "WATCH"):
+                    print(f"{str(snap.get('ts',''))[:19]}  level={level}  "
+                          f"threats={count}  score={snap.get('score')}")
+                    for t in (snap.get("threats") or [])[:8]:
+                        print(f"   · {t.get('severity')} {t.get('type')} "
+                              f"{str(t.get('cmd') or t.get('detail') or '')[:80]}")
+                if once:
+                    break
                 _time.sleep(interval)
         except KeyboardInterrupt:
             print("\n[+] Monitor stopped")

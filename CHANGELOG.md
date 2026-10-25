@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.13.3] — 2026-10-25
+
+### CLI monitor interval options
+- `monitor --interval N` / `-i N` (min 3s)
+- Presets: `fast` (5), `normal` (10), `slow` (30), `hunt` (60), `idle` (120)
+- `--once`, `--json`, `--quiet`, `--emit`, `--help`
+
+
 ## [3.13.2] — 2026-10-25
 
 ### Real-time monitoring + restored controls toggle
