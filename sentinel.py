@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.5.0"
+__version__ = "3.5.1"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2193,7 +2193,7 @@ def main():
                 for alert in alerts[-50:]:
                     at = alert.get("type", "")
                     severity = C.RED if at in ("NEW_DEVICE", "DECOY_MODIFIED", "FIM_MODIFIED",
-                                                "SUSPICIOUS_PROCESS", "IP_BLOCKED", "FIM_DELETED", "NEW_SUID", "FIM_MODE_CHANGE",
+                                                "SUSPICIOUS_PROCESS", "IP_BLOCKED", "FIM_DELETED", "NEW_SUID", "FIM_MODE_CHANGE", "BEHAVIORAL_REVERSE_SHELL", "AUTHORIZED_KEYS_DRIFT", "LD_PRELOAD_CREATED",
                                                 "LOG_TAMPERING", "OUTBOUND_SUSPICIOUS_PORT",
                                                 "SECURITY_REGRESSION") else C.YELLOW
                     if at == "AUTH_FAILURE":
@@ -2736,6 +2736,13 @@ def main():
                 print(deploy_smb_canary())
         except Exception as e:
             print("[!] smb-canary:", e)
+
+    elif command in ("pilot", "pilot-check"):
+        try:
+            from modules.pilot_check import run_pilot
+            print(run_pilot(logger))
+        except Exception as e:
+            print("[!] pilot:", e)
 
     elif command in ("doctor", "health", "check"):
         try:

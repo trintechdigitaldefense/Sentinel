@@ -93,7 +93,7 @@ def maybe_open_case_from_engine_alert(alert_type: str, details: Any, actor: str 
 
     r = cases.create_case(
         title=title[:300],
-        severity="critical" if at in {"REVERSE_SHELL", "AGENT_REVERSE_SHELL", "RANSOMWARE"} else "high",
+        severity="critical" if at in {"REVERSE_SHELL", "AGENT_REVERSE_SHELL", "BEHAVIORAL_REVERSE_SHELL", "NEW_SUID", "LD_PRELOAD_CREATED", "RANSOMWARE"} else "high",
         source="sentinel_engine",
         source_event_id=key[:120],
         summary=detail_s,

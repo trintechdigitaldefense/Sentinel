@@ -82,6 +82,7 @@ python3 sentinel.py doctor
 | `python3 sentinel.py firewall block <ip>` | Dry-run block (add `--confirm` to apply) |
 | `python3 sentinel.py firewall protect-operator --confirm` | Lockout guard ACCEPT rules |
 | `python3 sentinel.py doctor` | Health check |
+| `python3 sentinel.py pilot` | Full pilot validation (doctor + baselines + probes) |
 | `python3 sentinel.py dash` | Local dashboard |
 | `python3 sentinel.py offline flush` | Replay queued alerts |
 

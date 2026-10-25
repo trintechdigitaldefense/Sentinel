@@ -10,7 +10,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
-VERSION = "2.6.2"
+VERSION = "2.7.0"
 
 def _home() -> Path:
     return Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel"))
@@ -230,6 +230,72 @@ def check_host() -> dict:
     except Exception as e:
         return _warn("host", str(e))
 
+
+def check_persistence() -> dict:
+    p = _data() / "persistence_baseline.json"
+    if not p.exists():
+        return _warn("persistence", "no baseline — run: python3 sentinel.py persistence-baseline")
+    try:
+        d = json.loads(p.read_text())
+        n = int(d.get("count") or len(d.get("entries") or {}))
+        return _ok("persistence", f"baseline {n} entries")
+    except Exception as e:
+        return _fail("persistence", str(e))
+
+
+def check_suid() -> dict:
+    p = _data() / "suid_baseline.json"
+    if not p.exists():
+        return _warn("suid", "no SUID baseline — run: python3 sentinel.py integrity")
+    try:
+        d = json.loads(p.read_text())
+        n = int(d.get("count") or len(d.get("binaries") or {}))
+        return _ok("suid", f"baseline {n} setuid/setgid binaries")
+    except Exception as e:
+        return _fail("suid", str(e))
+
+
+def check_detection_modules() -> dict:
+    root = Path(__file__).resolve().parent
+    need = [
+        "behavioral_shell.py", "persistence_hunt.py", "fim_suid.py",
+        "fim_realtime.py", "firewall.py", "alerting.py",
+    ]
+    missing = [n for n in need if not (root / n).exists()]
+    if missing:
+        return _fail("detection_mods", f"missing: {', '.join(missing)}")
+    return _ok("detection_mods", f"{len(need)} core detection modules present")
+
+
+def check_firewall_plane() -> dict:
+    try:
+        from modules.firewall import status as fw_status
+        st = fw_status()
+        if not st.get("lockout_guard"):
+            return _warn("firewall", "lockout_guard missing — update Sentinel")
+        backend = st.get("backend") or "none"
+        if backend == "none":
+            return _warn("firewall", "no nft/iptables (OK on Termux; need root host for blocks)")
+        return _ok("firewall", f"backend={backend} lockout_guard=on ipv6={st.get('ipv6')}")
+    except Exception as e:
+        return _warn("firewall", f"unavailable: {e}")
+
+
+def check_offline_queue() -> dict:
+    p = _data() / "offline_queue.jsonl"
+    if not p.exists():
+        return _ok("offline_queue", "empty (no backlog)")
+    try:
+        n = sum(1 for ln in p.read_text().splitlines() if ln.strip())
+        if n > 100:
+            return _warn("offline_queue", f"{n} queued alerts — run: python3 sentinel.py offline flush")
+        if n > 0:
+            return _ok("offline_queue", f"{n} queued (will flush when channels up)")
+        return _ok("offline_queue", "empty")
+    except Exception as e:
+        return _warn("offline_queue", str(e))
+
+
 def run_doctor(verbose: bool = True) -> dict:
     checks = [
         check_host(),
@@ -244,11 +310,16 @@ def run_doctor(verbose: bool = True) -> dict:
         check_heartbeat(),
         check_service(),
         check_whatsapp(),
+        check_persistence(),
+        check_suid(),
+        check_detection_modules(),
+        check_firewall_plane(),
+        check_offline_queue(),
     ]
     ok = sum(1 for c in checks if c["status"] == "OK")
     warn = sum(1 for c in checks if c["status"] == "WARN")
     fail = sum(1 for c in checks if c["status"] == "FAIL")
-    ready = fail == 0 and ok >= 6
+    ready = fail == 0 and ok >= 8
     result = {
         "ok": fail == 0,
         "client_ready": ready and warn <= 4,
@@ -274,6 +345,10 @@ def run_doctor(verbose: bool = True) -> dict:
                 result["next"].append("python3 sentinel.py service-install")
             elif c["name"] == "heartbeat":
                 result["next"].append("python3 sentinel.py hunt   # or service-install")
+            elif c["name"] == "persistence":
+                result["next"].append("python3 sentinel.py persistence-baseline")
+            elif c["name"] == "suid":
+                result["next"].append("python3 sentinel.py integrity")
     seen = set()
     nxt = []
     for x in result["next"]:
