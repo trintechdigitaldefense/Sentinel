@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.5.0] — 2026-10-25
+
+### Product hygiene
+- README rewrite: feature matrix, menu preview, full CLI table, architecture
+- docs/THREAT_MODEL.md — SMB-focused control mapping
+- CI: ruff critical checks, module compile, firewall smoke, pytest
+- tests/test_persistence_behavioral.py — persistence, SUID, behavioral, lockout
+
 ## [3.4.0] — 2026-10-25
 
 ### Persistence expansion + behavioral shells + self-FIM
@@ -53,10 +61,6 @@
 ## 3.5.1 — 2026-10-24
 
 Dual-connector pilot wire
-
-## 3.5.0 — 2026-10-24
-
-Phase 11 — Correlation · AI assist · gated response
 
 ## 3.0.0 — 2026-10-15
 
