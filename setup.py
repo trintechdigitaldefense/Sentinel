@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "3.13.4"
+VERSION = "3.14.0"
 HOME = Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel"))
 CONFIG = HOME / "config.json"
 DATA = HOME / "data"

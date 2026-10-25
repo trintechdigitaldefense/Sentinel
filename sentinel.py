@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.13.4"
+__version__ = "3.14.0"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -206,6 +206,7 @@ def init_config(logger):
             "scan_passwd": True,
             "scan_cron": True,
         },
+        "realtime": {"enabled": true, "emit_on_hunt": true},
         "process_monitor": {
             "active": True,
             "suspicious_commands": ["xmrig", "minerd", "cpuminer", "cspace", "coinhive", "kworkerds"],

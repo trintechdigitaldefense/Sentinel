@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.14.0] — 2026-10-25
+
+### Real-time threat detection (expanded)
+- Detectors: reverse-shell cmdline, behavioral, risky ports, deleted exe, LD_PRELOAD, canary missing/empty, open criticals
+- Hunt cycle emits alerts + critical store on hits
+- CLI `monitor` / dashboard LIVE panel / menu item
+
+
 ## [3.13.4] — 2026-10-25
 
 ### Real-time threat level color coding

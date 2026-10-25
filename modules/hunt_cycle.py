@@ -115,7 +115,7 @@ def run_cycle(
 
     def _rt():
         from modules.realtime_threat import snapshot
-        return snapshot(emit_alerts=False)
+        return snapshot(emit_alerts=True, send_alert=send_alert, logger=logger)
     _run_check("realtime_threat", _rt, errors, checks)
 
     # 2. Core host checks

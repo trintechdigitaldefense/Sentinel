@@ -1,7 +1,7 @@
 # SENTINEL
 
 [![CI](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-3.13.4-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.14.0-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-Authorized%20defensive%20use-red)](LICENSE)
 
 **TrinTech Digital Defense** — continuous host monitoring and early warning for Caribbean SMBs.
