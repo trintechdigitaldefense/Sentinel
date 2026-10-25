@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.8.0"
+__version__ = "3.9.0"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -1969,7 +1969,7 @@ def interactive_menu(config=None, logger=None):
         ("9",  "System info", ("info",)),
         ("10", "View alerts", ("alerts",)),
         ("11", "Hardening audit", ("hardening",)),
-        ("12", "Status", ("status",)),
+        ("12", "Status + ops metrics", ("ops",)),
         ("13", "Always-on service (install)", ("service-install",)),
         ("14", "Service status", ("service-status",)),
         ("15", "Schedule WhatsApp digest", ("digest-cron",)),
@@ -2026,6 +2026,7 @@ def interactive_menu(config=None, logger=None):
         ("7", "Offline queue flush", ("offline", "flush")),
         ("8", "Evidence pack (24h)", ("evidence", "--hours", "24")),
         ("9", "Pilot --fix (create baselines)", ("pilot", "--fix")),
+        ("10", "Ops status (hunt/alerts/service)", ("ops",)),
         ("0", "Back to main menu", ("__back__",)),
     ]
 
@@ -2184,54 +2185,20 @@ def main():
         logger.info(f"{C.CYAN}[*]{C.RESET} Persistence hunting — Ctrl+C to stop")
         interval = config.get("persistence", {}).get("monitor_interval", 60)
         try:
+            from modules.hunt_cycle import run_cycle
             while True:
-                # --- Sentinel hooks (auto) ---
-                try:
-                    from modules.phase5 import heartbeat_from_hunt
-                    heartbeat_from_hunt()
-                except Exception:
-                    pass
-                try:
-                    from modules.deadman import emit_heartbeat as _dm_emit, check_fleet as _dm_fleet
-                    _dm_emit("hunt")
-                    _dm_fleet()
-                except Exception:
-                    pass
-                try:
-                    from modules.usb_watch import check as _usb_check
-                    _usb_check()
-                except Exception:
-                    pass
-                try:
-                    from modules.lateral import check as _lat_check
-                    _lat_check()
-                except Exception:
-                    pass
-                try:
-                    from modules.dns_watch import check as _dns_check
-                    _dns_check()
-                except Exception:
-                    pass
-                try:
-                    from modules.device_radar import check as _radar_check
-                    _radar_check()
-                except Exception:
-                    pass
-                try:
-                    from modules.ransomware_tripwire import check as _tw_check
-                    _tw_check()
-                except Exception:
-                    pass
-                try:
-                    from modules.honeyauth import check as _honey_check
-                    _honey_check()
-                except Exception:
-                    pass
-                # --- end hooks ---
-                try:
-                    persistence_hunt(config, logger)
-                except Exception as _ph_err:
-                    logger.warning(f"! persistence_hunt error: {_ph_err}")
+                run_cycle(
+                    config,
+                    logger,
+                    fim_check=fim_check,
+                    process_scan=process_scan,
+                    ssh_blocking_check=ssh_blocking_check,
+                    outbound_scan=outbound_scan,
+                    user_monitor_check=user_monitor_check,
+                    cron_monitor_check=cron_monitor_check,
+                    send_alert=send_alert,
+                    include_optional_hooks=True,
+                )
                 time.sleep(max(10, int(interval) if interval else 60))
         except KeyboardInterrupt:
             logger.info(f"{C.GREEN}✓{C.RESET} Persistence hunting stopped")
@@ -2831,6 +2798,17 @@ def main():
                 print_report(report)
         except Exception as e:
             print("[!] sim:", e)
+
+    elif command in ("ops", "ops-status"):
+        try:
+            from modules.ops_status import collect, print_ops
+            data = collect()
+            if "--json" in args:
+                print(json.dumps(data, indent=2, default=str))
+            else:
+                print_ops(data)
+        except Exception as e:
+            print("[!] ops:", e)
 
     elif command in ("visibility", "inventory", "vis"):
         try:

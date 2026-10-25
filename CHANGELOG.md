@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.9.0] — 2026-10-25
+
+### Hunt loop, alerts, ops
+- `modules/hunt_cycle.py` — structured cycle: heartbeat → FIM/process/SSH/outbound/users/cron → persistence → visibility → sensors → maintenance
+- Per-check isolation + `hunt_metrics.json` (timing, errors, alert types)
+- `send_alert` routes through AlertRouter (dedup, channels, offline queue) with severity map
+- `modules/ops_status.py` + CLI `ops` — hunt health, alerts, service, blocks, visibility
+- Menu 12 = Ops status
+
 ## [3.8.0] — 2026-10-25
 
 ### Visibility (devices / processes / FIM / persistence)
