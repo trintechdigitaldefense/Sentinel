@@ -1,77 +1,136 @@
-# SENTINEL v3.7.0
+# SENTINEL
 
-[![ci](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml)
+[![CI](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/version-3.5.0-blue)](CHANGELOG.md)
+[![License](https://img.shields.io/badge/license-Authorized%20defensive%20use-red)](LICENSE)
 
-**TrinTech Digital Defense** — continuous monitoring and early warning for Caribbean SMBs.
+**TrinTech Digital Defense** — continuous host monitoring and early warning for Caribbean SMBs.
 
-Authorized defensive use only. See [LICENSE](LICENSE).
+> Authorized defensive use only. Detect · Alert · Report. No offensive capability.
 
-## What it does
+---
 
-- **Host firewall control plane** (nftables/iptables): block IPs, allow/deny ports, profiles, audit (Phase 13)
-- File integrity monitoring (FIM) and persistence hunting
-- Reverse-shell / suspicious process detection
-- Canary deception (digital tripwires), optional canary SMB share
-- Multi-channel alerts (WhatsApp, email, webhook, syslog)
-- Local dashboard (admin / viewer roles) and plain-language PDF reports
-- Optional MSP central server with per-agent API keys
-- Read-only connectors (Sentinel local + Wazuh skeleton)
-- Case / triage workflow with evidence packs
-- Backup / restore, Docker packaging, Windows agent
+## What you get
 
-## Current status
+| Capability | Detail |
+|------------|--------|
+| **FIM** | Content + mode/owner/SUID baseline; optional realtime via `inotifywait` |
+| **Persistence** | Cron, systemd units/**timers**, `authorized_keys`, LD_PRELOAD, rc files |
+| **Shells** | Cmdline patterns + **behavioral** (deleted exe, TTY+TCP, web→shell) |
+| **Canaries** | Realistic decoy files; optional SMB honey share |
+| **Host firewall** | nft/iptables control plane — dry-run default, **lockout guard**, IPv6 |
+| **Alerts** | WhatsApp / email / webhook / syslog — dedup, quiet hours, **offline queue** |
+| **Evidence** | Cases, PDF reports, evidence packs |
+| **Ops** | Doctor, systemd/service-install, dashboard, backup/restore, Docker |
 
-**Phases 0–13** (2026-10-24) — host firewall control plane shipped.
+```
+  MAIN MENU
+  ------------------------------------------------------
+   1  START continuous protection (scan once + stay hunting)
+   2  Quick network scan (one-shot)
+   3  Hunt only (continuous)
+   4  Deploy deception / canary traps
+   5  Integrity baseline (FIM)
+   ...
+  13  Always-on service
+  15  Schedule WhatsApp digest
+```
 
-See [ROADMAP.md](ROADMAP.md), [PHASE13.md](PHASE13.md).
+*(Run `python3 sentinel.py` for the full numbered menu.)*
 
-## Install
+---
+
+## Install (single path)
 
 ```bash
 git clone https://github.com/trintechdigitaldefense/Sentinel.git
 cd Sentinel
 python3 setup.py
-python3 scripts/apply_firewall_cli.py   # wires `sentinel firewall`
-python3 scripts/firewall_smoke.py
 python3 sentinel.py doctor
 ```
 
-## Host firewall (Phase 13)
-
-Host-level packet filter control on the agent machine — **not** a perimeter/router firewall.
+Optional realtime FIM:
 
 ```bash
-python3 sentinel.py firewall status
-python3 sentinel.py firewall block 203.0.113.10          # dry-run
-python3 sentinel.py firewall block 203.0.113.10 --confirm
-python3 sentinel.py firewall profile hardening           # dry-run
-python3 sentinel.py firewall backup
-python3 -m modules.firewall doctor
+sudo apt-get install -y inotify-tools
 ```
 
-Cheatsheet: [docs/Sentinel_Firewall_Cheatsheet.md](docs/Sentinel_Firewall_Cheatsheet.md) · [PHASE13.md](PHASE13.md)
+Always-on:
 
-## CLI shortcuts
+```bash
+python3 sentinel.py service-install
+python3 sentinel.py doctor
+```
+
+---
+
+## Daily use
 
 | Command | Purpose |
 |---------|---------|
-| `python3 sentinel.py` | Numbered menu |
-| `firewall status` | Host firewall control plane |
-| `start` / `scan` | Network scan + deception |
-| `hunt` | Continuous persistence hunting |
-| `deception` | Deploy canaries |
-| `integrity` | FIM baseline / check |
-| `doctor` | Health check |
-| `dash` / `dashboard` | Local control UI |
-| `cases list` | Open cases |
-| `alerts` | List / triage alerts |
+| `python3 sentinel.py` | Interactive numbered menu |
+| `python3 sentinel.py start` | Scan once + continuous hunt |
+| `python3 sentinel.py hunt` | Hunt loop only |
+| `python3 sentinel.py integrity` | Build / refresh FIM + SUID baselines |
+| `python3 sentinel.py deception` | Deploy canary decoys |
+| `python3 sentinel.py persistence-baseline` | Snapshot cron/systemd/keys/LD_PRELOAD |
+| `python3 sentinel.py persistence` | Diff persistence surface |
+| `python3 sentinel.py behavioral` | Behavioral reverse-shell scan |
+| `python3 sentinel.py suid` | SUID/SGID inventory check |
+| `python3 sentinel.py watch` | Realtime FIM (inotify) |
+| `python3 sentinel.py firewall status` | Host firewall plane |
+| `python3 sentinel.py firewall block <ip>` | Dry-run block (add `--confirm` to apply) |
+| `python3 sentinel.py firewall protect-operator --confirm` | Lockout guard ACCEPT rules |
+| `python3 sentinel.py doctor` | Health check |
+| `python3 sentinel.py dash` | Local dashboard |
+| `python3 sentinel.py offline flush` | Replay queued alerts |
 
-## Cases
+---
+
+## Host firewall (safety)
+
+- **Not** a perimeter/router firewall — host INPUT plane only
+- **Dry-run by default** — nothing applies without `--confirm`
+- **Lockout guard** refuses to block your current SSH client IP
+- **IPv6** supported (`ip6tables` / nft `inet`)
 
 ```bash
-python3 sentinel.py cases list
+python3 scripts/firewall_smoke.py    # CI + local dry-run smoke
 ```
+
+Cheatsheet: [docs/Sentinel_Firewall_Cheatsheet.md](docs/Sentinel_Firewall_Cheatsheet.md)
+
+---
+
+## Architecture notes
+
+- Config: `~/.sentinel/config.json` · Data/logs: `~/.sentinel/`
+- Threat model: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)
+- Changelog: [CHANGELOG.md](CHANGELOG.md)
+- Roadmap / phases: [ROADMAP.md](ROADMAP.md) · [PHASE13.md](PHASE13.md)
+
+```
+Client host
+  ├─ sentinel.py (menu + hunt)
+  ├─ modules/ (FIM, persistence, shells, firewall, alerts, cases…)
+  ├─ ~/.sentinel/data (baselines, canaries, audit, offline queue)
+  └─ optional: systemd service · dashboard :8792 · MSP central
+```
+
+---
+
+## Development / CI
+
+```bash
+pip install -r requirements.txt ruff pytest
+python scripts/firewall_smoke.py
+pytest -q tests/
+```
+
+GitHub Actions runs on every push/PR to `main`: compile → ruff (critical) → firewall smoke → pytest.
+
+---
 
 ## License
 
-Authorized defensive use only — TrinTech Digital Defense. See [LICENSE](LICENSE).
+Authorized defensive use only — **TrinTech Digital Defense**. See [LICENSE](LICENSE).
