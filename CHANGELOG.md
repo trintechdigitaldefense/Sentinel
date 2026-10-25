@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.13.0] — 2026-10-25
+
+### Full dashboard surface
+- Wired: hunt, critical, alerts, visibility, SIEM, firewall, SSH blocks, blocklist, cases, go-live, service, quiet
+- Control actions: doctor, ops, quiet on/off, field-soak, visibility, service-status, critical ACK
+- APIs: `/api/status`, `/api/critical`, `/api/go-live`, `/api/ops`, `/api/visibility`, `POST /api/action`
+
 ## [3.12.1] — 2026-10-25
 
 ### Dashboard

@@ -1,12 +1,13 @@
 # © 2026 TrinTech Digital Defense — authorized defensive use only
-"""SENTINEL visual dashboard — local HTTP UI with token auth."""
+"""SENTINEL visual dashboard — full visibility + safe control surface."""
 from __future__ import annotations
 
 import json
 import os
 import secrets
 import socket
-import threading
+import subprocess
+import sys
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -35,29 +36,39 @@ def _cfg() -> dict:
     return {}
 
 
+def _save_cfg(cfg: dict) -> None:
+    p = _home() / "config.json"
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(cfg, indent=2, default=str))
+    try:
+        os.chmod(p, 0o600)
+    except Exception:
+        pass
+
+
 def ensure_token() -> tuple:
     cfg = _cfg()
     dash = cfg.setdefault("dashboard", {})
     if not dash.get("token"):
         dash["token"] = secrets.token_urlsafe(24)
-        dash.setdefault("port", DEFAULT_PORT)
-        dash.setdefault("allow_control", True)
-        cfg["dashboard"] = dash
-        p = _home() / "config.json"
-        p.parent.mkdir(parents=True, exist_ok=True)
-        if p.exists():
-            try:
-                existing = json.loads(p.read_text())
-            except Exception:
-                existing = {}
-        else:
-            existing = {}
-        existing["dashboard"] = dash
-        # merge siem enable if requested via env
-        p.write_text(json.dumps(existing, indent=2))
-        cfg = existing
-    port = int(dash.get("port") or DEFAULT_PORT)
-    return dash["token"], port, dash
+    dash.setdefault("port", DEFAULT_PORT)
+    dash.setdefault("allow_control", True)
+    cfg["dashboard"] = dash
+    existing = _cfg()
+    existing["dashboard"] = dash
+    _save_cfg(existing)
+    return dash["token"], int(dash.get("port") or DEFAULT_PORT), dash
+
+
+def _safe(fn, default=None):
+    try:
+        return fn()
+    except Exception as e:
+        if default is None:
+            return {"error": str(e)}
+        if isinstance(default, dict):
+            return {**default, "error": str(e)}
+        return default
 
 
 def collect_full() -> dict:
@@ -65,49 +76,30 @@ def collect_full() -> dict:
         "ts": datetime.now(timezone.utc).isoformat(),
         "host": socket.gethostname(),
         "product": "SENTINEL",
-        "version": "3.12.1",
+        "version": "3.13.0",
     }
     try:
         out["local_ip"] = socket.gethostbyname(socket.gethostname())
     except Exception:
         out["local_ip"] = ""
 
-    # Ops
-    try:
-        from modules.ops_status import collect
-        out["ops"] = collect()
-    except Exception as e:
-        out["ops"] = {"error": str(e)}
+    out["ops"] = _safe(lambda: __import__("modules.ops_status", fromlist=["collect"]).collect(), {})
+    out["siem"] = _safe(lambda: __import__("modules.siem", fromlist=["status"]).status(), {})
+    out["critical"] = _safe(lambda: __import__("modules.critical_alerts", fromlist=["status"]).status(), {"open": [], "open_count": 0})
 
-    # SIEM
-    try:
-        from modules.siem import status as siem_status
-        out["siem"] = siem_status()
-    except Exception as e:
-        out["siem"] = {"error": str(e)}
-
-    # Critical
-    try:
-        from modules.critical_alerts import status as crit_status
-        out["critical"] = crit_status()
-    except Exception as e:
-        out["critical"] = {"error": str(e)}
-
-    # Visibility
-    try:
+    def _vis():
         from modules.visibility import full_inventory
         inv = full_inventory()
-        out["visibility"] = {
+        return {
             "devices": (inv.get("devices") or {}).get("count"),
             "live_arp": (inv.get("devices") or {}).get("live_arp"),
             "processes": (inv.get("processes") or {}).get("total"),
             "fim": inv.get("fim"),
             "persistence": inv.get("persistence"),
+            "raw": inv,
         }
-    except Exception as e:
-        out["visibility"] = {"error": str(e)}
+    out["visibility"] = _safe(_vis, {})
 
-    # Hunt metrics
     mp = _data() / "hunt_metrics.json"
     if mp.exists():
         try:
@@ -115,14 +107,25 @@ def collect_full() -> dict:
         except Exception:
             out["hunt"] = {}
     else:
-        out["hunt"] = {}
+        out["hunt"] = (out.get("ops") or {}).get("hunt") or {}
 
-    # Recent alerts
+    hb = _data() / "heartbeat.json"
+    if hb.exists():
+        try:
+            out["heartbeat"] = json.loads(hb.read_text())
+        except Exception:
+            out["heartbeat"] = {"present": True}
+    else:
+        out["heartbeat"] = {"present": False}
+
     ap = _data() / "alerts.log"
     recent = []
+    total = 0
     if ap.exists():
         try:
-            for ln in ap.read_text(errors="ignore").splitlines()[-25:]:
+            lines = ap.read_text(errors="ignore").splitlines()
+            total = len(lines)
+            for ln in lines[-30:]:
                 try:
                     recent.append(json.loads(ln))
                 except Exception:
@@ -130,15 +133,16 @@ def collect_full() -> dict:
         except Exception:
             pass
     out["recent_alerts"] = list(reversed(recent))
+    out["alert_total"] = total
 
-    # Firewall
+    out["firewall"] = _safe(lambda: __import__("modules.firewall", fromlist=["status"]).status(), {})
+
     try:
-        from modules.firewall import status as fw_status
-        out["firewall"] = fw_status()
+        from modules.brute_force import status as bf_status
+        out["ssh_blocks"] = bf_status()
     except Exception as e:
-        out["firewall"] = {"error": str(e)}
+        out["ssh_blocks"] = {"error": str(e)}
 
-    # Go-live report (last host setup)
     gl = _data() / "go_live_report.json"
     if gl.exists():
         try:
@@ -148,32 +152,95 @@ def collect_full() -> dict:
     else:
         out["go_live"] = {"ok": False, "note": "run: python3 sentinel.py go-live"}
 
-    # Config flags (no secrets)
+    try:
+        from modules.phase5 import service_status
+        out["service"] = service_status()
+    except Exception as e:
+        out["service"] = {"error": str(e)}
+
+    try:
+        from modules.cases import list_cases
+        open_cases = []
+        for st in ("new", "triaging", "investigating", "contained"):
+            try:
+                open_cases.extend(list_cases(status=st, limit=15))
+            except TypeError:
+                open_cases.extend(list_cases(limit=15))
+                break
+        out["cases_open"] = open_cases[:25]
+        out["cases_open_count"] = len(open_cases)
+    except Exception as e:
+        out["cases_open"] = []
+        out["cases_open_count"] = 0
+        out["cases_error"] = str(e)
+
+    # Blocklist summary
+    bl_path = _data() / "iptables_blocklist.json"
+    blocked = {}
+    if bl_path.exists():
+        try:
+            blocked = (json.loads(bl_path.read_text()) or {}).get("blocked") or {}
+        except Exception:
+            pass
+    out["blocklist"] = {"count": len(blocked), "ips": list(blocked.keys())[:20]}
+
     cfg = _cfg()
+    quiet = False
+    try:
+        q = (cfg.get("alerting") or {}).get("quiet_hours") or cfg.get("quiet") or {}
+        quiet = bool(q.get("enabled") or cfg.get("quiet_mode"))
+    except Exception:
+        pass
+    out["quiet"] = quiet
     out["config_flags"] = {
         "siem_enabled": bool(((cfg.get("alerting") or {}).get("siem") or {}).get("enabled")),
         "ssh_blocking": bool((cfg.get("ssh_blocking") or {}).get("active", True)),
         "deception": bool((cfg.get("deception") or {}).get("active", True)),
         "dashboard_control": bool((cfg.get("dashboard") or {}).get("allow_control", True)),
+        "quiet": quiet,
     }
     out["control"] = bool((cfg.get("dashboard") or {}).get("allow_control", True))
+
+    try:
+        from modules.dashboard_enrich import enrich
+        enrich(out)
+    except Exception:
+        pass
     return out
 
 
-def _html(token: str, data: dict) -> str:
-    ops = data.get("ops") or {}
-    siem = data.get("siem") or {}
-    crit = data.get("critical") or {}
-    vis = data.get("visibility") or {}
-    hunt = data.get("hunt") or data.get("ops", {}).get("hunt") or {}
-    fw = data.get("firewall") or {}
-    flags = data.get("config_flags") or {}
-    recent = data.get("recent_alerts") or []
-    open_crit = crit.get("open") or []
+def _engine() -> Path:
+    return Path(__file__).resolve().parent.parent / "sentinel.py"
 
+
+def run_cli(*args: str) -> dict:
+    """Run a sentinel CLI subcommand (safe control actions)."""
+    eng = _engine()
+    if not eng.exists():
+        return {"ok": False, "error": "sentinel.py not found"}
+    try:
+        p = subprocess.run(
+            [sys.executable, str(eng), *args],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            cwd=str(eng.parent),
+        )
+        return {
+            "ok": p.returncode == 0,
+            "code": p.returncode,
+            "stdout": (p.stdout or "")[-2000:],
+            "stderr": (p.stderr or "")[-1000:],
+            "args": list(args),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e), "args": list(args)}
+
+
+def _html(token: str, data: dict) -> str:
     def esc(s):
         return (
-            str(s)
+            str(s if s is not None else "")
             .replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;")
@@ -181,9 +248,24 @@ def _html(token: str, data: dict) -> str:
         )
 
     control = bool(data.get("control", True))
+    ops = data.get("ops") or {}
+    siem = data.get("siem") or {}
+    crit = data.get("critical") or {}
+    vis = data.get("visibility") or {}
+    hunt = data.get("hunt") or {}
+    fw = data.get("firewall") or {}
+    flags = data.get("config_flags") or {}
+    recent = data.get("recent_alerts") or []
+    open_crit = crit.get("open") or []
     go_live = data.get("go_live") or {}
+    service = data.get("service") or {}
+    cases = data.get("cases_open") or []
+    blocks = data.get("blocklist") or {}
+    sshb = data.get("ssh_blocks") or {}
+    hb = data.get("heartbeat") or {}
+
     crit_rows = ""
-    for it in open_crit[:15]:
+    for it in open_crit[:20]:
         aid = esc(it.get("id"))
         ack_cell = (
             f"<button class='btn btn-sm' onclick=\"ackCritical('{aid}')\">ACK</button>"
@@ -200,27 +282,68 @@ def _html(token: str, data: dict) -> str:
     if not crit_rows:
         crit_rows = "<tr><td colspan='5' class='muted'>No open critical alerts</td></tr>"
 
-    gl_ok = go_live.get("ok")
-    gl_badge = "on" if gl_ok else "warn"
-    gl_label = "READY" if gl_ok else ("PARTIAL" if go_live.get("steps") else "NOT RUN")
-    gl_steps = go_live.get("steps") or []
-    gl_summary = ", ".join(
-        f"{s.get('step')}={'ok' if s.get('ok') else 'fail'}"
-        for s in gl_steps[:6]
-    ) or go_live.get("note") or "—"
-
     alert_rows = ""
-    for a in recent[:12]:
+    for a in recent[:15]:
         alert_rows += (
             f"<tr><td>{esc(str(a.get('timestamp') or a.get('ts') or '')[:19])}</td>"
             f"<td>{esc(a.get('type') or a.get('title'))}</td>"
-            f"<td class='mono'>{esc(json.dumps(a.get('details') or a.get('detail') or '')[:80])}</td></tr>"
+            f"<td class='mono'>{esc(json.dumps(a.get('details') or a.get('detail') or '')[:100])}</td></tr>"
         )
     if not alert_rows:
         alert_rows = "<tr><td colspan='3' class='muted'>No alerts yet</td></tr>"
 
+    case_rows = ""
+    for c in cases[:12]:
+        case_rows += (
+            f"<tr><td>{esc(c.get('id') or c.get('case_id'))}</td>"
+            f"<td>{esc(c.get('title') or c.get('type'))}</td>"
+            f"<td>{esc(c.get('status'))}</td>"
+            f"<td>{esc(str(c.get('updated_at') or c.get('created_at') or '')[:19])}</td></tr>"
+        )
+    if not case_rows:
+        case_rows = "<tr><td colspan='4' class='muted'>No open cases</td></tr>"
+
+    block_ips = ", ".join(esc(ip) for ip in (blocks.get("ips") or [])[:12]) or "—"
     siem_badge = "on" if siem.get("enabled") or flags.get("siem_enabled") else "off"
     fw_backend = fw.get("backend") or "none"
+    gl_ok = go_live.get("ok")
+    gl_label = "READY" if gl_ok else ("PARTIAL" if go_live.get("steps") else "NOT RUN")
+    gl_badge = "on" if gl_ok else "warn"
+    gl_summary = ", ".join(
+        f"{s.get('step')}={'ok' if s.get('ok') else 'fail'}"
+        for s in (go_live.get("steps") or [])[:8]
+    ) or go_live.get("note") or "—"
+
+    svc_txt = esc(service.get("status") or service.get("state") or service)
+    quiet_on = bool(data.get("quiet") or flags.get("quiet"))
+
+    control_panel = ""
+    if control:
+        control_panel = f"""
+  <div class="section card" id="control">
+    <h2>Quick actions (control mode)</h2>
+    <div class="actions">
+      <button class="btn" onclick="runAction('refresh')">Refresh status</button>
+      <button class="btn secondary" onclick="runAction('doctor')">Run doctor</button>
+      <button class="btn secondary" onclick="runAction('ops')">Refresh ops</button>
+      <button class="btn secondary" onclick="runAction('go-live-status')">Show go-live report</button>
+      <button class="btn secondary" onclick="runAction('quiet-on')">Quiet ON</button>
+      <button class="btn secondary" onclick="runAction('quiet-off')">Quiet OFF</button>
+      <button class="btn secondary" onclick="runAction('field-soak')">Field-soak (no confirm)</button>
+      <button class="btn secondary" onclick="runAction('visibility')">Visibility scan</button>
+      <button class="btn secondary" onclick="runAction('service-status')">Service status</button>
+      <button class="btn btn-sm" onclick="ackAllCritical()">ACK all critical</button>
+    </div>
+    <pre id="action-out" class="mono outbox">Ready.</pre>
+    <p class="muted">Destructive or long-running actions (full hunt, firewall apply, deception redeploy) stay on CLI for safety.</p>
+  </div>
+"""
+    else:
+        control_panel = """
+  <div class="section card"><h2>Control</h2>
+    <p class="muted">View-only mode (<code>dashboard.allow_control: false</code>). Critical ACK and actions disabled.</p>
+  </div>
+"""
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -240,88 +363,98 @@ body {{
   color:var(--text); min-height:100vh;
 }}
 header {{
-  display:flex; justify-content:space-between; align-items:center; gap:1rem;
+  display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;
   padding:1rem 1.5rem; border-bottom:1px solid var(--border);
-  background:rgba(18,26,43,.85); backdrop-filter:blur(8px); position:sticky; top:0; z-index:10;
+  background:rgba(18,26,43,.9); position:sticky; top:0; z-index:10;
 }}
 header h1 {{ margin:0; font-size:1.15rem; letter-spacing:.04em; }}
 header .meta {{ color:var(--muted); font-size:.85rem; }}
+nav a {{ color:#93c5fd; margin-right:.75rem; text-decoration:none; font-size:.8rem; }}
 .wrap {{ padding:1.25rem; max-width:1200px; margin:0 auto; }}
-.grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:1rem; }}
+.grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:.85rem; }}
 .card {{
   background:var(--panel); border:1px solid var(--border); border-radius:14px; padding:1rem 1.1rem;
   box-shadow:0 8px 24px rgba(0,0,0,.25);
 }}
-.card h2 {{ margin:0 0 .6rem; font-size:.75rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); }}
-.metric {{ font-size:1.6rem; font-weight:700; }}
+.card h2 {{ margin:0 0 .55rem; font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); }}
+.metric {{ font-size:1.45rem; font-weight:700; }}
 .muted {{ color:var(--muted); }}
 .badge {{ display:inline-block; padding:.15rem .55rem; border-radius:999px; font-size:.75rem; font-weight:600; }}
 .badge.on {{ background:rgba(34,197,94,.15); color:var(--good); }}
 .badge.off {{ background:rgba(148,163,184,.15); color:var(--muted); }}
 .badge.warn {{ background:rgba(245,158,11,.15); color:var(--warn); }}
-.badge.bad {{ background:rgba(239,68,68,.15); color:var(--bad); }}
 .crit {{ color:var(--crit); font-weight:600; }}
 table {{ width:100%; border-collapse:collapse; font-size:.85rem; }}
-th, td {{ text-align:left; padding:.45rem .35rem; border-bottom:1px solid var(--border); vertical-align:top; }}
-th {{ color:var(--muted); font-weight:600; font-size:.72rem; text-transform:uppercase; letter-spacing:.06em; }}
+th, td {{ text-align:left; padding:.4rem .35rem; border-bottom:1px solid var(--border); vertical-align:top; }}
+th {{ color:var(--muted); font-weight:600; font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; }}
 .mono {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.78rem; color:#c7d2fe; }}
-.actions {{ display:flex; flex-wrap:wrap; gap:.5rem; margin-top:.75rem; }}
+.actions {{ display:flex; flex-wrap:wrap; gap:.45rem; margin-top:.5rem; }}
 .btn {{
-  background:#1d4ed8; color:white; border:none; border-radius:8px; padding:.45rem .8rem;
-  font-size:.85rem; cursor:pointer; text-decoration:none; display:inline-block;
+  background:#1d4ed8; color:white; border:none; border-radius:8px; padding:.4rem .75rem;
+  font-size:.8rem; cursor:pointer; text-decoration:none; display:inline-block;
 }}
 .btn.secondary {{ background:#334155; }}
-.btn:hover {{ filter:brightness(1.08); }}
 .btn-sm {{ padding:.25rem .55rem; font-size:.75rem; background:#be123c; }}
-.btn:disabled {{ opacity:.5; cursor:not-allowed; }}
-.section {{ margin-top:1.25rem; }}
+.btn:hover {{ filter:brightness(1.08); }}
+.section {{ margin-top:1.1rem; }}
+.outbox {{
+  margin-top:.75rem; padding:.75rem; background:#0a0f1a; border-radius:8px;
+  max-height:220px; overflow:auto; white-space:pre-wrap; border:1px solid var(--border);
+}}
 footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:center; }}
 </style>
 </head>
 <body>
 <header>
   <div>
-    <h1>SENTINEL · Line of Defense</h1>
-    <div class="meta">{esc(data.get('host'))} · {esc(data.get('local_ip'))} · {esc(str(data.get('ts') or '')[:19])}Z</div>
+    <h1>SENTINEL · Full dashboard</h1>
+    <div class="meta">{esc(data.get('host'))} · {esc(data.get('local_ip'))} · v{esc(data.get('version'))} · {esc(str(data.get('ts') or '')[:19])}Z</div>
+    <nav>
+      <a href="#overview">Overview</a>
+      <a href="#critical">Critical</a>
+      <a href="#alerts">Alerts</a>
+      <a href="#visibility">Visibility</a>
+      <a href="#defense">Defense</a>
+      <a href="#cases">Cases</a>
+      <a href="#control">Control</a>
+    </nav>
   </div>
   <div class="meta">
     SIEM <span class="badge {siem_badge}">{siem_badge.upper()}</span>
     · FW <span class="badge {'on' if fw_backend!='none' else 'off'}">{esc(fw_backend)}</span>
+    · Quiet <span class="badge {'warn' if quiet_on else 'off'}">{'ON' if quiet_on else 'OFF'}</span>
+    · {'CONTROL' if control else 'VIEW-ONLY'}
   </div>
 </header>
 <div class="wrap">
-  <div class="grid">
+  <div class="grid" id="overview">
     <div class="card"><h2>Hunt cycles</h2><div class="metric">{esc(hunt.get('cycles', 0))}</div>
       <div class="muted">last {esc(hunt.get('last_cycle_sec', '—'))}s · ok={esc(hunt.get('last_ok'))}</div></div>
     <div class="card"><h2>Critical open</h2><div class="metric" style="color:var(--crit)">{esc(crit.get('open_count', 0))}</div>
-      <div class="muted">ack: sentinel critical ack &lt;id&gt;</div></div>
+      <div class="muted">persist until ACK</div></div>
+    <div class="card"><h2>Alerts total</h2><div class="metric">{esc(data.get('alert_total', 0))}</div>
+      <div class="muted">offline q {esc(ops.get('offline_queue', 0))}</div></div>
     <div class="card"><h2>Devices</h2><div class="metric">{esc(vis.get('devices', 0))}</div>
       <div class="muted">ARP live {esc(vis.get('live_arp', 0))}</div></div>
     <div class="card"><h2>Processes</h2><div class="metric">{esc(vis.get('processes', 0))}</div>
       <div class="muted">FIM {(vis.get('fim') or {}).get('files', '—')}</div></div>
     <div class="card"><h2>SIEM ship</h2><div class="metric">{esc(siem.get('ship_file_lines', 0))}</div>
       <div class="muted">syslog={esc(siem.get('syslog'))} hec={esc(siem.get('splunk_hec'))}</div></div>
-    <div class="card"><h2>Alerts total</h2><div class="metric">{esc((ops.get('alerts') or {}).get('total', len(recent)))}</div>
-      <div class="muted">offline q {esc(ops.get('offline_queue', 0))}</div></div>
+    <div class="card"><h2>SSH blocks</h2><div class="metric">{esc(sshb.get('active_blocks', blocks.get('count', 0)))}</div>
+      <div class="muted">blocklist {esc(blocks.get('count', 0))}</div></div>
+    <div class="card"><h2>Cases open</h2><div class="metric">{esc(data.get('cases_open_count', 0))}</div>
+      <div class="muted">service: {svc_txt[:40]}</div></div>
   </div>
 
-  <div class="section card">
-    <h2>Open critical alerts {'· control' if control else '· view-only'}</h2>
+  <div class="section card" id="critical">
+    <h2>Open critical alerts</h2>
     <table>
       <tr><th>ID</th><th>Type</th><th>Count</th><th>Last seen</th><th>Action</th></tr>
       {crit_rows}
     </table>
-    {('<div class="actions"><button class="btn secondary" onclick="ackAllCritical()">ACK all critical</button></div>' if control and open_crit else '')}
   </div>
 
-  <div class="section card">
-    <h2>Host go-live status</h2>
-    <p><span class="badge {gl_badge}">{gl_label}</span>
-       <span class="muted"> last setup · run <code>python3 sentinel.py go-live</code> on host</span></p>
-    <p class="mono">{esc(gl_summary)}</p>
-  </div>
-
-  <div class="section card">
+  <div class="section card" id="alerts">
     <h2>Recent alerts</h2>
     <table>
       <tr><th>Time</th><th>Type</th><th>Detail</th></tr>
@@ -329,42 +462,76 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
     </table>
   </div>
 
+  <div class="section card" id="visibility">
+    <h2>Visibility &amp; host</h2>
+    <p class="muted">Heartbeat: <span class="mono">{esc(hb.get('ts') or hb.get('present') or 'none')}</span></p>
+    <p class="muted">Go-live: <span class="badge {gl_badge}">{gl_label}</span> <span class="mono">{esc(gl_summary)}</span></p>
+    <p class="muted">Blocked IPs: <span class="mono">{block_ips}</span></p>
+  </div>
+
+  <div class="section card" id="defense">
+    <h2>Defense plane</h2>
+    <p class="muted">Firewall backend=<span class="mono">{esc(fw_backend)}</span>
+       lockout=<span class="mono">{esc(fw.get('lockout_guard'))}</span>
+       deception=<span class="mono">{esc(flags.get('deception'))}</span>
+       ssh_blocking=<span class="mono">{esc(flags.get('ssh_blocking'))}</span></p>
+    <p class="muted">SIEM path: <span class="mono">{esc(siem.get('ship_file'))}</span></p>
+  </div>
+
+  <div class="section card" id="cases">
+    <h2>Open cases</h2>
+    <table>
+      <tr><th>ID</th><th>Title</th><th>Status</th><th>Updated</th></tr>
+      {case_rows}
+    </table>
+  </div>
+
+  {control_panel}
+
   <div class="section card">
-    <h2>SIEM &amp; control plane</h2>
-    <p class="muted">Ship file: <span class="mono">{esc(siem.get('ship_file'))}</span></p>
-    <p class="muted">Firewall lockout_guard={esc(fw.get('lockout_guard'))} · managed blocks path under ~/.sentinel/data</p>
+    <h2>API</h2>
     <div class="actions">
-      <a class="btn" href="?token={esc(token)}&refresh=1">Refresh</a>
-      <a class="btn secondary" href="/api/status?token={esc(token)}">JSON API</a>
+      <a class="btn secondary" href="?token={esc(token)}">Reload UI</a>
+      <a class="btn secondary" href="/api/status?token={esc(token)}">Full JSON</a>
+      <a class="btn secondary" href="/api/critical?token={esc(token)}">Critical JSON</a>
+      <a class="btn secondary" href="/api/go-live?token={esc(token)}">Go-live JSON</a>
     </div>
   </div>
 </div>
-<footer>TrinTech Digital Defense · Authorized defensive use only · Dashboard token required</footer>
+<footer>TrinTech Digital Defense · Authorized defensive use only · Token required</footer>
 <script>
 const TOKEN = "{esc(token)}";
 async function ackCritical(id) {{
-  if (!confirm("Acknowledge critical " + id + "?")) return;
+  if (!confirm("ACK critical " + id + "?")) return;
   const r = await fetch("/api/critical/ack?token=" + encodeURIComponent(TOKEN), {{
-    method: "POST",
-    headers: {{"Content-Type": "application/json"}},
-    body: JSON.stringify({{id: id}})
+    method: "POST", headers: {{"Content-Type": "application/json"}},
+    body: JSON.stringify({{id}})
   }});
   const j = await r.json();
-  if (!r.ok || !j.ok) {{ alert("ACK failed: " + (j.error || r.status)); return; }}
+  if (!r.ok || !j.ok) {{ alert("Failed: " + (j.error || r.status)); return; }}
   location.reload();
 }}
 async function ackAllCritical() {{
-  if (!confirm("Acknowledge ALL open critical alerts?")) return;
+  if (!confirm("ACK ALL open criticals?")) return;
   const r = await fetch("/api/critical/ack-all?token=" + encodeURIComponent(TOKEN), {{
-    method: "POST",
-    headers: {{"Content-Type": "application/json"}},
-    body: "{{}}"
+    method: "POST", headers: {{"Content-Type": "application/json"}}, body: "{{}}"
   }});
   const j = await r.json();
-  if (!r.ok || !j.ok) {{ alert("ACK all failed: " + (j.error || r.status)); return; }}
+  if (!r.ok || !j.ok) {{ alert("Failed: " + (j.error || r.status)); return; }}
   location.reload();
 }}
-setTimeout(function(){{ location.href = location.pathname + location.search; }}, 45000);
+async function runAction(name) {{
+  const out = document.getElementById("action-out");
+  if (out) out.textContent = "Running " + name + "...";
+  if (name === "refresh") {{ location.reload(); return; }}
+  const r = await fetch("/api/action?token=" + encodeURIComponent(TOKEN), {{
+    method: "POST", headers: {{"Content-Type": "application/json"}},
+    body: JSON.stringify({{action: name}})
+  }});
+  const j = await r.json();
+  if (out) out.textContent = JSON.stringify(j, null, 2);
+}}
+setTimeout(function(){{ location.href = location.pathname + location.search; }}, 60000);
 </script>
 </body>
 </html>
@@ -414,53 +581,88 @@ class _Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         data = collect_full()
         data["control"] = bool(self.allow_control)
-        try:
-            from modules.dashboard_enrich import enrich
-            enrich(data)
-        except Exception:
-            pass
         if path in ("/api/critical", "/api/critical/"):
-            body = json.dumps(data.get("critical") or {}, indent=2, default=str).encode()
-            self._send(200, body, "application/json")
+            self._send(200, json.dumps(data.get("critical") or {}, indent=2, default=str).encode(), "application/json")
             return
         if path in ("/api/go-live", "/api/golive"):
-            body = json.dumps(data.get("go_live") or {}, indent=2, default=str).encode()
-            self._send(200, body, "application/json")
+            self._send(200, json.dumps(data.get("go_live") or {}, indent=2, default=str).encode(), "application/json")
+            return
+        if path in ("/api/ops",):
+            self._send(200, json.dumps(data.get("ops") or {}, indent=2, default=str).encode(), "application/json")
+            return
+        if path in ("/api/visibility",):
+            self._send(200, json.dumps(data.get("visibility") or {}, indent=2, default=str).encode(), "application/json")
             return
         if path.startswith("/api/"):
-            body = json.dumps(data, indent=2, default=str).encode()
-            self._send(200, body, "application/json")
+            self._send(200, json.dumps(data, indent=2, default=str).encode(), "application/json")
             return
-        html = _html(self.token, data)
-        self._send(200, html.encode("utf-8"))
+        self._send(200, _html(self.token, data).encode("utf-8"))
 
     def do_POST(self):
         if not self._auth_ok():
             self._send(401, b'{"ok":false,"error":"unauthorized"}', "application/json")
             return
-        path = urlparse(self.path).path
         if not self.allow_control:
             self._send(403, b'{"ok":false,"error":"view-only mode"}', "application/json")
             return
+        path = urlparse(self.path).path
         body_in = self._read_json_body()
-        try:
-            from modules.critical_alerts import ack, ack_all
-            if path.rstrip("/").endswith("ack-all") or path.endswith("/api/critical/ack-all"):
-                result = ack_all(actor="dashboard")
-            elif "ack" in path:
-                aid = body_in.get("id") or body_in.get("alert_id") or ""
-                if not aid:
-                    self._send(400, b'{"ok":false,"error":"id required"}', "application/json")
-                    return
-                result = ack(str(aid), actor="dashboard")
-            else:
-                self._send(404, b'{"ok":false,"error":"unknown endpoint"}', "application/json")
+
+        # Critical ACK
+        if "critical" in path and "ack" in path:
+            try:
+                from modules.critical_alerts import ack, ack_all
+                if path.rstrip("/").endswith("ack-all"):
+                    result = ack_all(actor="dashboard")
+                else:
+                    aid = str(body_in.get("id") or body_in.get("alert_id") or "")
+                    if not aid:
+                        self._send(400, b'{"ok":false,"error":"id required"}', "application/json")
+                        return
+                    result = ack(aid, actor="dashboard")
+                self._send(200 if result.get("ok") else 400, json.dumps(result, default=str).encode(), "application/json")
+            except Exception as e:
+                self._send(500, json.dumps({"ok": False, "error": str(e)}).encode(), "application/json")
+            return
+
+        # Safe actions
+        if path.rstrip("/").endswith("/api/action") or path.endswith("action"):
+            action = str(body_in.get("action") or "").strip().lower()
+            allowed = {
+                "doctor": ("doctor",),
+                "ops": ("ops",),
+                "go-live-status": ("ops",),  # report is file-backed; ops is safe
+                "quiet-on": ("quiet", "on"),
+                "quiet-off": ("quiet", "off"),
+                "field-soak": ("field-soak",),
+                "visibility": ("visibility",),
+                "service-status": ("service-status",),
+            }
+            if action not in allowed:
+                self._send(
+                    400,
+                    json.dumps({"ok": False, "error": f"action not allowed: {action}", "allowed": list(allowed)}).encode(),
+                    "application/json",
+                )
                 return
-            payload = json.dumps(result, default=str).encode()
-            self._send(200 if result.get("ok") else 400, payload, "application/json")
-        except Exception as e:
-            err = json.dumps({"ok": False, "error": str(e)}).encode()
-            self._send(500, err, "application/json")
+            # quiet may need config-only fallback
+            if action in ("quiet-on", "quiet-off"):
+                cfg = _cfg()
+                cfg["quiet_mode"] = action == "quiet-on"
+                qh = (cfg.get("alerting") or {}).setdefault("quiet_hours", {})
+                qh["enabled"] = action == "quiet-on"
+                cfg.setdefault("alerting", {})["quiet_hours"] = qh
+                _save_cfg(cfg)
+                # still try CLI
+                result = run_cli(*allowed[action])
+                result["quiet_mode"] = cfg["quiet_mode"]
+                self._send(200, json.dumps(result, default=str).encode(), "application/json")
+                return
+            result = run_cli(*allowed[action])
+            self._send(200, json.dumps(result, default=str).encode(), "application/json")
+            return
+
+        self._send(404, b'{"ok":false,"error":"unknown endpoint"}', "application/json")
 
 
 def start_dashboard(port: int | None = None, bind: str = "127.0.0.1"):
@@ -473,6 +675,7 @@ def start_dashboard(port: int | None = None, bind: str = "127.0.0.1"):
     print(f"[+] SENTINEL Dashboard on port {port}")
     print(f"[+] Client URL: {url}")
     print(f"[+] Control: {'enabled' if _Handler.allow_control else 'view-only'}")
+    print("[*] Full surface: critical, alerts, visibility, defense, cases, actions")
     print("[*] Serving forever - Ctrl+C to stop")
     try:
         server.serve_forever()
