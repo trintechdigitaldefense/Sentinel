@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.9.0"
+__version__ = "3.9.1"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -358,29 +358,45 @@ def run_cmd(cmd, timeout=10):
 
 
 def send_alert(alert_type, details, logger=None):
-
+    # Critical events always persist and are never dropped by quiet/hygiene
+    _is_crit = False
     try:
-        from modules.phase7 import quiet_should_suppress
-        _qs = quiet_should_suppress(str(alert_type))
-        if _qs.get("suppress"):
-            return
+        from modules.critical_alerts import is_critical as _is_critical_fn, record as _crit_record
+        try:
+            _extra = CRITICAL_ALERTS if isinstance(CRITICAL_ALERTS, (set, list, tuple, frozenset)) else set()
+        except Exception:
+            _extra = set()
+        _is_crit = _is_critical_fn(str(alert_type), extra=set(_extra))
     except Exception:
-        pass
+        _is_crit = str(alert_type) in {
+            "REVERSE_SHELL", "BEHAVIORAL_REVERSE_SHELL", "CANARY_TRIGGERED",
+            "CANARY_BEACON", "AGENT_REVERSE_SHELL", "NEW_SUID", "LD_PRELOAD_CREATED",
+        }
 
-    try:
-        from modules.phase5 import hygiene_should_emit
-        _hy = hygiene_should_emit(str(alert_type), None)
-        if not _hy.get("allow", True):
-            return
-    except Exception:
-        pass
+    if not _is_crit:
+        try:
+            from modules.phase7 import quiet_should_suppress
+            _qs = quiet_should_suppress(str(alert_type))
+            if _qs.get("suppress"):
+                return
+        except Exception:
+            pass
+
+        try:
+            from modules.phase5 import hygiene_should_emit
+            _hy = hygiene_should_emit(str(alert_type), None)
+            if not _hy.get("allow", True):
+                return
+        except Exception:
+            pass
     config = load_config_safe()
-    # Phase 1: quiet mode filter
-    try:
-        if not quiet_should_emit(config, alert_type, details):
-            return
-    except Exception:
-        pass
+    # Phase 1: quiet mode filter (skip for critical)
+    if not _is_crit:
+        try:
+            if not quiet_should_emit(config, alert_type, details):
+                return
+        except Exception:
+            pass
     ts = datetime.now().isoformat()
     alert = {"timestamp": ts, "type": alert_type, "details": details,
              "hostname": socket.gethostname(), "local_ip": get_local_ip()}
@@ -390,6 +406,24 @@ def send_alert(alert_type, details, logger=None):
             f.write(json.dumps(alert) + "\n")
     except Exception:
         pass
+    # Persistent critical store (until operator ACK)
+    if _is_crit:
+        try:
+            from modules.critical_alerts import record as _crit_record
+            _crit_record(
+                str(alert_type),
+                details,
+                severity="CRITICAL",
+                host=socket.gethostname(),
+                local_ip=get_local_ip(),
+            )
+            if logger:
+                logger.warning(
+                    f"{C.RED}{C.BOLD}CRITICAL PERSISTED:{C.RESET} {alert_type} — remains open until: "
+                    f"{C.BOLD}python3 sentinel.py critical ack <id>{C.RESET}"
+                )
+        except Exception:
+            pass
     # Unified multi-channel router (dedup, WhatsApp, webhook, offline queue)
     try:
         from modules.alerting import AlertRouter
@@ -406,6 +440,8 @@ def send_alert(alert_type, details, logger=None):
                 sev = "CRITICAL"
         except Exception:
             pass
+        if _is_crit:
+            sev = "CRITICAL"
         router = AlertRouter(config.get("alerting") or {})
         det = details if isinstance(details, str) else json.dumps(details, default=str)
         router.send(sev, str(alert_type), detail=str(det)[:500], meta={"type": alert_type})
@@ -2048,6 +2084,7 @@ def interactive_menu(config=None, logger=None):
         ("8", "Evidence pack (24h)", ("evidence", "--hours", "24")),
         ("9", "Pilot --fix (create baselines)", ("pilot", "--fix")),
         ("10", "Ops status (hunt/alerts/service)", ("ops",)),
+        ("11", "Critical alerts (open)", ("critical", "status")),
         ("0", "Back to main menu", ("__back__",)),
     ]
 
@@ -2819,6 +2856,22 @@ def main():
                 print_report(report)
         except Exception as e:
             print("[!] sim:", e)
+
+    elif command in ("critical", "crit", "critical-alerts"):
+        try:
+            from modules.critical_alerts import status, list_open, ack, ack_all, resurface
+            if not args or args[0] in ("status", "list"):
+                print(json.dumps(status(), indent=2, default=str))
+            elif args[0] == "ack" and len(args) > 1:
+                print(json.dumps(ack(args[1]), indent=2, default=str))
+            elif args[0] == "ack-all":
+                print(json.dumps(ack_all(), indent=2, default=str))
+            elif args[0] == "resurface":
+                print(json.dumps(resurface(logger=logger), indent=2, default=str))
+            else:
+                print("Usage: critical status|ack <id>|ack-all|resurface")
+        except Exception as e:
+            print("[!] critical:", e)
 
     elif command in ("ops", "ops-status"):
         try:

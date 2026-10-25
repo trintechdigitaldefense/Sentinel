@@ -108,6 +108,11 @@ def run_cycle(
         return True
     _run_check("heartbeat", _hb, errors, checks)
 
+    def _crit_resur():
+        from modules.critical_alerts import resurface
+        return resurface(logger=logger)
+    _run_check("critical_resurface", _crit_resur, errors, checks)
+
     # 2. Core host checks
     if fim_check:
         _run_check("fim", lambda: fim_check(config, logger), errors, checks)

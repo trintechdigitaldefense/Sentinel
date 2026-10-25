@@ -91,6 +91,12 @@ def collect() -> dict:
         except Exception:
             out["visibility"] = {}
 
+    try:
+        from modules.critical_alerts import status as crit_status
+        out["critical"] = crit_status()
+    except Exception as e:
+        out["critical"] = {"error": str(e)}
+
     return out
 
 
@@ -110,6 +116,10 @@ def print_ops(data: dict) -> None:
     print(f"  Heartbeat:       {hb.get('present', hb.get('ts', False))}")
     a = data.get("alerts") or {}
     print(f"  Alerts total:    {a.get('total', 0)}")
+    cr = data.get("critical") or {}
+    print(f"  Critical open:   {cr.get('open_count', 0)}")
+    for it in (cr.get("open") or [])[:5]:
+        print(f"    ! [{it.get('id')}] {it.get('type')} x{it.get('count')}")
     print(f"  Offline queue:   {data.get('offline_queue', 0)}")
     sb = data.get("ssh_blocks") or {}
     print(f"  SSH blocks:      {sb.get('active_blocks', '—')}")

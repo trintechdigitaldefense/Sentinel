@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.9.1] — 2026-10-25
+
+### Persistent critical alerts
+- `modules/critical_alerts.py` — open critical events stored until operator ACK
+- Quiet hours / hygiene **cannot suppress** critical types
+- Hunt cycle re-surfaces unacked criticals every loop
+- CLI: `critical status|ack <id>|ack-all|resurface`
+- Ops status shows open critical count
+
 ## [3.9.0] — 2026-10-25
 
 ### Hunt loop, alerts, ops
