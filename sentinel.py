@@ -390,6 +390,27 @@ def send_alert(alert_type, details, logger=None):
             f.write(json.dumps(alert) + "\n")
     except Exception:
         pass
+    # Unified multi-channel router (dedup, WhatsApp, webhook, offline queue)
+    try:
+        from modules.alerting import AlertRouter
+        _sev_map = {
+            "REVERSE_SHELL": "CRITICAL", "BEHAVIORAL_REVERSE_SHELL": "CRITICAL",
+            "CANARY_TRIGGERED": "CRITICAL", "CANARY_BEACON": "CRITICAL",
+            "IP_BLOCKED": "HIGH", "NEW_SUID": "HIGH", "LD_PRELOAD_CREATED": "HIGH",
+            "FIM_MODIFIED": "HIGH", "FIM_DELETED": "HIGH", "NEW_DEVICE": "MEDIUM",
+            "AUTH_FAILURE": "MEDIUM", "DEVICE_GONE": "LOW",
+        }
+        sev = _sev_map.get(str(alert_type), "MEDIUM")
+        try:
+            if str(alert_type) in CRITICAL_ALERTS:
+                sev = "CRITICAL"
+        except Exception:
+            pass
+        router = AlertRouter(config.get("alerting") or {})
+        det = details if isinstance(details, str) else json.dumps(details, default=str)
+        router.send(sev, str(alert_type), detail=str(det)[:500], meta={"type": alert_type})
+    except Exception:
+        pass
     # Phase 1: auto-quarantine on critical alerts
     try:
         if alert_type in CRITICAL_ALERTS or alert_type in set(config.get("quarantine", {}).get("on_alerts", [])):
