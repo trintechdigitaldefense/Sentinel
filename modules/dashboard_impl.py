@@ -76,7 +76,7 @@ def collect_full() -> dict:
         "ts": datetime.now(timezone.utc).isoformat(),
         "host": socket.gethostname(),
         "product": "SENTINEL",
-        "version": "3.13.2",
+        "version": "3.13.4",
     }
     try:
         out["local_ip"] = socket.gethostbyname(socket.gethostname())
@@ -325,19 +325,21 @@ def _html(token: str, data: dict) -> str:
 
     rt = data.get("realtime") or {}
     rt_level = str(rt.get("level") or "UNKNOWN")
-    rt_badge = {"CRITICAL": "bad", "HIGH": "warn", "ELEVATED": "warn", "WATCH": "off", "CLEAR": "on"}.get(rt_level, "off")
+    rt_badge = {"CRITICAL": "bad", "HIGH": "warn", "ELEVATED": "elev", "WATCH": "info", "CLEAR": "on"}.get(rt_level, "off")
     rt_rows = ""
     for t in (rt.get("threats") or [])[:15]:
         det = t.get("cmd") or t.get("detail") or t.get("id") or t.get("port") or ""
+        sev = str(t.get("severity") or "MEDIUM").upper()
         rt_rows += (
-            f"<tr><td>{esc(t.get('severity'))}</td>"
+            f"<tr class='row-{esc(sev)}'><td class='sev-{esc(sev)}'>{esc(sev)}</td>"
             f"<td class='crit'>{esc(t.get('type'))}</td>"
             f"<td class='mono'>{esc(str(det)[:120])}</td></tr>"
         )
     if not rt_rows:
         for t in (rt.get("recent_high_alerts") or [])[:8]:
+            sev = str(t.get("severity") or "HIGH").upper()
             rt_rows += (
-                f"<tr><td>{esc(t.get('severity'))}</td>"
+                f"<tr class='row-{esc(sev)}'><td class='sev-{esc(sev)}'>{esc(sev)}</td>"
                 f"<td>{esc(t.get('type'))}</td>"
                 f"<td class='mono'>{esc(str(t.get('detail') or t.get('ts') or '')[:120])}</td></tr>"
             )
@@ -410,7 +412,16 @@ nav a {{ color:#93c5fd; margin-right:.75rem; text-decoration:none; font-size:.8r
 .badge.on {{ background:rgba(34,197,94,.15); color:var(--good); }}
 .badge.off {{ background:rgba(148,163,184,.15); color:var(--muted); }}
 .badge.warn {{ background:rgba(245,158,11,.15); color:var(--warn); }}
-.badge.bad {{ background:rgba(239,68,68,.2); color:var(--bad); }}
+.badge.bad {{ background:rgba(239,68,68,.25); color:#fb7185; }}
+.badge.elev {{ background:rgba(234,179,8,.18); color:#facc15; }}
+.badge.info {{ background:rgba(34,211,238,.15); color:#22d3ee; }}
+td.sev-CRITICAL {{ color:#e879f9; font-weight:700; }}
+td.sev-HIGH {{ color:#f87171; font-weight:600; }}
+td.sev-MEDIUM {{ color:#fbbf24; }}
+td.sev-LOW {{ color:#4ade80; }}
+tr.row-CRITICAL {{ background:rgba(244,63,94,.08); }}
+tr.row-HIGH {{ background:rgba(239,68,68,.06); }}
+
 .crit {{ color:var(--crit); font-weight:600; }}
 table {{ width:100%; border-collapse:collapse; font-size:.85rem; }}
 th, td {{ text-align:left; padding:.4rem .35rem; border-bottom:1px solid var(--border); vertical-align:top; }}
@@ -624,7 +635,7 @@ function renderThreats(rt) {{
   if (live) {{ live.textContent = "LIVE"; live.className = "badge on pulse"; }}
   if (!rt) return;
   const level = rt.level || "UNKNOWN";
-  const map = {{CRITICAL:"bad", HIGH:"warn", ELEVATED:"warn", WATCH:"off", CLEAR:"on"}};
+  const map = {{CRITICAL:"bad", HIGH:"warn", ELEVATED:"elev", WATCH:"info", CLEAR:"on"}};
   // first badge after h2 is level
   const badges = document.querySelectorAll("#realtime .badge");
   if (badges.length >= 2) {{
@@ -638,7 +649,9 @@ function renderThreats(rt) {{
   if (threats.length) {{
     for (const t of threats.slice(0, 15)) {{
       const det = t.cmd || t.detail || t.id || t.port || "";
-      rows += "<tr><td>" + (t.severity||"") + "</td><td class=\"crit\">" + (t.type||"") +
+      const sev = String(t.severity || "MEDIUM").toUpperCase();
+      rows += "<tr class=\"row-" + sev + "\"><td class=\"sev-" + sev + "\">" + sev +
+              "</td><td class=\"crit\">" + (t.type||"") +
               "</td><td class=\"mono\">" + String(det).slice(0,120) + "</td></tr>";
     }}
   }} else {{

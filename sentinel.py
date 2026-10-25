@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.13.3"
+__version__ = "3.13.4"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -3361,6 +3361,7 @@ Options:
   --json / -j        JSON lines (one object per poll)
   --emit             Forward shell hits through alert path when possible
   --quiet / -q       Only print when threats > 0 or level != CLEAR
+  (levels are color-coded: CLEAR green · WATCH cyan · ELEVATED yellow · HIGH red · CRITICAL magenta)
   -h, --help         This help
 
 Presets:
@@ -3388,11 +3389,17 @@ Examples:
                 if as_json:
                     print(json.dumps(snap, default=str))
                 elif not quiet or count > 0 or level not in ("CLEAR", "WATCH"):
-                    print(f"{str(snap.get('ts',''))[:19]}  level={level}  "
-                          f"threats={count}  score={snap.get('score')}")
-                    for t in (snap.get("threats") or [])[:8]:
-                        print(f"   · {t.get('severity')} {t.get('type')} "
-                              f"{str(t.get('cmd') or t.get('detail') or '')[:80]}")
+                    try:
+                        from modules.realtime_threat import format_monitor_line, format_threat_line
+                        print(format_monitor_line(snap))
+                        for t in (snap.get("threats") or [])[:8]:
+                            print(format_threat_line(t))
+                    except Exception:
+                        print(f"{str(snap.get('ts',''))[:19]}  level={level}  "
+                              f"threats={count}  score={snap.get('score')}")
+                        for t in (snap.get("threats") or [])[:8]:
+                            print(f"   · {t.get('severity')} {t.get('type')} "
+                                  f"{str(t.get('cmd') or t.get('detail') or '')[:80]}")
                 if once:
                     break
                 _time.sleep(interval)

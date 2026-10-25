@@ -18,6 +18,61 @@ RS_PATTERNS = [
 ]
 RISKY_PORTS = {4444, 5555, 6666, 7777, 8888, 9999, 1234, 31337, 1337, 4445}
 
+# Threat level → terminal ANSI + dashboard CSS class
+LEVEL_STYLE = {
+    "CLEAR":    {"ansi": "\033[92m", "css": "on",    "label": "CLEAR"},      # green
+    "WATCH":    {"ansi": "\033[96m", "css": "info",  "label": "WATCH"},      # cyan
+    "ELEVATED": {"ansi": "\033[93m", "css": "elev",  "label": "ELEVATED"},   # yellow
+    "HIGH":     {"ansi": "\033[91m", "css": "warn",  "label": "HIGH"},       # red/orange via warn
+    "CRITICAL": {"ansi": "\033[95m", "css": "bad",   "label": "CRITICAL"},   # magenta/bright
+    "UNKNOWN":  {"ansi": "\033[90m", "css": "off",   "label": "UNKNOWN"},
+}
+_RESET = "\033[0m"
+_BOLD = "\033[1m"
+
+SEVERITY_ANSI = {
+    "CRITICAL": "\033[95m",
+    "HIGH": "\033[91m",
+    "MEDIUM": "\033[93m",
+    "LOW": "\033[92m",
+}
+
+
+def level_style(level: str) -> dict:
+    return LEVEL_STYLE.get((level or "UNKNOWN").upper(), LEVEL_STYLE["UNKNOWN"])
+
+
+def level_ansi(level: str, *, bold: bool = True) -> str:
+    """Colorize a threat level name for CLI."""
+    st = level_style(level)
+    body = f"{st['ansi']}{_BOLD if bold else ''}{st['label']}{_RESET}"
+    return body
+
+
+def severity_ansi(sev: str) -> str:
+    s = (sev or "MEDIUM").upper()
+    c = SEVERITY_ANSI.get(s, "\033[0m")
+    return f"{c}{s}{_RESET}"
+
+
+def format_monitor_line(snap: dict) -> str:
+    """One colored status line for CLI monitor."""
+    level = str(snap.get("level") or "CLEAR")
+    ts = str(snap.get("ts") or "")[:19]
+    count = snap.get("threat_count", 0)
+    score = snap.get("score", 0)
+    return (
+        f"{ts}  level={level_ansi(level)}  "
+        f"threats={count}  score={score}"
+    )
+
+
+def format_threat_line(t: dict) -> str:
+    sev = severity_ansi(str(t.get("severity") or ""))
+    typ = t.get("type") or ""
+    det = str(t.get("cmd") or t.get("detail") or t.get("id") or t.get("port") or "")[:80]
+    return f"   · {sev} {typ} {det}"
+
 
 def _home() -> Path:
     return Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel"))

@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.13.4] — 2026-10-25
+
+### Real-time threat level color coding
+- CLI monitor: CLEAR green · WATCH cyan · ELEVATED yellow · HIGH red · CRITICAL magenta
+- Severity lines colorized; dashboard badges/rows match (elev/info/bad)
+
+
 ## [3.13.3] — 2026-10-25
 
 ### CLI monitor interval options
