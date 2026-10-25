@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.10.0] — 2026-10-25
+
+### SIEM / centralized logging
+- `modules/siem.py` — syslog (UDP/TCP), CEF, Splunk HEC, webhook, JSONL ship file
+- Wired into AlertRouter + send_alert when `alerting.siem.enabled`
+- CLI: `siem status|test|cef-sample`
+- docs/SIEM.md
+
 ## [3.9.1] — 2026-10-25
 
 ### Persistent critical alerts

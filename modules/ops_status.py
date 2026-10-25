@@ -97,6 +97,12 @@ def collect() -> dict:
     except Exception as e:
         out["critical"] = {"error": str(e)}
 
+    try:
+        from modules.siem import status as siem_status
+        out["siem"] = siem_status()
+    except Exception as e:
+        out["siem"] = {"error": str(e)}
+
     return out
 
 
@@ -118,6 +124,8 @@ def print_ops(data: dict) -> None:
     print(f"  Alerts total:    {a.get('total', 0)}")
     cr = data.get("critical") or {}
     print(f"  Critical open:   {cr.get('open_count', 0)}")
+    sm = data.get("siem") or {}
+    print(f"  SIEM:            enabled={sm.get('enabled')} ship_lines={sm.get('ship_file_lines', 0)}")
     for it in (cr.get("open") or [])[:5]:
         print(f"    ! [{it.get('id')}] {it.get('type')} x{it.get('count')}")
     print(f"  Offline queue:   {data.get('offline_queue', 0)}")

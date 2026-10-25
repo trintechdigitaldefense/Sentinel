@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.9.1"
+__version__ = "3.10.0"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -182,6 +182,15 @@ def init_config(logger):
                 "to_email": "",
             },
             "log_file": str(ALERT_LOG),
+            "siem": {
+                "enabled": False,
+                "format": "json",
+                "min_severity": "LOW",
+                "syslog": {"enabled": False, "host": "", "port": 514, "protocol": "udp"},
+                "splunk_hec": {"enabled": False, "url": "", "token": "", "index": "", "verify_tls": True},
+                "webhook": {"enabled": False, "url": "", "verify_tls": True},
+                "ship_file": {"enabled": True, "path": ""},
+            },
         },
         "persistence": {
             "monitor_interval": 60,
@@ -445,6 +454,13 @@ def send_alert(alert_type, details, logger=None):
         router = AlertRouter(config.get("alerting") or {})
         det = details if isinstance(details, str) else json.dumps(details, default=str)
         router.send(sev, str(alert_type), detail=str(det)[:500], meta={"type": alert_type})
+        try:
+            from modules.siem import emit as _siem_emit
+            _siem_cfg = (config.get("alerting") or {}).get("siem") or {}
+            if _siem_cfg.get("enabled"):
+                _siem_emit(sev, str(alert_type), detail=str(det)[:500], meta={"type": alert_type}, cfg=_siem_cfg)
+        except Exception:
+            pass
     except Exception:
         pass
     # Phase 1: auto-quarantine on critical alerts
@@ -2085,6 +2101,7 @@ def interactive_menu(config=None, logger=None):
         ("9", "Pilot --fix (create baselines)", ("pilot", "--fix")),
         ("10", "Ops status (hunt/alerts/service)", ("ops",)),
         ("11", "Critical alerts (open)", ("critical", "status")),
+        ("12", "SIEM status", ("siem", "status")),
         ("0", "Back to main menu", ("__back__",)),
     ]
 
@@ -2856,6 +2873,21 @@ def main():
                 print_report(report)
         except Exception as e:
             print("[!] sim:", e)
+
+    elif command in ("siem",):
+        try:
+            from modules.siem import status as siem_status, test_emit, emit, to_cef
+            if not args or args[0] == "status":
+                print(json.dumps(siem_status(), indent=2, default=str))
+            elif args[0] == "test":
+                print(json.dumps(test_emit(), indent=2, default=str))
+            elif args[0] == "cef-sample":
+                print(to_cef("HIGH", "SAMPLE", "detail", {"type": "SAMPLE"}))
+            else:
+                print("Usage: siem status|test|cef-sample")
+                print("Enable in config: alerting.siem.enabled = true")
+        except Exception as e:
+            print("[!] siem:", e)
 
     elif command in ("critical", "crit", "critical-alerts"):
         try:

@@ -1,0 +1,319 @@
+# © 2026 TrinTech Digital Defense — authorized defensive use only
+"""SIEM / centralized logging integration for SENTINEL alerts.
+
+Supports:
+  - syslog UDP/TCP (RFC 5424-ish)
+  - CEF over syslog (ArcSight / many SIEMs)
+  - Splunk HEC (HTTP Event Collector)
+  - Generic HTTPS webhook (JSON)
+  - Local JSONL ship file (for agents/filebeat)
+
+Config under ~/.sentinel/config.json → alerting.siem
+"""
+from __future__ import annotations
+
+import json
+import logging
+import os
+import socket
+import ssl
+import time
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any, Optional
+
+log = logging.getLogger("sentinel.siem")
+
+# CEF severity 0-10
+_SEV = {
+    "CRITICAL": 10,
+    "HIGH": 8,
+    "MEDIUM": 5,
+    "LOW": 3,
+    "INFO": 1,
+}
+
+
+def _home() -> Path:
+    return Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel"))
+
+
+def _cfg() -> dict:
+    p = _home() / "config.json"
+    if not p.exists():
+        return {}
+    try:
+        full = json.loads(p.read_text())
+        return (full.get("alerting") or {}).get("siem") or {}
+    except Exception:
+        return {}
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def to_cef(
+    severity: str,
+    title: str,
+    detail: str = "",
+    meta: Optional[dict] = None,
+    host: str = "",
+) -> str:
+    """Common Event Format for SIEM parsers."""
+    meta = meta or {}
+    host = host or socket.gethostname()
+    sev = _SEV.get((severity or "INFO").upper(), 5)
+    # Escape CEF extension special chars
+    def esc(s: str) -> str:
+        return (
+            str(s)
+            .replace("\\", "\\\\")
+            .replace("=", "\\=")
+            .replace("\n", " ")
+            .replace("\r", " ")[:500]
+        )
+
+    device_vendor = "TrinTech"
+    device_product = "Sentinel"
+    device_version = meta.get("version") or "3.9"
+    signature = esc(title)[:64]
+    name = esc(title)[:128]
+    extensions = [
+        f"msg={esc(detail)}",
+        f"dhost={esc(host)}",
+        f"cs1={esc(meta.get('type') or title)}",
+        f"cs1Label=AlertType",
+        f"rt={int(time.time() * 1000)}",
+    ]
+    if meta.get("ip"):
+        extensions.append(f"src={esc(meta['ip'])}")
+    return (
+        f"CEF:0|{device_vendor}|{device_product}|{device_version}|{signature}|{name}|{sev}|"
+        + " ".join(extensions)
+    )
+
+
+def to_json_event(
+    severity: str,
+    title: str,
+    detail: str = "",
+    meta: Optional[dict] = None,
+) -> dict:
+    return {
+        "ts": _now(),
+        "product": "sentinel",
+        "vendor": "TrinTech Digital Defense",
+        "severity": (severity or "INFO").upper(),
+        "title": title,
+        "detail": (detail or "")[:2000],
+        "host": socket.gethostname(),
+        "meta": meta or {},
+    }
+
+
+def send_syslog(
+    message: str,
+    host: str,
+    port: int = 514,
+    protocol: str = "udp",
+    facility: int = 16,  # local0
+    severity: int = 6,
+) -> dict:
+    """Send a single syslog line. protocol: udp|tcp."""
+    pri = facility * 8 + severity
+    hostname = socket.gethostname()
+    line = f"<{pri}>1 {_now()} {hostname} sentinel - - - {message}\n"
+    data = line.encode("utf-8", errors="replace")
+    try:
+        if protocol.lower() == "tcp":
+            with socket.create_connection((host, int(port)), timeout=8) as s:
+                s.sendall(data)
+        else:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(5)
+            s.sendto(data, (host, int(port)))
+            s.close()
+        return {"ok": True, "channel": "syslog", "host": host, "port": port, "proto": protocol}
+    except Exception as e:
+        return {"ok": False, "channel": "syslog", "error": str(e)}
+
+
+def send_splunk_hec(
+    event: dict,
+    url: str,
+    token: str,
+    index: Optional[str] = None,
+    source: str = "sentinel",
+    sourcetype: str = "sentinel:alert",
+    verify_tls: bool = True,
+) -> dict:
+    """POST to Splunk HTTP Event Collector."""
+    payload = {
+        "event": event,
+        "sourcetype": sourcetype,
+        "source": source,
+        "host": socket.gethostname(),
+    }
+    if index:
+        payload["index"] = index
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={
+            "Authorization": f"Splunk {token}",
+            "Content-Type": "application/json",
+        },
+        method="POST",
+    )
+    ctx = None
+    if not verify_tls:
+        ctx = ssl._create_unverified_context()
+    try:
+        with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+            return {"ok": True, "channel": "splunk_hec", "status": getattr(resp, "status", 200)}
+    except Exception as e:
+        return {"ok": False, "channel": "splunk_hec", "error": str(e)}
+
+
+def send_webhook(url: str, event: dict, headers: Optional[dict] = None, verify_tls: bool = True) -> dict:
+    body = json.dumps(event).encode("utf-8")
+    hdrs = {"Content-Type": "application/json", "User-Agent": "Sentinel-SIEM/1.0"}
+    if headers:
+        hdrs.update(headers)
+    req = urllib.request.Request(url, data=body, headers=hdrs, method="POST")
+    ctx = None if verify_tls else ssl._create_unverified_context()
+    try:
+        with urllib.request.urlopen(req, timeout=15, context=ctx) as resp:
+            return {"ok": True, "channel": "siem_webhook", "status": getattr(resp, "status", 200)}
+    except Exception as e:
+        return {"ok": False, "channel": "siem_webhook", "error": str(e)}
+
+
+def append_ship_file(event: dict, path: Optional[str] = None) -> dict:
+    """Append JSONL for Filebeat / SIEM agents to ship."""
+    p = Path(path) if path else (_home() / "data" / "siem_ship.jsonl")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with open(p, "a") as f:
+            f.write(json.dumps(event, default=str) + "\n")
+        return {"ok": True, "channel": "ship_file", "path": str(p)}
+    except Exception as e:
+        return {"ok": False, "channel": "ship_file", "error": str(e)}
+
+
+def emit(
+    severity: str,
+    title: str,
+    detail: str = "",
+    meta: Optional[dict] = None,
+    cfg: Optional[dict] = None,
+) -> dict:
+    """Fan-out alert to all enabled SIEM channels from config."""
+    cfg = cfg if cfg is not None else _cfg()
+    result = {"ok": True, "sent": False, "channels": []}
+    if not cfg.get("enabled"):
+        result["skipped"] = True
+        result["reason"] = "siem disabled"
+        return result
+
+    # min severity filter
+    order = ["INFO", "LOW", "MEDIUM", "HIGH", "CRITICAL"]
+    min_sev = (cfg.get("min_severity") or "LOW").upper()
+    sev = (severity or "INFO").upper()
+    try:
+        if order.index(sev) < order.index(min_sev):
+            return {"ok": True, "skipped": True, "reason": f"below {min_sev}"}
+    except ValueError:
+        pass
+
+    event = to_json_event(sev, title, detail, meta)
+    fmt = (cfg.get("format") or "json").lower()
+
+    # Syslog
+    sy = cfg.get("syslog") or {}
+    if sy.get("enabled") and sy.get("host"):
+        if fmt == "cef":
+            msg = to_cef(sev, title, detail, meta)
+        else:
+            msg = json.dumps(event, default=str)
+        pri_map = {"CRITICAL": 2, "HIGH": 3, "MEDIUM": 5, "LOW": 6, "INFO": 6}
+        r = send_syslog(
+            msg,
+            host=sy["host"],
+            port=int(sy.get("port") or 514),
+            protocol=sy.get("protocol") or "udp",
+            severity=pri_map.get(sev, 6),
+        )
+        result["channels"].append(r)
+        if r.get("ok"):
+            result["sent"] = True
+
+    # Splunk HEC
+    sp = cfg.get("splunk_hec") or {}
+    if sp.get("enabled") and sp.get("url") and sp.get("token"):
+        r = send_splunk_hec(
+            event,
+            url=sp["url"],
+            token=sp["token"],
+            index=sp.get("index"),
+            source=sp.get("source") or "sentinel",
+            sourcetype=sp.get("sourcetype") or "sentinel:alert",
+            verify_tls=sp.get("verify_tls", True),
+        )
+        result["channels"].append(r)
+        if r.get("ok"):
+            result["sent"] = True
+
+    # Generic SIEM webhook
+    wh = cfg.get("webhook") or {}
+    if wh.get("enabled") and wh.get("url"):
+        r = send_webhook(wh["url"], event, headers=wh.get("headers"), verify_tls=wh.get("verify_tls", True))
+        result["channels"].append(r)
+        if r.get("ok"):
+            result["sent"] = True
+
+    # Ship file for agents
+    sf = cfg.get("ship_file") or {}
+    if sf.get("enabled", True):  # default on when siem.enabled — local buffer
+        r = append_ship_file(event, path=sf.get("path"))
+        result["channels"].append(r)
+        if r.get("ok"):
+            result["sent"] = True
+
+    result["ok"] = result["sent"] or not any(
+        (not c.get("ok") and not c.get("skipped")) for c in result["channels"]
+    )
+    return result
+
+
+def status() -> dict:
+    cfg = _cfg()
+    ship = _home() / "data" / "siem_ship.jsonl"
+    n = 0
+    if ship.exists():
+        n = sum(1 for ln in ship.read_text().splitlines() if ln.strip())
+    return {
+        "ok": True,
+        "enabled": bool(cfg.get("enabled")),
+        "format": cfg.get("format") or "json",
+        "min_severity": cfg.get("min_severity") or "LOW",
+        "syslog": bool((cfg.get("syslog") or {}).get("enabled")),
+        "splunk_hec": bool((cfg.get("splunk_hec") or {}).get("enabled")),
+        "webhook": bool((cfg.get("webhook") or {}).get("enabled")),
+        "ship_file_lines": n,
+        "ship_file": str(ship),
+        "config_keys": list(cfg.keys()),
+    }
+
+
+def test_emit() -> dict:
+    return emit(
+        "INFO",
+        "SIEM_TEST",
+        detail="Sentinel SIEM connectivity test",
+        meta={"type": "SIEM_TEST"},
+    )

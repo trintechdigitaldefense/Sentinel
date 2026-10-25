@@ -184,7 +184,22 @@ class AlertEngine:
         except Exception:
             pass
 
+
+        # SIEM / centralized logging
+        try:
+            from modules import siem as _siem
+            siem_cfg = (self.cfg.get("siem") or {})
+            if siem_cfg.get("enabled"):
+                sr = _siem.emit(severity, title, detail, meta=meta, cfg=siem_cfg)
+                result["channels"].extend(sr.get("channels") or [])
+                if sr.get("sent"):
+                    result["sent"] = True
+                result["siem"] = {"ok": sr.get("ok"), "sent": sr.get("sent")}
+        except Exception as e:
+            result["channels"].append({"channel": "siem", "ok": False, "error": str(e)})
+
         # Offline queue: if no channel delivered, persist for later flush
+
         if not result.get("sent"):
             failed = [c for c in result.get("channels") or [] if not c.get("ok") and not c.get("suppressed")]
             if failed or not result.get("channels"):

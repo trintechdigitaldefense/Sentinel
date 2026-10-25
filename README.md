@@ -1,7 +1,7 @@
 # SENTINEL
 
 [![CI](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-3.9.1-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.10.0-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-Authorized%20defensive%20use-red)](LICENSE)
 
 **TrinTech Digital Defense** — continuous host monitoring and early warning for Caribbean SMBs.
@@ -88,6 +88,8 @@ python3 sentinel.py doctor
 | `python3 sentinel.py ops` | Hunt metrics, alerts, service, SSH blocks |
 | `python3 sentinel.py critical status` | Unacknowledged critical alerts |
 | `python3 sentinel.py critical ack <id>` | Acknowledge a critical alert |
+| `python3 sentinel.py siem status` | SIEM / centralized logging status |
+| `python3 sentinel.py siem test` | Emit SIEM test event |
 | `python3 sentinel.py pilot` | Full pilot validation workflow |
 | `python3 sentinel.py pilot --fix` | Pilot + create missing baselines |
 | `python3 sentinel.py sim --list` | Threat-actor simulation scenarios |
@@ -118,6 +120,7 @@ Cheatsheet: [docs/Sentinel_Firewall_Cheatsheet.md](docs/Sentinel_Firewall_Cheats
 - Threat model: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)
 - Pilot workflow: [docs/PILOT.md](docs/PILOT.md)
 - Threat simulation: [docs/THREAT_SIM.md](docs/THREAT_SIM.md)
+- SIEM logging: [docs/SIEM.md](docs/SIEM.md)
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
 - Roadmap / phases: [ROADMAP.md](ROADMAP.md) · [PHASE13.md](PHASE13.md)
 
