@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.7.0"
+__version__ = "3.7.1"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -1989,6 +1989,11 @@ def interactive_menu(config=None, logger=None):
         ("10", "SSH brute-force check now", ("ssh-blocks", "check")),
         ("11", "Expire old SSH blocks", ("ssh-blocks", "expire")),
         ("12", "Harden SSH port (dry-run)", ("firewall", "harden-ssh")),
+        ("13", "Defense pack (caribbean_smb, dry-run)", ("firewall", "defense-pack")),
+        ("14", "Defense pack APPLY caribbean_smb", ("__fw_defend__",)),
+        ("15", "Deny high-risk ports (dry-run)", ("firewall", "high-risk")),
+        ("16", "SSH rate-limit (dry-run)", ("firewall", "rate-limit-ssh")),
+        ("17", "Firewall intelligence (alert scores)", ("firewall-intel",)),
         ("0", "Back to main menu", ("__back__",)),
     ]
 
@@ -2064,6 +2069,9 @@ def interactive_menu(config=None, logger=None):
                 run("sim", "--scenario", "all", "--confirm")
             elif args[0] == "__fw_protect__":
                 run("firewall", "protect-operator", "--confirm")
+            elif args[0] == "__fw_defend__":
+                print(f"  {C.YELLOW}Applying defense pack caribbean_smb — ensure console access{C.RESET}")
+                run("firewall", "defense-pack", "caribbean_smb", "--confirm")
             else:
                 run(*args)
             try:
@@ -3127,6 +3135,17 @@ def main():
                 print("Usage: ssh-blocks status|check|expire|whitelist <ip>")
         except Exception as e:
             print("[!] ssh-blocks:", e)
+
+    elif command in ("firewall-intel", "fw-intel"):
+        try:
+            from modules.firewall_intel import analyze, apply_recommendations
+            if args and args[0] in ("apply", "block"):
+                conf = "--confirm" in args
+                print(json.dumps(apply_recommendations(confirm=conf), indent=2, default=str))
+            else:
+                print(json.dumps(analyze(), indent=2, default=str))
+        except Exception as e:
+            print("[!] firewall-intel:", e)
 
     elif command in ("firewall", "fw"):
         try:

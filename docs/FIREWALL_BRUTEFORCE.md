@@ -47,3 +47,20 @@ python3 sentinel.py firewall expire-blocks
 - Whitelist overrides auto-block
 - Dry-run remains default for manual `firewall block`
 - Auto-block from hunt uses `--confirm` path inside the control plane only
+
+
+## Defense pack (v13.4)
+
+```bash
+python3 sentinel.py firewall defense-pack                 # dry-run
+python3 sentinel.py firewall defense-pack caribbean_smb --confirm
+python3 sentinel.py firewall defense-pack zero_trust_edge --confirm
+python3 sentinel.py firewall high-risk --confirm
+python3 sentinel.py firewall rate-limit-ssh --confirm
+python3 sentinel.py firewall-intel
+python3 sentinel.py firewall-intel apply --confirm
+```
+
+Layers: established/related → operator ACCEPT → SSH allow → profile ports → high-risk DENY → SSH rate-limit.
+
+Profiles: `hardening`, `caribbean_smb`, `database_guard`, `web_server`, `ssh_only`, `lab_lockdown`, `zero_trust_edge`.

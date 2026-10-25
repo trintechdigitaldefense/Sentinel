@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-VERSION = "13.3.0"
+VERSION = "13.4.0"
 
 
 def _home() -> Path:
@@ -472,19 +472,64 @@ def deny_port(port: int, proto: str = "tcp", confirm: bool = False) -> dict:
 
 
 PROFILES = {
-    "default": {"description": "Track managed blocks only; no policy change", "actions": []},
-    "hardening": {
-        "description": "Deny common risky inbound Windows/SMB/RDP ports if not needed",
-        "deny_ports": [(135, "tcp"), (139, "tcp"), (445, "tcp"), (3389, "tcp")],
+    "default": {
+        "description": "Track managed blocks only; no policy change",
+        "deny_ports": [],
+        "allow_ports": [],
     },
-    "web_server": {"description": "Allow HTTP/HTTPS inbound", "allow_ports": [(80, "tcp"), (443, "tcp")]},
-    "ssh_only": {"description": "Allow SSH 22/tcp — ensure console access first", "allow_ports": [(22, "tcp")]},
-    "lab_lockdown": {
-        "description": "Lab: deny SMB/RDP/RPC + allow SSH",
-        "deny_ports": [(135, "tcp"), (139, "tcp"), (445, "tcp"), (3389, "tcp")],
+    "hardening": {
+        "description": "Deny classic lateral/remote admin inbound (SMB/RDP/RPC/Telnet)",
+        "deny_ports": [
+            (135, "tcp"), (137, "udp"), (138, "udp"), (139, "tcp"), (445, "tcp"),
+            (3389, "tcp"), (23, "tcp"), (21, "tcp"), (69, "udp"),
+        ],
         "allow_ports": [(22, "tcp")],
     },
+    "caribbean_smb": {
+        "description": "T&T/Caribbean SMB default: close high-risk inbound, keep SSH/web",
+        "deny_ports": [
+            (135, "tcp"), (139, "tcp"), (445, "tcp"), (3389, "tcp"), (23, "tcp"),
+            (21, "tcp"), (1433, "tcp"), (3306, "tcp"), (5432, "tcp"), (27017, "tcp"),
+            (6379, "tcp"), (9200, "tcp"), (11211, "tcp"), (5900, "tcp"), (5901, "tcp"),
+        ],
+        "allow_ports": [(22, "tcp"), (80, "tcp"), (443, "tcp")],
+    },
+    "database_guard": {
+        "description": "Deny inbound DB/cache ports from the world (bind to localhost in apps)",
+        "deny_ports": [
+            (1433, "tcp"), (1521, "tcp"), (3306, "tcp"), (5432, "tcp"),
+            (27017, "tcp"), (6379, "tcp"), (9200, "tcp"), (11211, "tcp"), (5984, "tcp"),
+        ],
+        "allow_ports": [(22, "tcp")],
+    },
+    "web_server": {
+        "description": "Allow HTTP/HTTPS + SSH; deny SMB/RDP",
+        "allow_ports": [(80, "tcp"), (443, "tcp"), (22, "tcp")],
+        "deny_ports": [(445, "tcp"), (3389, "tcp"), (135, "tcp"), (139, "tcp")],
+    },
+    "ssh_only": {
+        "description": "Allow SSH only — console/out-of-band access recommended first",
+        "allow_ports": [(22, "tcp")],
+        "deny_ports": [],
+    },
+    "lab_lockdown": {
+        "description": "Lab: deny SMB/RDP/RPC/Telnet + allow SSH",
+        "deny_ports": [(135, "tcp"), (139, "tcp"), (445, "tcp"), (3389, "tcp"), (23, "tcp")],
+        "allow_ports": [(22, "tcp")],
+    },
+    "zero_trust_edge": {
+        "description": "Aggressive inbound deny of admin/DB/legacy; allow SSH+HTTPS only",
+        "deny_ports": [
+            (21, "tcp"), (23, "tcp"), (25, "tcp"), (110, "tcp"), (143, "tcp"),
+            (135, "tcp"), (139, "tcp"), (445, "tcp"), (1433, "tcp"), (1521, "tcp"),
+            (3306, "tcp"), (3389, "tcp"), (5432, "tcp"), (5900, "tcp"), (6379, "tcp"),
+            (27017, "tcp"), (9200, "tcp"), (11211, "tcp"), (2375, "tcp"), (2376, "tcp"),
+            (4444, "tcp"), (5555, "tcp"), (6666, "tcp"), (31337, "tcp"),
+        ],
+        "allow_ports": [(22, "tcp"), (443, "tcp")],
+    },
 }
+
 
 
 
@@ -514,6 +559,159 @@ def harden_ssh_port(port: int = 22, confirm: bool = False) -> dict:
     protect_operator(confirm=True)
     r = allow_port(port, "tcp", confirm=True)
     return {"ok": bool(r.get("ok")), "ssh_port": port, "operator": ops, "allow": r}
+
+
+
+# High-risk inbound ports commonly left open on SMB hosts (defensive deny list)
+HIGH_RISK_PORTS = [
+    (21, "tcp"), (23, "tcp"), (135, "tcp"), (139, "tcp"), (445, "tcp"),
+    (1433, "tcp"), (3306, "tcp"), (3389, "tcp"), (5432, "tcp"), (5900, "tcp"),
+    (6379, "tcp"), (9200, "tcp"), (11211, "tcp"), (27017, "tcp"),
+    (4444, "tcp"), (5555, "tcp"), (6666, "tcp"), (31337, "tcp"),
+]
+
+
+def ensure_base_chain(confirm: bool = False) -> dict:
+    """Ensure ESTABLISHED,RELATED accept + loopback accept at top of Sentinel chain."""
+    b = backend()
+    if not confirm:
+        return {"ok": True, "dry_run": True, "would": ["accept established/related", "accept lo"]}
+    if b == "none":
+        return {"ok": False, "error": "no backend"}
+    ensure_backend_ready()
+    results = []
+    if b == "nft":
+        results.append(_run([
+            "nft", "insert", "rule", "inet", "sentinel", "input",
+            "ct", "state", "established,related", "accept", "comment", "sentinel-established",
+        ]))
+        results.append(_run([
+            "nft", "insert", "rule", "inet", "sentinel", "input",
+            "iif", "lo", "accept", "comment", "sentinel-lo",
+        ]))
+    else:
+        results.append(_run([
+            "iptables", "-I", "INPUT", "1", "-m", "conntrack", "--ctstate", "ESTABLISHED,RELATED",
+            "-j", "ACCEPT", "-m", "comment", "--comment", "sentinel-established",
+        ]))
+        results.append(_run([
+            "iptables", "-I", "INPUT", "1", "-i", "lo", "-j", "ACCEPT",
+            "-m", "comment", "--comment", "sentinel-lo",
+        ]))
+    ok = any(r.get("ok") for r in results)
+    _audit("ensure_base_chain", {"results": results}, ok=ok)
+    return {"ok": ok, "results": results, "applied": True}
+
+
+def rate_limit_ssh(port: int = 22, hits: int = 6, seconds: int = 60, confirm: bool = False) -> dict:
+    """Rate-limit new SSH connections (anti brute-force at the packet layer)."""
+    b = backend()
+    if not confirm:
+        return {
+            "ok": True,
+            "dry_run": True,
+            "would": f"limit new tcp/{port} to {hits}/{seconds}s then drop",
+        }
+    if b == "none":
+        return {"ok": False, "error": "no backend"}
+    ensure_backend_ready()
+    protect_operator(confirm=True)
+    results = []
+    if b == "iptables":
+        # Accept within rate, drop excess SYN to SSH
+        results.append(_run([
+            "iptables", "-I", "INPUT", "1", "-p", "tcp", "--dport", str(port),
+            "-m", "conntrack", "--ctstate", "NEW",
+            "-m", "recent", "--set", "--name", "SENTINEL_SSH",
+        ]))
+        results.append(_run([
+            "iptables", "-I", "INPUT", "1", "-p", "tcp", "--dport", str(port),
+            "-m", "conntrack", "--ctstate", "NEW",
+            "-m", "recent", "--update", "--seconds", str(seconds),
+            "--hitcount", str(hits), "--name", "SENTINEL_SSH",
+            "-j", "DROP", "-m", "comment", "--comment", "sentinel-ssh-ratelimit",
+        ]))
+        results.append(_run([
+            "iptables", "-I", "INPUT", "1", "-p", "tcp", "--dport", str(port),
+            "-m", "conntrack", "--ctstate", "NEW", "-j", "ACCEPT",
+            "-m", "comment", "--comment", "sentinel-ssh-allow",
+        ]))
+    else:
+        # nft limit: 6/minute style
+        results.append(_run([
+            "nft", "insert", "rule", "inet", "sentinel", "input",
+            "tcp", "dport", str(port), "ct", "state", "new",
+            "limit", "rate", str(hits), "/", "minute", "accept",
+            "comment", "sentinel-ssh-ratelimit",
+        ]))
+        results.append(_run([
+            "nft", "insert", "rule", "inet", "sentinel", "input",
+            "tcp", "dport", str(port), "ct", "state", "new", "drop",
+            "comment", "sentinel-ssh-ratelimit-drop",
+        ]))
+    ok = any(r.get("ok") for r in results)
+    _audit("rate_limit_ssh", {"port": port, "hits": hits, "seconds": seconds, "results": results}, ok=ok)
+    return {"ok": ok, "port": port, "hits": hits, "seconds": seconds, "applied": True, "results": results}
+
+
+def deny_high_risk_ports(confirm: bool = False) -> dict:
+    """Deny inbound HIGH_RISK_PORTS list."""
+    if not confirm:
+        return {
+            "ok": True,
+            "dry_run": True,
+            "would_deny": [f"{p}/{proto}" for p, proto in HIGH_RISK_PORTS],
+        }
+    protect_operator(confirm=True)
+    results = []
+    for port, proto in HIGH_RISK_PORTS:
+        results.append(deny_port(port, proto, confirm=True))
+    return {
+        "ok": True,
+        "applied": True,
+        "denied": len(results),
+        "results_ok": sum(1 for r in results if r.get("ok")),
+    }
+
+
+def apply_defense_pack(confirm: bool = False, profile: str = "caribbean_smb") -> dict:
+    """High-power layered defense: base chain → operator → SSH → profile → high-risk → rate limit.
+
+    Always dry-run unless confirm=True. Safe default for Caribbean SMB hosts.
+    """
+    plan = [
+        "ensure_base_chain (established/related + lo)",
+        "protect_operator",
+        f"apply_profile:{profile}",
+        "deny_high_risk_ports",
+        "rate_limit_ssh",
+        "harden_ssh_port",
+    ]
+    if not confirm:
+        return {
+            "ok": True,
+            "dry_run": True,
+            "profile": profile,
+            "plan": plan,
+            "hint": "pass --confirm to apply full defense pack",
+        }
+    steps = []
+    steps.append(("base_chain", ensure_base_chain(confirm=True)))
+    steps.append(("protect_operator", protect_operator(confirm=True)))
+    steps.append(("harden_ssh", harden_ssh_port(22, confirm=True)))
+    if profile in PROFILES:
+        steps.append(("profile", apply_profile(profile, confirm=True)))
+    steps.append(("high_risk", deny_high_risk_ports(confirm=True)))
+    steps.append(("ssh_ratelimit", rate_limit_ssh(confirm=True)))
+    _audit("defense_pack", {"profile": profile, "steps": [s[0] for s in steps]})
+    _case_event("FIREWALL_DEFENSE_PACK", {"profile": profile})
+    return {
+        "ok": True,
+        "applied": True,
+        "profile": profile,
+        "steps": {k: (v.get("ok") if isinstance(v, dict) else bool(v)) for k, v in steps},
+    }
+
 
 
 def list_profiles() -> dict:
@@ -673,6 +871,17 @@ def cli(argv: list[str]) -> int:
         print(json.dumps(apply_profile(name, confirm=conf), indent=2))
     elif cmd == "apply-managed":
         print(json.dumps(apply_managed(confirm=conf), indent=2))
+    elif cmd in ("defense-pack", "defend"):
+        prof = "caribbean_smb"
+        if rest_f:
+            prof = rest_f[0]
+        print(json.dumps(apply_defense_pack(confirm=conf, profile=prof), indent=2))
+    elif cmd in ("high-risk", "deny-high-risk"):
+        print(json.dumps(deny_high_risk_ports(confirm=conf), indent=2))
+    elif cmd in ("rate-limit-ssh", "ssh-limit"):
+        print(json.dumps(rate_limit_ssh(confirm=conf), indent=2))
+    elif cmd in ("base-chain",):
+        print(json.dumps(ensure_base_chain(confirm=conf), indent=2))
     elif cmd in ("harden-ssh",):
         port = 22
         rest2 = [x for x in rest_f if x.isdigit()]
