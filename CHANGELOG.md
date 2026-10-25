@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.4.0] — 2026-10-25
+
+### Persistence expansion + behavioral shells + self-FIM
+- **persistence_hunt**: systemd timers/sockets, authorized_keys drift, LD_PRELOAD create/change, profile.d, rc files
+- **behavioral_shell**: deleted `/proc/pid/exe`, TTY+TCP established, web-server→shell parent anomaly
+- **Self-FIM**: tracks core modules + setup.py; full-tree git updates refresh baseline; partial module change alerts
+- CLI: `sentinel persistence-baseline` · `sentinel persistence` · `sentinel behavioral`
+
 ## [3.3.1] — 2026-10-25
 
 ### FIM / detection quality

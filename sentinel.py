@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.3.1"
+__version__ = "3.4.0"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -749,6 +749,21 @@ def process_scan(config, logger):
         logger.info(f"{C.RED}⚠{C.RESET} {C.BOLD}{len(suspicious)} suspicious process(es){C.RESET}")
     else:
         logger.info(f"{C.GREEN}✓{C.RESET} Process scan clean")
+    
+    # Behavioral reverse-shell heuristics (deleted exe, TTY+TCP, web→shell)
+    try:
+        from modules.behavioral_shell import scan as _bscan
+        for hit in _bscan(send_alert=lambda t, d, *a, **k: send_alert(t, d, logger), logger=logger):
+            suspicious.append({
+                "pid": hit.get("pid"),
+                "user": hit.get("user"),
+                "command": hit.get("command"),
+                "reason": "behavioral_shell",
+                "pattern": ",".join(hit.get("reasons") or []),
+            })
+    except Exception as _be:
+        logger.warning(f"{C.YELLOW}!{C.RESET} Behavioral shell scan: {_be}")
+
     return suspicious
 
 
@@ -1258,6 +1273,13 @@ def persistence_hunt(config, logger):
     outbound_scan(config, logger)
     user_monitor_check(config, logger)
     cron_monitor_check(config, logger)
+
+    # Expanded persistence surface (timers, authorized_keys, LD_PRELOAD, rc)
+    try:
+        from modules.persistence_hunt import check as _per_check
+        _per_check(send_alert=lambda t, d, *a, **k: send_alert(t, d, logger), logger=logger)
+    except Exception as _pe:
+        logger.warning(f"{C.YELLOW}!{C.RESET} Persistence hunt: {_pe}")
 
     return True
 
@@ -1784,8 +1806,22 @@ def harden_permissions(logger=None):
 
 
 def self_integrity_check(logger=None):
-    """Watch only the engine binary — config.json is expected to change."""
+    """Self-FIM: engine + core modules. Config is expected to change."""
     critical = [Path(__file__).resolve()]
+    # Track installed modules (tampering with detection code is a primary attacker goal)
+    mod_dir = Path(__file__).resolve().parent / "modules"
+    if mod_dir.is_dir():
+        for name in (
+            "firewall.py", "alerting.py", "fim_suid.py", "fim_realtime.py",
+            "behavioral_shell.py", "persistence_hunt.py", "doctor.py",
+            "phase4.py", "phase5.py", "deadman.py", "cases.py",
+        ):
+            fp = mod_dir / name
+            if fp.exists():
+                critical.append(fp)
+    setup = Path(__file__).resolve().parent / "setup.py"
+    if setup.exists():
+        critical.append(setup)
     current = {str(f): sha256_file(f) for f in critical if f.exists()}
     if not SELF_INTEGRITY_FILE.exists():
         DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -1803,11 +1839,16 @@ def self_integrity_check(logger=None):
     tampered = [fp for fp, h in current.items() if fp in baseline and baseline[fp] != h]
     if tampered:
         # git/setup updates change sentinel.py often — refresh quietly for engine-only
+        # Full-tree update (git pull / setup) changes many files at once — refresh quietly.
+        # Partial change (one module) is the real tamper signal.
+        install_root = str(Path(__file__).resolve().parent)
+        under_install = all(str(fp).startswith(install_root) for fp in tampered)
+        full_update = under_install and len(tampered) >= max(2, len(current) // 2)
         engine_only = all(
             Path(fp).name == "sentinel.py" or str(fp).endswith("/sentinel.py")
             for fp in tampered
         )
-        if engine_only:
+        if engine_only or full_update:
             try:
                 with open(SELF_INTEGRITY_FILE, "w") as fh:
                     json.dump(current, fh, indent=2)
@@ -1815,7 +1856,7 @@ def self_integrity_check(logger=None):
                 pass
             if logger:
                 logger.info(
-                    f"{C.GREEN}✓{C.RESET} Engine updated — self-integrity baseline refreshed"
+                    f"{C.GREEN}✓{C.RESET} Self-FIM baseline refreshed (install update)"
                 )
             return True
         if logger:
@@ -2778,10 +2819,17 @@ def main():
             print(create_baseline())
         except Exception as e:
             print("[!] persistence-baseline:", e)
+    elif command in ("behavioral", "behavioral-shell"):
+        try:
+            from modules.behavioral_shell import scan
+            hits = scan(send_alert=lambda t, d, *a, **k: send_alert(t, d, logger), logger=logger)
+            print({"ok": True, "hits": hits, "count": len(hits)})
+        except Exception as e:
+            print("[!] behavioral:", e)
     elif command in ("persistence", "persistence-check"):
         try:
             from modules.persistence_hunt import check
-            print(check())
+            print(check(send_alert=lambda t, d, *a, **k: send_alert(t, d, logger), logger=logger))
         except Exception as e:
             print("[!] persistence:", e)
     elif command in ("detect", "tier2"):
