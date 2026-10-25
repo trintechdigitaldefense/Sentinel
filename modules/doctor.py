@@ -259,7 +259,7 @@ def check_detection_modules() -> dict:
     root = Path(__file__).resolve().parent
     need = [
         "behavioral_shell.py", "persistence_hunt.py", "fim_suid.py",
-        "fim_realtime.py", "firewall.py", "alerting.py", "brute_force.py",
+        "fim_realtime.py", "firewall.py", "alerting.py", "brute_force.py", "visibility.py",
     ]
     missing = [n for n in need if not (root / n).exists()]
     if missing:

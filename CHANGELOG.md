@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.8.0] — 2026-10-25
+
+### Visibility (devices / processes / FIM / persistence)
+- `modules/visibility.py` — unified inventory: ARP devices, process snapshot, FIM, SUID, persistence
+- Network scan falls back to ARP when nmap missing/timeout
+- Hunt loop refreshes device + process inventory each cycle
+- CLI: `visibility` · `visibility devices` · `visibility processes`
+- Detection menu: Full visibility inventory
+
 ## [3.6.1] — 2026-10-25
 
 ### Menu + CLI wiring

@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.7.1"
+__version__ = "3.8.0"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -1208,13 +1208,30 @@ def scan_network(config, logger, data=None):
         return discovered
 
     except FileNotFoundError:
-        logger.warning(f"{C.YELLOW}!{C.RESET} nmap not found. Install with: apt-get install -y nmap")
-        return []
+        logger.warning(f"{C.YELLOW}!{C.RESET} nmap not found — falling back to ARP visibility")
+        try:
+            from modules.visibility import inventory_devices
+            inv = inventory_devices(send_alert=lambda t, d, *a, **k: send_alert(t, d, logger), logger=logger)
+            logger.info(f"{C.GREEN}✓{C.RESET} ARP inventory: {C.BOLD}{inv.get('count', 0)}{C.RESET} devices")
+            return list((json.loads(Path(str(DATA_DIR / "devices.json")).read_text()).get("devices") or {}).values()) if (DATA_DIR / "devices.json").exists() else []
+        except Exception as _ve:
+            logger.warning(f"{C.YELLOW}!{C.RESET} ARP fallback failed: {_ve}")
+            return []
     except subprocess.TimeoutExpired:
-        logger.error(f"{C.RED}✗{C.RESET} Scan timed out")
+        logger.error(f"{C.RED}✗{C.RESET} Scan timed out — ARP visibility fallback")
+        try:
+            from modules.visibility import inventory_devices
+            inventory_devices(send_alert=lambda t, d, *a, **k: send_alert(t, d, logger), logger=logger)
+        except Exception:
+            pass
         return []
     except Exception as e:
         logger.error(f"{C.RED}✗{C.RESET} Scan failed: {e}")
+        try:
+            from modules.visibility import inventory_devices
+            inventory_devices(send_alert=lambda t, d, *a, **k: send_alert(t, d, logger), logger=logger)
+        except Exception:
+            pass
         return []
 
 
@@ -1971,8 +1988,10 @@ def interactive_menu(config=None, logger=None):
         ("4", "Behavioral reverse-shell scan", ("behavioral",)),
         ("5", "Realtime FIM watch (inotify)", ("watch",)),
         ("6", "Canary check", ("canary",)),
-        ("7", "Threat-actor simulation (list)", ("sim", "--list")),
-        ("8", "Threat-actor simulation (all, needs confirm)", ("__sim_all__",)),
+        ("7", "Full visibility inventory", ("visibility",)),
+        ("8", "Device inventory (ARP)", ("visibility", "devices")),
+        ("9", "Threat-actor simulation (list)", ("sim", "--list")),
+        ("10", "Threat-actor simulation (all, needs confirm)", ("__sim_all__",)),
         ("0", "Back to main menu", ("__back__",)),
     ]
 
@@ -2812,6 +2831,20 @@ def main():
                 print_report(report)
         except Exception as e:
             print("[!] sim:", e)
+
+    elif command in ("visibility", "inventory", "vis"):
+        try:
+            from modules.visibility import full_inventory, print_inventory, inventory_devices, inventory_processes
+            if args and args[0] == "devices":
+                r = inventory_devices(send_alert=lambda t, d, *a, **k: send_alert(t, d, logger), logger=logger)
+                print(json.dumps(r, indent=2, default=str))
+            elif args and args[0] == "processes":
+                print(json.dumps(inventory_processes(), indent=2, default=str))
+            else:
+                r = full_inventory(send_alert=lambda t, d, *a, **k: send_alert(t, d, logger), logger=logger)
+                print_inventory(r)
+        except Exception as e:
+            print("[!] visibility:", e)
 
     elif command in ("pilot", "pilot-check"):
         try:
