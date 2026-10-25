@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.11.1"
+__version__ = "3.12.0"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2968,6 +2968,33 @@ def main():
                 print_inventory(r)
         except Exception as e:
             print("[!] visibility:", e)
+
+    elif command in ("go-live", "golive", "host-setup", "ops-setup"):
+        try:
+            from modules.go_live import run_go_live, print_report as print_go_live
+            svc = "--service" in args or "--with-service" in args
+            def _svc():
+                # reuse service-install command path
+                try:
+                    from modules.phase5 import service_install as _si
+                    return _si()
+                except Exception:
+                    # fall back to CLI recursion-safe: call known handler body
+                    import subprocess, sys as _sys
+                    subprocess.run([_sys.executable, str(Path(__file__).resolve()), "service-install"], check=False)
+            result = run_go_live(
+                config=config,
+                logger=logger,
+                fim_build_fn=fim_build_baseline,
+                deploy_deception_fn=deploy_deception,
+                service_install=svc,
+                service_install_fn=_svc if svc else None,
+            )
+            print_go_live(result)
+            if "--json" in args:
+                print(json.dumps(result, indent=2, default=str))
+        except Exception as e:
+            print("[!] go-live:", e)
 
     elif command in ("field-soak", "soak", "fieldsoak"):
         try:

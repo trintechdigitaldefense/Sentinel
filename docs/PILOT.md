@@ -7,6 +7,7 @@ Use this on every new client host before you leave the site.
 ```bash
 cd Sentinel
 python3 setup.py
+python3 sentinel.py go-live          # baselines + canaries + alert ship
 python3 sentinel.py pilot
 ```
 

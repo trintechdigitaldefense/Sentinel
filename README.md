@@ -1,7 +1,7 @@
 # SENTINEL
 
 [![CI](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-3.11.1-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.12.0-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-Authorized%20defensive%20use-red)](LICENSE)
 
 **TrinTech Digital Defense** — continuous host monitoring and early warning for Caribbean SMBs.
@@ -95,6 +95,8 @@ python3 sentinel.py doctor
 | `python3 sentinel.py siem splunk health` | Test HEC connectivity |
 | `python3 sentinel.py pilot` | Full pilot validation workflow |
 | `python3 sentinel.py pilot --fix` | Pilot + create missing baselines |
+| `python3 sentinel.py go-live` | Host setup: baselines + canaries + alert ship |
+| `python3 sentinel.py go-live --service` | Go-live + always-on service attempt |
 | `python3 sentinel.py field-soak --confirm` | Friendly-site soak (canary/sim/channels) |
 | `python3 sentinel.py sim --list` | Threat-actor simulation scenarios |
 | `python3 sentinel.py sim --scenario all --confirm` | Run defensive detection probes |
@@ -126,6 +128,7 @@ Cheatsheet: [docs/Sentinel_Firewall_Cheatsheet.md](docs/Sentinel_Firewall_Cheats
 - Threat simulation: [docs/THREAT_SIM.md](docs/THREAT_SIM.md)
 - SIEM logging: [docs/SIEM.md](docs/SIEM.md)
 - Splunk HEC: [docs/SPLUNK.md](docs/SPLUNK.md)
+- Go-live: [docs/GO_LIVE.md](docs/GO_LIVE.md)
 - Field soak: [docs/FIELD_SOAK.md](docs/FIELD_SOAK.md)
 - Sales pack: [docs/SALES_PACK.md](docs/SALES_PACK.md)
 - One-page runbook: [docs/RUNBOOK_ONE_PAGE.md](docs/RUNBOOK_ONE_PAGE.md) · [PDF](docs/SENTINEL_One_Page_Runbook.pdf)

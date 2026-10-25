@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.12.0] — 2026-10-25
+
+### Host operational setup
+- `python3 sentinel.py go-live` — one-shot baselines (FIM/SUID/persistence), canaries, alert ship channel, heartbeat
+- `--service` optionally installs always-on hunt
+- docs/GO_LIVE.md; menu item 21
+
 ## [3.11.1] — 2026-10-25
 
 ### Fixes
