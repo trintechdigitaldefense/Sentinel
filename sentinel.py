@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.6.1"
+__version__ = "3.7.0"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -212,6 +212,8 @@ def init_config(logger):
             "time_window": 600,
             "block_duration": 1800,
             "alert_on_block": True,
+            "auto_block": True,
+            "whitelist_ips": [],
         },
         "outbound_monitor": {
             "active": True,
@@ -784,74 +786,48 @@ def _save_blocklist(data):
 
 
 def ssh_blocking_check(config, logger):
+    """SSH brute-force detection — delegates to modules.brute_force + firewall plane."""
     ssh = config.get("ssh_blocking", {})
     if not ssh.get("active", True):
-        return []
+        return {"total_failures": 0, "blocked_count": 0, "skipped": True}
 
-    blocked_count = 0
-    failures = {}
+    try:
+        from modules.brute_force import check as bf_check
 
-    auth_output = run_cmd(["journalctl", "-u", "ssh", "--since", "1 hour ago", "-n", "500"], timeout=10)
-    if not auth_output.strip() and os.path.exists("/var/log/auth.log"):
-        try:
-            with open("/var/log/auth.log") as f:
-                auth_output = f.read()
-        except Exception:
-            pass
+        def _sa(t, d, *a, **k):
+            send_alert(t, d, logger)
 
-    if auth_output:
-        for line in auth_output.split("\n"):
-            if "Failed password" in line or "authentication failure" in line:
-                ip_match = re.search(r"from\s+(\d+\.\d+\.\d+\.\d+)", line)
-                if ip_match:
-                    ip = ip_match.group(1)
-                    failures[ip] = failures.get(ip, 0) + 1
-
-    max_failures = ssh.get("max_failures", 5)
-    block_duration = ssh.get("block_duration", 1800)
-
-    for ip, count in failures.items():
-        if count >= max_failures:
-            blocklist = _load_blocklist()
-            now = datetime.now()
-
-            if ip in blocklist.get("blocked", {}):
-                try:
-                    bt = datetime.fromisoformat(blocklist["blocked"][ip].get("block_until", ""))
-                    if now < bt:
-                        continue
-                except Exception:
-                    pass
-
-            r = subprocess.run(f"iptables -A INPUT -s {ip} -j DROP", capture_output=True, text=True, shell=True)
-            if r.returncode == 0:
-                blocklist.setdefault("blocked", {})[ip] = {
-                    "reason": f"SSH brute force: {count} failures",
-                    "failures": count,
-                    "blocked_at": now.isoformat(),
-                    "block_until": (now + timedelta(seconds=block_duration)).isoformat(),
-                }
-                _save_blocklist(blocklist)
-                blocked_count += 1
-                msg = f"{C.RED}🚫 IP BLOCKED:{C.RESET} {C.BOLD}{ip}{C.RESET} ({count} failures) — iptables DROP for {block_duration}s"
-                logger.warning(msg)
-                send_alert("IP_BLOCKED", {"ip": ip, "failures": count, "reason": "SSH brute force"}, logger)
-            else:
-                logger.warning(f"{C.YELLOW}!{C.RESET} Failed to block {C.BOLD}{ip}{C.RESET}: {r.stderr[:100]}")
-
-    if blocked_count > 0:
-        logger.info(f"{C.RED}🚫{C.RESET} {C.BOLD}{blocked_count} IP(s){C.RESET} blocked via iptables")
-    elif failures:
-        logger.info(f"{C.GREEN}✓{C.RESET} SSH scan: {C.BOLD}{len(failures)} IP(s){C.RESET} with failures (none exceeded threshold)")
-    else:
-        logger.info(f"{C.GREEN}✓{C.RESET} SSH scan: no failures detected")
-
-    return {"total_failures": len(failures), "blocked_count": blocked_count}
+        result = bf_check(config=config, send_alert=_sa, logger=logger)
+        blocked_count = int(result.get("blocked_count") or 0)
+        failures_n = int(result.get("failures_tracked") or 0)
+        if blocked_count > 0:
+            logger.info(
+                f"{C.RED}🚫{C.RESET} {C.BOLD}{blocked_count} IP(s){C.RESET} blocked via firewall plane "
+                f"(SSH brute-force)"
+            )
+        elif result.get("candidates"):
+            logger.info(
+                f"{C.YELLOW}!{C.RESET} SSH: {C.BOLD}{len(result['candidates'])}{C.RESET} IPs over threshold "
+                f"(auto_block={result.get('auto_block')})"
+            )
+        elif failures_n:
+            logger.info(
+                f"{C.GREEN}✓{C.RESET} SSH scan: {C.BOLD}{failures_n} IP(s){C.RESET} with failures "
+                f"(none exceeded threshold {result.get('max_failures')})"
+            )
+        else:
+            logger.info(f"{C.GREEN}✓{C.RESET} SSH scan: no failures detected")
+        return {
+            "total_failures": failures_n,
+            "blocked_count": blocked_count,
+            "candidates": result.get("candidates") or [],
+            "detail": result,
+        }
+    except Exception as e:
+        logger.warning(f"{C.YELLOW}!{C.RESET} SSH brute-force module error: {e}")
+        return {"total_failures": 0, "blocked_count": 0, "error": str(e)}
 
 
-# ════════════════════════════════════════════════════════════════════
-# MODULE 4: OUTBOUND CONNECTION MONITORING
-# ════════════════════════════════════════════════════════════════════
 
 def outbound_scan(config, logger):
     om = config.get("outbound_monitor", {})
@@ -2009,6 +1985,10 @@ def interactive_menu(config=None, logger=None):
         ("6", "List profiles", ("firewall", "profiles")),
         ("7", "Block IP dry-run example", ("firewall", "block", "203.0.113.50")),
         ("8", "Audit tail", ("firewall", "audit")),
+        ("9", "SSH brute-force status", ("ssh-blocks", "status")),
+        ("10", "SSH brute-force check now", ("ssh-blocks", "check")),
+        ("11", "Expire old SSH blocks", ("ssh-blocks", "expire")),
+        ("12", "Harden SSH port (dry-run)", ("firewall", "harden-ssh")),
         ("0", "Back to main menu", ("__back__",)),
     ]
 
@@ -3128,6 +3108,25 @@ def main():
             print("control:", dash.get("allow_control", True))
         except Exception as e:
             print("[!] dashboard-url:", e)
+
+    elif command in ("ssh-blocks", "bruteforce", "brute-force"):
+        try:
+            from modules.brute_force import check as bf_check, status as bf_status, expire_blocks, whitelist_add
+            if args and args[0] == "status":
+                print(json.dumps(bf_status(), indent=2, default=str))
+            elif args and args[0] == "expire":
+                print(json.dumps(expire_blocks(logger=logger), indent=2))
+            elif args and args[0] == "whitelist" and len(args) > 1:
+                print(json.dumps(whitelist_add(args[1]), indent=2))
+            elif args and args[0] == "check":
+                def _sa(t, d, *a, **k):
+                    send_alert(t, d, logger)
+                print(json.dumps(bf_check(config=config, send_alert=_sa, logger=logger), indent=2, default=str))
+            else:
+                print(json.dumps(bf_status(), indent=2, default=str))
+                print("Usage: ssh-blocks status|check|expire|whitelist <ip>")
+        except Exception as e:
+            print("[!] ssh-blocks:", e)
 
     elif command in ("firewall", "fw"):
         try:

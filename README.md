@@ -1,7 +1,7 @@
 # SENTINEL
 
 [![CI](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-3.6.1-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.7.0-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-Authorized%20defensive%20use-red)](LICENSE)
 
 **TrinTech Digital Defense** — continuous host monitoring and early warning for Caribbean SMBs.
@@ -80,6 +80,8 @@ python3 sentinel.py doctor
 | `python3 sentinel.py watch` | Realtime FIM (inotify) |
 | `python3 sentinel.py firewall status` | Host firewall plane |
 | `python3 sentinel.py firewall block <ip>` | Dry-run block (add `--confirm` to apply) |
+| `python3 sentinel.py ssh-blocks check` | SSH brute-force scan + auto-block via firewall |
+| `python3 sentinel.py ssh-blocks status` | Active SSH blocks / whitelist |
 | `python3 sentinel.py firewall protect-operator --confirm` | Lockout guard ACCEPT rules |
 | `python3 sentinel.py doctor` | Health check |
 | `python3 sentinel.py pilot` | Full pilot validation workflow |

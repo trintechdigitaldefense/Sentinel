@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-VERSION = "13.2.0"
+VERSION = "13.3.0"
 
 
 def _home() -> Path:
@@ -487,6 +487,35 @@ PROFILES = {
 }
 
 
+
+
+def expire_managed_blocks() -> dict:
+    """Remove managed blocks that list an expiry in metadata (best-effort)."""
+    try:
+        from modules.brute_force import expire_blocks
+        return expire_blocks()
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+def harden_ssh_port(port: int = 22, confirm: bool = False) -> dict:
+    """Optional: ensure SSH port is explicitly allowed before any default-deny profile.
+
+    Does not enable default-deny by itself — only inserts ACCEPT for the port
+    so hardening profiles cannot lock out SSH when lockout guard runs first.
+    """
+    ops = detect_operator_ips()
+    if not confirm:
+        return {
+            "ok": True,
+            "dry_run": True,
+            "would": f"accept tcp dport {port} + protect operator {ops}",
+        }
+    protect_operator(confirm=True)
+    r = allow_port(port, "tcp", confirm=True)
+    return {"ok": bool(r.get("ok")), "ssh_port": port, "operator": ops, "allow": r}
+
+
 def list_profiles() -> dict:
     return {"ok": True, "profiles": PROFILES}
 
@@ -644,6 +673,14 @@ def cli(argv: list[str]) -> int:
         print(json.dumps(apply_profile(name, confirm=conf), indent=2))
     elif cmd == "apply-managed":
         print(json.dumps(apply_managed(confirm=conf), indent=2))
+    elif cmd in ("harden-ssh",):
+        port = 22
+        rest2 = [x for x in rest_f if x.isdigit()]
+        if rest2:
+            port = int(rest2[0])
+        print(json.dumps(harden_ssh_port(port, confirm=conf), indent=2))
+    elif cmd in ("expire-blocks", "expire"):
+        print(json.dumps(expire_managed_blocks(), indent=2))
     elif cmd in ("protect-operator", "lockout-guard"):
         print(json.dumps(protect_operator(confirm=conf), indent=2))
     elif cmd in ("operator-ips", "whoami-fw"):
