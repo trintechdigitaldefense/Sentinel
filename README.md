@@ -131,6 +131,7 @@ Cheatsheet: [docs/Sentinel_Firewall_Cheatsheet.md](docs/Sentinel_Firewall_Cheats
 - Go-live: [docs/GO_LIVE.md](docs/GO_LIVE.md)
 - Field soak: [docs/FIELD_SOAK.md](docs/FIELD_SOAK.md)
 - Sales pack: [docs/SALES_PACK.md](docs/SALES_PACK.md)
+- Post-pilot roadmap (demand-driven): [docs/POST_PILOT_ROADMAP.md](docs/POST_PILOT_ROADMAP.md)
 - One-page runbook: [docs/RUNBOOK_ONE_PAGE.md](docs/RUNBOOK_ONE_PAGE.md) · [PDF](docs/SENTINEL_One_Page_Runbook.pdf)
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
 - Roadmap / phases: [ROADMAP.md](ROADMAP.md) · [PHASE13.md](PHASE13.md)
@@ -168,5 +169,5 @@ Feature set is **frozen for pilot** unless a paid engagement requires a change:
 
 1. Field soak on 1–2 friendly sites  
 2. Sales pack + fixed pilot price ([docs/SALES_PACK.md](docs/SALES_PACK.md))  
-3. Multi-host MSP polish only after pilot demand  
+3. Multi-host MSP polish only after pilot demand — see [docs/POST_PILOT_ROADMAP.md](docs/POST_PILOT_ROADMAP.md)  
 
