@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.3.0"
+__version__ = "3.3.1"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -441,6 +441,30 @@ def is_internal_ip(ip):
 # MODULE 1: FILESYSTEM INTEGRITY MONITORING (FIM)
 # ════════════════════════════════════════════════════════════════════
 
+
+def _fim_meta(fpath, checksum=None):
+    """Collect checksum + ownership + mode + SUID bits for a path."""
+    import stat as _stat
+    if checksum is None:
+        checksum = sha256_file(fpath)
+    meta = {"checksum": checksum}
+    try:
+        st = os.stat(fpath)
+        meta.update({
+            "size": st.st_size,
+            "mode": oct(_stat.S_IMODE(st.st_mode)),
+            "mode_int": _stat.S_IMODE(st.st_mode),
+            "uid": st.st_uid,
+            "gid": st.st_gid,
+            "suid": bool(st.st_mode & _stat.S_ISUID),
+            "sgid": bool(st.st_mode & _stat.S_ISGID),
+            "mtime": int(st.st_mtime),
+        })
+    except Exception:
+        pass
+    return meta
+
+
 def fim_build_baseline(config, logger):
     fim = config.get("fim", {})
     if not fim.get("active", True):
@@ -511,8 +535,24 @@ def fim_build_baseline(config, logger):
         except Exception:
             pass
 
+    # Enrich every entry with ownership / SUID bits
+    for fpath in list(baseline.keys()):
+        try:
+            baseline[fpath] = _fim_meta(fpath, checksum=baseline[fpath].get("checksum"))
+        except Exception:
+            pass
+
+    INTEGRITY_DIR.mkdir(parents=True, exist_ok=True)
     with open(FIM_BASELINE, "w") as f:
         json.dump(baseline, f, indent=2)
+
+    # Dedicated SUID inventory baseline
+    try:
+        from modules.fim_suid import build_baseline as _suid_build
+        su = _suid_build()
+        logger.info(f"{C.GREEN}✓{C.RESET} SUID baseline: {C.BOLD}{su.get('count', 0)}{C.RESET} setuid/setgid binaries")
+    except Exception as e:
+        logger.warning(f"{C.YELLOW}!{C.RESET} SUID baseline: {e}")
 
     logger.info(f"{C.GREEN}✓{C.RESET} Baseline created: {C.BOLD}{checked} files{C.RESET} tracked ({C.RED}{skipped} skipped/missing{C.RESET})")
     logger.info(f"{C.GREEN}✓{C.RESET} Saved to {C.BOLD}{FIM_BASELINE}{C.RESET}")
@@ -554,12 +594,45 @@ def fim_check(config, logger):
             send_alert("FIM_DELETED", {"file": fpath}, logger)
             continue
 
-        checksum = sha256_file(fpath)
-        if checksum and checksum != bl.get("checksum"):
+        live = _fim_meta(fpath)
+        checksum = live.get("checksum")
+        if checksum and bl.get("checksum") and checksum != bl.get("checksum"):
             msg = f"{C.RED}⚠ FIM:{C.RESET} {C.BOLD}{fpath}{C.RESET} has been {C.RED}MODIFIED{C.RESET} (checksum changed)"
             logger.warning(msg)
-            changes.append({"file": fpath, "type": "modified", "old": bl.get("checksum", "")[:16], "new": checksum[:16]})
+            changes.append({"file": fpath, "type": "modified", "old": str(bl.get("checksum", ""))[:16], "new": str(checksum)[:16]})
             send_alert("FIM_MODIFIED", {"file": fpath, "old_checksum": bl.get("checksum", ""), "new_checksum": checksum}, logger)
+
+        # Mode / ownership / SUID bit drift
+        if bl.get("mode_int") is not None and live.get("mode_int") is not None:
+            if int(bl["mode_int"]) != int(live["mode_int"]):
+                msg = f"{C.RED}⚠ FIM MODE:{C.RESET} {C.BOLD}{fpath}{C.RESET} {bl.get('mode')} → {live.get('mode')}"
+                logger.warning(msg)
+                changes.append({"file": fpath, "type": "mode_change", "old": bl.get("mode"), "new": live.get("mode")})
+                send_alert("FIM_MODE_CHANGE", {"file": fpath, "old": bl.get("mode"), "new": live.get("mode"),
+                                               "suid": live.get("suid"), "sgid": live.get("sgid")}, logger)
+        if bl.get("uid") is not None and live.get("uid") is not None:
+            if int(bl["uid"]) != int(live["uid"]) or int(bl.get("gid", -1)) != int(live.get("gid", -2)):
+                msg = f"{C.RED}⚠ FIM OWNER:{C.RESET} {C.BOLD}{fpath}{C.RESET} uid/gid changed"
+                logger.warning(msg)
+                changes.append({"file": fpath, "type": "owner_change", "old_uid": bl.get("uid"), "new_uid": live.get("uid")})
+                send_alert("FIM_OWNER_CHANGE", {"file": fpath, "old_uid": bl.get("uid"), "new_uid": live.get("uid"),
+                                                "old_gid": bl.get("gid"), "new_gid": live.get("gid")}, logger)
+        if not bl.get("suid") and live.get("suid"):
+            msg = f"{C.RED}⚠ NEW SUID BIT:{C.RESET} {C.BOLD}{fpath}{C.RESET} gained setuid"
+            logger.warning(msg)
+            changes.append({"file": fpath, "type": "suid_gained"})
+            send_alert("NEW_SUID", {"file": fpath, "mode": live.get("mode")}, logger)
+
+    # Full SUID inventory drift
+    try:
+        from modules.fim_suid import check as _suid_check
+        def _sa(t, d, *a, **k):
+            send_alert(t, d, logger)
+        suid_changes = _suid_check(send_alert=_sa, logger=logger)
+        for sc in suid_changes:
+            changes.append(sc)
+    except Exception as e:
+        logger.warning(f"{C.YELLOW}!{C.RESET} SUID check: {e}")
 
     if changes:
         logger.info(f"{C.RED}✗{C.RESET} {C.BOLD}{len(changes)} integrity changes{C.RESET} detected")
@@ -570,62 +643,27 @@ def fim_check(config, logger):
 
 
 def fim_watch(config, logger):
+    """Real-time FIM via inotifywait (multi-path) or polling fallback."""
     fim = config.get("fim", {})
     if not fim.get("active", True):
         return
-
-    dirs = ["/etc/", "/root/", "/tmp/", "/var/log/"]
-    decoy_dirs = [
-        str(Path.home() / "Desktop" / ".ssh"),
-        str(Path.home() / "Documents"),
-        str(Path.home() / "Downloads"),
-    ]
-    for d in decoy_dirs:
-        if os.path.isdir(d) and d not in dirs:
-            dirs.append(d)
-
-    logger.info(f"{C.CYAN}[*]{C.RESET} Starting real-time filesystem watcher: {', '.join(dirs)}")
-
     try:
-        for dirpath in dirs:
-            if not os.path.isdir(dirpath):
-                logger.warning(f"{C.YELLOW}!{C.RESET} Not a directory: {C.BOLD}{dirpath}{C.RESET}")
-                continue
-            try:
-                result = subprocess.run(
-                    ["inotifywait", "-q", "-m", "-r", "--format", "%e %w%f",
-                     "-e", "modify,create,delete", dirpath],
-                    capture_output=True, text=True, timeout=3600
-                )
-                for line in result.stdout.split("\n"):
-                    if not line.strip() or "sentinel" in line.lower():
-                        continue
-                    parts = line.strip().split(" ", 1)
-                    if len(parts) == 2:
-                        event, filepath = parts
-                        if "/var/log" in dirpath and "DELETE" in event:
-                            logger.warning(f"{C.RED}⚠ LOG TAMPERING:{C.RESET} {C.BOLD}{event}{C.RESET} — {C.BOLD}{filepath}{C.RESET}")
-                            send_alert("LOG_TAMPERING", {"event": event, "file": filepath}, logger)
-                        else:
-                            logger.warning(f"{C.YELLOW}!{C.RESET} {C.BOLD}{event}{C.RESET}: {C.BOLD}{filepath}{C.RESET}")
-                            send_alert("FIM_REALTIME", {"event": event, "file": filepath}, logger)
-            except subprocess.TimeoutExpired:
-                logger.info(f"{C.GREEN}✓{C.RESET} Watcher timeout (1hr)")
-                break
-            except FileNotFoundError:
-                logger.warning(f"{C.YELLOW}!{C.RESET} inotifywait not installed: apt-get install -y inotify-tools")
-                break
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
-                logger.warning(f"{C.YELLOW}!{C.RESET} Watch error on {C.BOLD}{dirpath}{C.RESET}: {e}")
+        from modules.fim_realtime import run_watch, has_inotifywait
+        if has_inotifywait():
+            logger.info(f"{C.CYAN}[*]{C.RESET} Real-time FIM (inotify) — Ctrl+C to stop")
+        else:
+            logger.warning(f"{C.YELLOW}!{C.RESET} inotifywait missing — install: apt-get install -y inotify-tools")
+            logger.info(f"{C.CYAN}[*]{C.RESET} Using polling fallback")
+        def _sa(t, d, *a, **k):
+            send_alert(t, d, logger)
+        run_watch(config, send_alert=_sa, logger=logger, duration=0)
     except KeyboardInterrupt:
         logger.info(f"{C.GREEN}✓{C.RESET} Filesystem watcher stopped")
+    except Exception as e:
+        logger.warning(f"{C.YELLOW}!{C.RESET} FIM watch error: {e}")
 
 
-# ════════════════════════════════════════════════════════════════════
-# MODULE 2: PROCESS MONITORING
-# ════════════════════════════════════════════════════════════════════
+
 
 def process_scan(config, logger):
     pm = config.get("process_monitor", {})
@@ -2114,7 +2152,7 @@ def main():
                 for alert in alerts[-50:]:
                     at = alert.get("type", "")
                     severity = C.RED if at in ("NEW_DEVICE", "DECOY_MODIFIED", "FIM_MODIFIED",
-                                                "SUSPICIOUS_PROCESS", "IP_BLOCKED", "FIM_DELETED",
+                                                "SUSPICIOUS_PROCESS", "IP_BLOCKED", "FIM_DELETED", "NEW_SUID", "FIM_MODE_CHANGE",
                                                 "LOG_TAMPERING", "OUTBOUND_SUSPICIOUS_PORT",
                                                 "SECURITY_REGRESSION") else C.YELLOW
                     if at == "AUTH_FAILURE":
@@ -2197,6 +2235,16 @@ def main():
 
     elif command == "watch":
         fim_watch(config, logger)
+
+    elif command in ("suid", "suid-scan"):
+        try:
+            from modules.fim_suid import build_baseline, check, status
+            if "--build" in args or not (DATA_DIR / "suid_baseline.json").exists():
+                print(build_baseline())
+            changes = check(send_alert=lambda t, d, *a, **k: send_alert(t, d, logger), logger=logger)
+            print({"status": status(), "changes": changes})
+        except Exception as e:
+            print("[!] suid:", e)
 
     elif command == "processes":
         logger.info(f"{C.CYAN}[*]{C.RESET} Scanning processes...")

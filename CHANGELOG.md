@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.3.1] — 2026-10-25
+
+### FIM / detection quality
+- **Mode + ownership tracking** on every baselined file (FIM_MODE_CHANGE, FIM_OWNER_CHANGE)
+- **SUID/SGID inventory** (`modules/fim_suid.py`): NEW_SUID, REMOVED_SUID, SUID_META_CHANGE
+- **Real-time FIM** (`modules/fim_realtime.py`): single multi-path inotifywait process; polling fallback
+- CLI: `python3 sentinel.py suid` · `python3 sentinel.py watch`
+- `sentinel integrity` builds both content baseline and SUID inventory
+
 ## [3.3.0] — 2026-10-24
 
 ### Firewall (Phase 13.2)
