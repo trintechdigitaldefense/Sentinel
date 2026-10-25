@@ -1,7 +1,7 @@
 # SENTINEL
 
 [![CI](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-3.5.0-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.6.0-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-Authorized%20defensive%20use-red)](LICENSE)
 
 **TrinTech Digital Defense** — continuous host monitoring and early warning for Caribbean SMBs.
@@ -84,6 +84,8 @@ python3 sentinel.py doctor
 | `python3 sentinel.py doctor` | Health check |
 | `python3 sentinel.py pilot` | Full pilot validation workflow |
 | `python3 sentinel.py pilot --fix` | Pilot + create missing baselines |
+| `python3 sentinel.py sim --list` | Threat-actor simulation scenarios |
+| `python3 sentinel.py sim --scenario all --confirm` | Run defensive detection probes |
 | `python3 sentinel.py dash` | Local dashboard |
 | `python3 sentinel.py offline flush` | Replay queued alerts |
 
@@ -109,6 +111,7 @@ Cheatsheet: [docs/Sentinel_Firewall_Cheatsheet.md](docs/Sentinel_Firewall_Cheats
 - Config: `~/.sentinel/config.json` · Data/logs: `~/.sentinel/`
 - Threat model: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md)
 - Pilot workflow: [docs/PILOT.md](docs/PILOT.md)
+- Threat simulation: [docs/THREAT_SIM.md](docs/THREAT_SIM.md)
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
 - Roadmap / phases: [ROADMAP.md](ROADMAP.md) · [PHASE13.md](PHASE13.md)
 

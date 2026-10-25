@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.5.2"
+__version__ = "3.6.0"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2736,6 +2736,38 @@ def main():
                 print(deploy_smb_canary())
         except Exception as e:
             print("[!] smb-canary:", e)
+
+    elif command in ("sim", "threat-sim", "simulate"):
+        try:
+            from modules.threat_sim import list_scenarios, run, print_report
+            if "--list" in args or (args and args[0] == "list"):
+                print(json.dumps(list_scenarios(), indent=2))
+            else:
+                scenarios = []
+                confirm = "--confirm" in args
+                cleaned = [a for a in args if a not in ("--confirm", "--list")]
+                if "--scenario" in cleaned:
+                    i = cleaned.index("--scenario")
+                    if i + 1 < len(cleaned):
+                        scenarios.append(cleaned[i + 1])
+                elif cleaned:
+                    scenarios.append(cleaned[0])
+                if not scenarios:
+                    scenarios = ["all"]
+                def _sa(t, d, *a, **k):
+                    send_alert(t, d, logger)
+                def _fim():
+                    return fim_check(config, logger)
+                report = run(
+                    scenarios,
+                    confirm=confirm,
+                    send_alert=_sa,
+                    logger=logger,
+                    fim_check_fn=_fim if "fim" in scenarios or "all" in scenarios else None,
+                )
+                print_report(report)
+        except Exception as e:
+            print("[!] sim:", e)
 
     elif command in ("pilot", "pilot-check"):
         try:
