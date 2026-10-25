@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.11.0"
+__version__ = "3.11.1"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2001,7 +2001,7 @@ def print_banner():
     try:
         ver = __version__
     except Exception:
-        ver = "2.5.0"
+        ver = "3.11.1"
     print(f"{C.BOLD}  v{ver}{C.RESET}")
     print(f"{C.GRAY}  TrinTech Digital Defense{C.RESET}")
     print(f"{C.GRAY}  Active Deception | Persistence Hunting | Line of Defense{C.RESET}")

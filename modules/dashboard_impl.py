@@ -65,7 +65,7 @@ def collect_full() -> dict:
         "ts": datetime.now(timezone.utc).isoformat(),
         "host": socket.gethostname(),
         "product": "SENTINEL",
-        "version": "3.10.1",
+        "version": "3.11.1",
     }
     try:
         out["local_ip"] = socket.gethostbyname(socket.gethostname())

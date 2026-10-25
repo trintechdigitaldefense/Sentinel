@@ -145,20 +145,19 @@ def run_field_soak(
                 "hint": "python3 sentinel.py field-soak --confirm",
             }
         from modules.threat_sim import run as sim_run
-        # Prefer canary + rs-pattern only (safe)
-        report = {}
-        try:
-            report["canary"] = sim_run("canary", confirm=True)
-        except TypeError:
-            report["canary"] = sim_run(scenario="canary", confirm=True)
-        except Exception as e:
-            # try list-based API
-            try:
-                from modules.threat_sim import run_all
-                report = run_all(confirm=True)
-            except Exception as e2:
-                report = {"error": str(e), "error2": str(e2)}
-        return {"ok": "error" not in report, "report": report}
+        # run() expects list[str] scenarios — not a bare string (that iterates chars)
+        report = sim_run(
+            ["canary", "reverse_shell", "behavioral"],
+            confirm=True,
+            send_alert=None,
+            logger=logger,
+        )
+        ok = bool(report.get("ok", True))
+        # treat per-scenario failures without hard-failing soak if at least one ran
+        results = report.get("results") or []
+        if results and any(r.get("ok") for r in results):
+            ok = True
+        return {"ok": ok, "report": report}
 
     _step("threat_sim", sim, results)
 

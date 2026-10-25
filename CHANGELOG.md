@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.11.1] — 2026-10-25
+
+### Fixes
+- field-soak: call `threat_sim.run([...])` with a scenario **list** (was iterating string chars)
+- phase2: self-contained module (no missing phase2_a/b ImportError)
+- dashboard version aligned to 3.11.1
+
 ## [3.11.0] — 2026-10-25
 
 ### Pilot readiness freeze
