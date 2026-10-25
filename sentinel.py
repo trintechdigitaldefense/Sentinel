@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.10.1"
+__version__ = "3.10.2"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2876,7 +2876,10 @@ def main():
 
     elif command in ("siem",):
         try:
-            from modules.siem import status as siem_status, test_emit, to_cef, enable_defaults
+            from modules.siem import (
+                status as siem_status, test_emit, to_cef, enable_defaults,
+                configure_splunk, splunk_from_env, splunk_health, flush_ship_to_splunk,
+            )
             if not args or args[0] == "status":
                 print(json.dumps(siem_status(), indent=2, default=str))
             elif args[0] == "test":
@@ -2887,8 +2890,41 @@ def main():
                 print(json.dumps(enable_defaults(True), indent=2, default=str))
             elif args[0] == "disable":
                 print(json.dumps(enable_defaults(False), indent=2, default=str))
+            elif args[0] in ("splunk-configure", "splunk"):
+                # siem splunk-configure --url URL --token TOKEN [--index main]
+                url = token = index = "main"
+                verify = True
+                if args[0] == "splunk" and len(args) > 1 and args[1] == "env":
+                    print(json.dumps(splunk_from_env(), indent=2, default=str))
+                elif args[0] == "splunk" and len(args) > 1 and args[1] == "health":
+                    print(json.dumps(splunk_health(), indent=2, default=str))
+                elif args[0] == "splunk" and len(args) > 1 and args[1] == "flush":
+                    print(json.dumps(flush_ship_to_splunk(), indent=2, default=str))
+                else:
+                    i = 0
+                    while i < len(args):
+                        if args[i] in ("--url",) and i + 1 < len(args):
+                            url = args[i + 1]; i += 2; continue
+                        if args[i] in ("--token",) and i + 1 < len(args):
+                            token = args[i + 1]; i += 2; continue
+                        if args[i] in ("--index",) and i + 1 < len(args):
+                            index = args[i + 1]; i += 2; continue
+                        if args[i] == "--no-verify":
+                            verify = False; i += 1; continue
+                        i += 1
+                    if not url or not token or url == "main":
+                        print("Usage: siem splunk-configure --url https://splunk:8088 --token TOKEN [--index main]")
+                        print("       siem splunk env | health | flush")
+                    else:
+                        print(json.dumps(configure_splunk(url, token, index=index, verify_tls=verify), indent=2, default=str))
+            elif args[0] == "splunk-health":
+                print(json.dumps(splunk_health(), indent=2, default=str))
+            elif args[0] == "splunk-flush":
+                print(json.dumps(flush_ship_to_splunk(), indent=2, default=str))
             else:
                 print("Usage: siem status|test|enable|disable|cef-sample")
+                print("       siem splunk-configure --url URL --token TOKEN [--index main]")
+                print("       siem splunk env|health|flush")
         except Exception as e:
             print("[!] siem:", e)
 

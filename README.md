@@ -90,6 +90,8 @@ python3 sentinel.py doctor
 | `python3 sentinel.py critical ack <id>` | Acknowledge a critical alert |
 | `python3 sentinel.py siem status` | SIEM / centralized logging status |
 | `python3 sentinel.py siem test` | Emit SIEM test event |
+| `python3 sentinel.py siem splunk-configure --url URL --token T` | Enable Splunk HEC |
+| `python3 sentinel.py siem splunk health` | Test HEC connectivity |
 | `python3 sentinel.py pilot` | Full pilot validation workflow |
 | `python3 sentinel.py pilot --fix` | Pilot + create missing baselines |
 | `python3 sentinel.py sim --list` | Threat-actor simulation scenarios |
@@ -121,6 +123,7 @@ Cheatsheet: [docs/Sentinel_Firewall_Cheatsheet.md](docs/Sentinel_Firewall_Cheats
 - Pilot workflow: [docs/PILOT.md](docs/PILOT.md)
 - Threat simulation: [docs/THREAT_SIM.md](docs/THREAT_SIM.md)
 - SIEM logging: [docs/SIEM.md](docs/SIEM.md)
+- Splunk HEC: [docs/SPLUNK.md](docs/SPLUNK.md)
 - Changelog: [CHANGELOG.md](CHANGELOG.md)
 - Roadmap / phases: [ROADMAP.md](ROADMAP.md) · [PHASE13.md](PHASE13.md)
 

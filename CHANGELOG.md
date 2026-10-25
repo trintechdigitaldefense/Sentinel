@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.10.2] — 2026-10-25
+
+### Splunk HEC integration
+- Full HEC configure/health/batch/flush helpers in `modules/siem.py`
+- CLI: `siem splunk-configure`, `siem splunk env|health|flush`
+- Env: `SPLUNK_HEC_URL`, `SPLUNK_HEC_TOKEN`, `SPLUNK_HEC_INDEX`
+- docs/SPLUNK.md
+
 ## [3.10.0] — 2026-10-25
 
 ### SIEM / centralized logging
