@@ -76,7 +76,7 @@ def collect_full() -> dict:
         "ts": datetime.now(timezone.utc).isoformat(),
         "host": socket.gethostname(),
         "product": "SENTINEL",
-        "version": "3.13.0",
+        "version": "3.13.1",
     }
     try:
         out["local_ip"] = socket.gethostbyname(socket.gethostname())
@@ -199,6 +199,12 @@ def collect_full() -> dict:
         "dashboard_control": bool((cfg.get("dashboard") or {}).get("allow_control", True)),
         "quiet": quiet,
     }
+    try:
+        from modules.realtime_threat import snapshot as _rt_snap
+        out["realtime"] = _rt_snap(emit_alerts=False)
+    except Exception as e:
+        out["realtime"] = {"ok": False, "error": str(e), "level": "UNKNOWN", "threats": []}
+
     out["control"] = bool((cfg.get("dashboard") or {}).get("allow_control", True))
 
     try:
@@ -317,6 +323,27 @@ def _html(token: str, data: dict) -> str:
     svc_txt = esc(service.get("status") or service.get("state") or service)
     quiet_on = bool(data.get("quiet") or flags.get("quiet"))
 
+    rt = data.get("realtime") or {}
+    rt_level = str(rt.get("level") or "UNKNOWN")
+    rt_badge = {"CRITICAL": "bad", "HIGH": "warn", "ELEVATED": "warn", "WATCH": "off", "CLEAR": "on"}.get(rt_level, "off")
+    rt_rows = ""
+    for t in (rt.get("threats") or [])[:15]:
+        det = t.get("cmd") or t.get("detail") or t.get("id") or t.get("port") or ""
+        rt_rows += (
+            f"<tr><td>{esc(t.get('severity'))}</td>"
+            f"<td class='crit'>{esc(t.get('type'))}</td>"
+            f"<td class='mono'>{esc(str(det)[:120])}</td></tr>"
+        )
+    if not rt_rows:
+        for t in (rt.get("recent_high_alerts") or [])[:8]:
+            rt_rows += (
+                f"<tr><td>{esc(t.get('severity'))}</td>"
+                f"<td>{esc(t.get('type'))}</td>"
+                f"<td class='mono'>{esc(str(t.get('detail') or t.get('ts') or '')[:120])}</td></tr>"
+            )
+    if not rt_rows:
+        rt_rows = "<tr><td colspan='3' class='muted'>No active threats detected</td></tr>"
+
     control_panel = ""
     if control:
         control_panel = f"""
@@ -383,6 +410,7 @@ nav a {{ color:#93c5fd; margin-right:.75rem; text-decoration:none; font-size:.8r
 .badge.on {{ background:rgba(34,197,94,.15); color:var(--good); }}
 .badge.off {{ background:rgba(148,163,184,.15); color:var(--muted); }}
 .badge.warn {{ background:rgba(245,158,11,.15); color:var(--warn); }}
+.badge.bad {{ background:rgba(239,68,68,.2); color:var(--bad); }}
 .crit {{ color:var(--crit); font-weight:600; }}
 table {{ width:100%; border-collapse:collapse; font-size:.85rem; }}
 th, td {{ text-align:left; padding:.4rem .35rem; border-bottom:1px solid var(--border); vertical-align:top; }}
@@ -423,10 +451,28 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
     SIEM <span class="badge {siem_badge}">{siem_badge.upper()}</span>
     · FW <span class="badge {'on' if fw_backend!='none' else 'off'}">{esc(fw_backend)}</span>
     · Quiet <span class="badge {'warn' if quiet_on else 'off'}">{'ON' if quiet_on else 'OFF'}</span>
-    · {'CONTROL' if control else 'VIEW-ONLY'}
+    · <span id="ctrl-label">{'CONTROL' if control else 'VIEW-ONLY'}</span>
+    <button class="btn secondary" style="margin-left:.5rem" onclick="toggleControl()">{'Disable controls' if control else 'Enable controls'}</button>
   </div>
 </header>
 <div class="wrap">
+  <div class="card section" id="realtime" style="margin-top:0">
+    <h2>Real-time threat detection</h2>
+    <p>
+      <span class="badge {rt_badge}">{esc(rt_level)}</span>
+      · score <b>{esc(rt.get("score", 0))}</b>
+      · threats <b>{esc(rt.get("threat_count", 0))}</b>
+      · <span class="muted">{esc(str(rt.get("ts") or "")[:19])}</span>
+    </p>
+    <table>
+      <tr><th>Severity</th><th>Type</th><th>Detail</th></tr>
+      {rt_rows}
+    </table>
+    <div class="actions">
+      <button class="btn secondary" onclick="runAction('realtime-scan')">Re-scan now</button>
+      <a class="btn secondary" href="/api/realtime?token={esc(token)}">Realtime JSON</a>
+    </div>
+  </div>
   <div class="grid" id="overview">
     <div class="card"><h2>Hunt cycles</h2><div class="metric">{esc(hunt.get('cycles', 0))}</div>
       <div class="muted">last {esc(hunt.get('last_cycle_sec', '—'))}s · ok={esc(hunt.get('last_ok'))}</div></div>
@@ -531,7 +577,18 @@ async function runAction(name) {{
   const j = await r.json();
   if (out) out.textContent = JSON.stringify(j, null, 2);
 }}
-setTimeout(function(){{ location.href = location.pathname + location.search; }}, 60000);
+async function toggleControl() {{
+  const r = await fetch("/api/control-mode?token=" + encodeURIComponent(TOKEN), {{
+    method: "POST", headers: {{"Content-Type": "application/json"}},
+    body: JSON.stringify({{allow_control: !(document.getElementById("ctrl-label").textContent.trim() === "CONTROL")}})
+  }});
+  const j = await r.json();
+  if (!r.ok || !j.ok) {{ alert("Toggle failed: " + (j.error || r.status)); return; }}
+  location.reload();
+}}
+const RT_LEVEL = "{esc(rt_level)}";
+const REFRESH_MS = (RT_LEVEL === "CRITICAL" || RT_LEVEL === "HIGH") ? 15000 : 45000;
+setTimeout(function(){{ location.href = location.pathname + location.search; }}, REFRESH_MS);
 </script>
 </body>
 </html>
@@ -590,6 +647,9 @@ class _Handler(BaseHTTPRequestHandler):
         if path in ("/api/ops",):
             self._send(200, json.dumps(data.get("ops") or {}, indent=2, default=str).encode(), "application/json")
             return
+        if path in ("/api/realtime", "/api/threats"):
+            self._send(200, json.dumps(data.get("realtime") or {}, indent=2, default=str).encode(), "application/json")
+            return
         if path in ("/api/visibility",):
             self._send(200, json.dumps(data.get("visibility") or {}, indent=2, default=str).encode(), "application/json")
             return
@@ -602,11 +662,28 @@ class _Handler(BaseHTTPRequestHandler):
         if not self._auth_ok():
             self._send(401, b'{"ok":false,"error":"unauthorized"}', "application/json")
             return
+        path = urlparse(self.path).path
+        body_in = self._read_json_body()
+
+        # Control-mode toggle — allowed with token even in view-only (re-enable controls)
+        if "control-mode" in path or path.rstrip("/").endswith("control-mode"):
+            want = body_in.get("allow_control")
+            if want is None:
+                want = not self.allow_control
+            want = bool(want)
+            cfg = _cfg()
+            dash = cfg.setdefault("dashboard", {})
+            dash["allow_control"] = want
+            cfg["dashboard"] = dash
+            _save_cfg(cfg)
+            self.allow_control = want
+            _Handler.allow_control = want
+            self._send(200, json.dumps({"ok": True, "allow_control": want}).encode(), "application/json")
+            return
+
         if not self.allow_control:
             self._send(403, b'{"ok":false,"error":"view-only mode"}', "application/json")
             return
-        path = urlparse(self.path).path
-        body_in = self._read_json_body()
 
         # Critical ACK
         if "critical" in path and "ack" in path:
@@ -637,7 +714,16 @@ class _Handler(BaseHTTPRequestHandler):
                 "field-soak": ("field-soak",),
                 "visibility": ("visibility",),
                 "service-status": ("service-status",),
+                "realtime-scan": ("realtime",),
             }
+            if action == "realtime-scan":
+                try:
+                    from modules.realtime_threat import snapshot
+                    result = snapshot(emit_alerts=False)
+                    self._send(200, json.dumps({"ok": True, "realtime": result}, default=str).encode(), "application/json")
+                except Exception as e:
+                    self._send(500, json.dumps({"ok": False, "error": str(e)}).encode(), "application/json")
+                return
             if action not in allowed:
                 self._send(
                     400,

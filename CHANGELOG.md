@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.13.1] — 2026-10-25
+
+### Real-time threats + dashboard control toggle
+- modules/realtime_threat.py — RS cmdline, behavioral, risky ports, criticals
+- Dashboard panel + /api/realtime; faster refresh on HIGH/CRITICAL
+- Control Enable/Disable toggle (POST /api/control-mode)
+- CLI: python3 sentinel.py realtime
+
+
 ## [3.13.0] — 2026-10-25
 
 ### Full dashboard surface

@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.13.0"
+__version__ = "3.13.1"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -3296,6 +3296,13 @@ def main():
             print("[!] bonus-test:", e)
 
     
+    elif command in ("realtime", "rt", "threats-live"):
+        try:
+            from modules.realtime_threat import snapshot
+            print(json.dumps(snapshot(emit_alerts=False), indent=2, default=str))
+        except Exception as e:
+            print("[!] realtime:", e)
+
     elif command in ("dashboard", "dash", "ui"):
         try:
             from modules.dashboard import start_dashboard

@@ -113,6 +113,11 @@ def run_cycle(
         return resurface(logger=logger)
     _run_check("critical_resurface", _crit_resur, errors, checks)
 
+    def _rt():
+        from modules.realtime_threat import snapshot
+        return snapshot(emit_alerts=False)
+    _run_check("realtime_threat", _rt, errors, checks)
+
     # 2. Core host checks
     if fim_check:
         _run_check("fim", lambda: fim_check(config, logger), errors, checks)
