@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.3.0] — 2026-10-24
+
+### Firewall (Phase 13.2)
+- **Lockout guard**: refuses to block current/recent SSH operator IPs; `protect-operator` before hardening profiles
+- **IPv6**: iptables path uses `ip6tables` for v6 targets; nft already dual-stack via `inet`
+- Firewall actions logged into case system when available
+- CLI: `firewall protect-operator`, `firewall operator-ips`
+
+### Alerting
+- Failed multi-channel delivery auto-enqueues to offline queue (flush via `sentinel offline flush`)
+
+
+# Changelog
+
 ## 3.7.1 — 2026-10-24
 
 ### Phase 13.1 — Host Firewall enhanced

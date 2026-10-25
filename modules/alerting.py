@@ -184,6 +184,21 @@ class AlertEngine:
         except Exception:
             pass
 
+        # Offline queue: if no channel delivered, persist for later flush
+        if not result.get("sent"):
+            failed = [c for c in result.get("channels") or [] if not c.get("ok") and not c.get("suppressed")]
+            if failed or not result.get("channels"):
+                try:
+                    from modules.phase4 import offline_enqueue
+                    offline_enqueue(
+                        title,
+                        {"severity": severity, "detail": detail[:500], "meta": meta, "channels_failed": failed},
+                    )
+                    result["queued_offline"] = True
+                except Exception as e:
+                    result["queued_offline"] = False
+                    result["queue_error"] = str(e)
+
         log.info("alert %s: %s channels=%s", severity, title, result["channels"])
         return result
 

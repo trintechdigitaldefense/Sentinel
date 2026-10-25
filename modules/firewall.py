@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-VERSION = "13.1.0"
+VERSION = "13.2.0"
 
 
 def _home() -> Path:
@@ -143,6 +143,122 @@ def _parse_target(target: str) -> tuple[str, str]:
     return "ip", str(ip)
 
 
+
+
+def detect_operator_ips() -> list[str]:
+    """IPs of the current operator session (SSH client) — never block these."""
+    found: set[str] = set()
+    for env in ("SSH_CLIENT", "SSH_CONNECTION"):
+        v = (os.environ.get(env) or "").strip()
+        if not v:
+            continue
+        part = v.split()[0]
+        try:
+            ip = ipaddress.ip_address(part)
+            if not (ip.is_loopback or ip.is_unspecified):
+                found.add(str(ip))
+        except Exception:
+            pass
+    # Active SSH peers via ss (best effort)
+    try:
+        r = _run(["ss", "-tn", "sport", "=", ":22"])
+        for line in (r.get("stdout") or "").splitlines()[1:]:
+            parts = line.split()
+            if len(parts) < 5:
+                continue
+            peer = parts[4]
+            if ":" not in peer:
+                continue
+            # IPv4 host:port or [ipv6]:port
+            if peer.startswith("["):
+                host = peer[1:].split("]")[0]
+            else:
+                host = peer.rsplit(":", 1)[0]
+            try:
+                ip = ipaddress.ip_address(host)
+                if not (ip.is_loopback or ip.is_unspecified):
+                    found.add(str(ip))
+            except Exception:
+                pass
+    except Exception:
+        pass
+    # Persist last-seen operators so a later cron block still respects them
+    try:
+        p = _data() / "operator_ips.json"
+        prev = []
+        if p.exists():
+            prev = json.loads(p.read_text()).get("ips") or []
+        merged = sorted(set(prev) | found)
+        p.write_text(json.dumps({"ips": merged[-20:], "updated": _now()}, indent=2))
+        for x in prev:
+            found.add(x)
+    except Exception:
+        pass
+    return sorted(found)
+
+
+def is_operator_target(target: str) -> bool:
+    try:
+        kind, norm = _parse_target(target)
+    except Exception:
+        norm = (target or "").strip()
+    ops = detect_operator_ips()
+    if norm in ops:
+        return True
+    try:
+        ip = ipaddress.ip_address(norm.split("/")[0])
+        for o in ops:
+            if ip == ipaddress.ip_address(o):
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def protect_operator(confirm: bool = False) -> dict:
+    """Insert ACCEPT rules for current operator IPs (lockout guard)."""
+    ops = detect_operator_ips()
+    if not ops:
+        return {"ok": True, "protected": [], "note": "no operator IP detected (local console?)"}
+    if not confirm:
+        return {"ok": True, "dry_run": True, "would_protect": ops, "hint": "pass --confirm to apply ACCEPT rules"}
+    b = backend()
+    ensure_backend_ready()
+    results = []
+    for ip in ops:
+        if b == "nft":
+            fam = "ip6" if ":" in ip else "ip"
+            r = _run([
+                "nft", "insert", "rule", "inet", "sentinel", "input",
+                fam, "saddr", ip, "accept", "comment", "sentinel-operator",
+            ])
+        else:
+            tool = "ip6tables" if ":" in ip else "iptables"
+            if tool == "ip6tables" and not shutil.which("ip6tables"):
+                results.append({"ip": ip, "ok": False, "error": "ip6tables not found"})
+                continue
+            r = _run([tool, "-I", "INPUT", "1", "-s", ip, "-j", "ACCEPT", "-m", "comment", "--comment", "sentinel-operator"])
+        results.append({"ip": ip, "ok": r.get("ok", False), "detail": r})
+    _audit("protect_operator", {"ips": ops, "results": results}, ok=all(x.get("ok") for x in results) if results else True)
+    _case_event("FIREWALL_OPERATOR_PROTECT", {"ips": ops})
+    return {"ok": True, "protected": ops, "results": results, "applied": True}
+
+
+def _case_event(title: str, detail: dict) -> None:
+    """Best-effort: attach firewall actions to the case system for evidence packs."""
+    try:
+        from modules.cases import create_case, add_note
+        c = create_case(title=title, severity="INFO", source="firewall", details=detail)
+        if isinstance(c, dict) and c.get("id"):
+            add_note(c["id"], f"firewall: {title} {json.dumps(detail)[:300]}")
+    except Exception:
+        try:
+            from modules.cases import open_case
+            open_case(title, detail)
+        except Exception:
+            pass
+
+
 def ensure_backend_ready() -> dict:
     b = backend()
     if b == "none":
@@ -177,6 +293,9 @@ def status() -> dict:
         "max_blocks": _max_blocks(),
         "note": "Host firewall control — not a perimeter network firewall",
         "dry_run_default": True,
+        "operator_ips": detect_operator_ips(),
+        "lockout_guard": True,
+        "ipv6": True,
     }
     if b == "none":
         out["ok"] = False
@@ -228,11 +347,26 @@ def block_ip(target: str, confirm: bool = False, reason: str = "", source: str =
     if not ready.get("ok"):
         return {"ok": False, "error": "backend not ready", "detail": ready}
 
+    # Lockout guard — never block the operator's current/recent SSH IPs
+    if is_operator_target(norm):
+        _audit("block_refused_lockout", {"target": norm, "operator_ips": detect_operator_ips(), "source": source}, ok=False)
+        return {
+            "ok": False,
+            "error": "lockout_guard: refused to block operator IP",
+            "target": norm,
+            "operator_ips": detect_operator_ips(),
+            "hint": "This is your current SSH session IP — blocking it would lock you out",
+        }
+
     if b == "nft":
         fam = "ip6" if ":" in norm.split("/")[0] else "ip"
         r = _run(["nft", "insert", "rule", "inet", "sentinel", "input", fam, "saddr", norm, "drop", "comment", "sentinel"])
     else:
-        r = _run(["iptables", "-I", "INPUT", "1", "-s", norm, "-j", "DROP", "-m", "comment", "--comment", "sentinel-block"])
+        is_v6 = ":" in norm.split("/")[0]
+        tool = "ip6tables" if is_v6 else "iptables"
+        if is_v6 and not shutil.which("ip6tables"):
+            return {"ok": False, "error": "ip6tables not found — cannot block IPv6 target", "target": norm}
+        r = _run([tool, "-I", "INPUT", "1", "-s", norm, "-j", "DROP", "-m", "comment", "--comment", "sentinel-block"])
 
     if kind == "cidr":
         if norm not in data["cidrs"]:
@@ -242,6 +376,7 @@ def block_ip(target: str, confirm: bool = False, reason: str = "", source: str =
             data["ips"].append(norm)
     _save_blocks(data)
     _audit("block", {"target": norm, "kind": kind, "reason": reason, "backend": b, "source": source, "result": r}, ok=r.get("ok", False))
+    _case_event("FIREWALL_BLOCK", {"target": norm, "reason": reason, "source": source, "ok": r.get("ok")})
     return {"ok": r.get("ok", False), "target": norm, "kind": kind, "backend": b, "applied": True, "detail": r, "source": source}
 
 
@@ -260,8 +395,12 @@ def unblock_ip(target: str, confirm: bool = False) -> dict:
     b = backend()
     results = []
     if b == "iptables":
+        is_v6 = ":" in norm.split("/")[0]
+        tool = "ip6tables" if is_v6 else "iptables"
+        if is_v6 and not shutil.which("ip6tables"):
+            return {"ok": False, "error": "ip6tables not found", "target": norm}
         for _ in range(8):
-            r = _run(["iptables", "-D", "INPUT", "-s", norm, "-j", "DROP"])
+            r = _run([tool, "-D", "INPUT", "-s", norm, "-j", "DROP"])
             results.append(r)
             if not r["ok"]:
                 break
@@ -358,7 +497,9 @@ def apply_profile(name: str, confirm: bool = False) -> dict:
         return {"ok": False, "error": "unknown profile", "available": list(PROFILES)}
     prof = PROFILES[name]
     if not confirm:
-        return {"ok": True, "dry_run": True, "profile": name, "would_apply": prof}
+        return {"ok": True, "dry_run": True, "profile": name, "would_apply": prof, "would_protect_operator": detect_operator_ips()}
+    # Lockout guard before any deny rules
+    protect_operator(confirm=True)
     results = []
     for port, proto in prof.get("deny_ports") or []:
         results.append(deny_port(port, proto, confirm=True))
@@ -385,6 +526,7 @@ def apply_managed(confirm: bool = False) -> dict:
     if not data.get("enabled", True):
         return {"ok": False, "error": "managed plane disabled"}
     ensure_backend_ready()
+    protect_operator(confirm=True)
     results = []
     for ip in list(data.get("ips") or []):
         results.append(block_ip(ip, confirm=True, reason="apply_managed", source="apply_managed"))
@@ -450,6 +592,7 @@ def audit_tail(n: int = 30) -> dict:
 
 
 def doctor() -> dict:
+    """Health check for host firewall plane."""
     st = status()
     issues = []
     if st.get("backend") == "none":
@@ -463,9 +606,11 @@ def doctor() -> dict:
         "version": VERSION,
         "backend": st.get("backend"),
         "managed_ips": st.get("managed_ips"),
-        "managed_cidrs": st.get("managed_cidrs"),
+        "lockout_guard": True,
+        "operator_ips": detect_operator_ips(),
+        "ipv6": True,
         "issues": issues,
-        "note": st.get("note"),
+        "status": st,
     }
 
 
@@ -499,6 +644,10 @@ def cli(argv: list[str]) -> int:
         print(json.dumps(apply_profile(name, confirm=conf), indent=2))
     elif cmd == "apply-managed":
         print(json.dumps(apply_managed(confirm=conf), indent=2))
+    elif cmd in ("protect-operator", "lockout-guard"):
+        print(json.dumps(protect_operator(confirm=conf), indent=2))
+    elif cmd in ("operator-ips", "whoami-fw"):
+        print(json.dumps({"ok": True, "operator_ips": detect_operator_ips()}, indent=2))
     elif cmd == "enable":
         print(json.dumps(set_enabled(True), indent=2))
     elif cmd == "disable":
