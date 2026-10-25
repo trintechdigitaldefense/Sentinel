@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.13.1"
+__version__ = "3.13.2"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -3302,6 +3302,27 @@ def main():
             print(json.dumps(snapshot(emit_alerts=False), indent=2, default=str))
         except Exception as e:
             print("[!] realtime:", e)
+
+    elif command in ("realtime-monitor", "rt-monitor", "monitor"):
+        try:
+            import time as _time
+            from modules.realtime_threat import snapshot
+            interval = 10
+            for a in args:
+                if a.isdigit():
+                    interval = max(5, int(a))
+            print(f"[*] Real-time monitor every {interval}s — Ctrl+C to stop")
+            while True:
+                snap = snapshot(emit_alerts=False)
+                print(f"{snap.get('ts','')[:19]}  level={snap.get('level')}  "
+                      f"threats={snap.get('threat_count')}  score={snap.get('score')}")
+                for t in (snap.get("threats") or [])[:5]:
+                    print(f"   · {t.get('severity')} {t.get('type')} {str(t.get('cmd') or t.get('detail') or '')[:80]}")
+                _time.sleep(interval)
+        except KeyboardInterrupt:
+            print("\n[+] Monitor stopped")
+        except Exception as e:
+            print("[!] realtime-monitor:", e)
 
     elif command in ("dashboard", "dash", "ui"):
         try:

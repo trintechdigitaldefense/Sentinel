@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.13.2] — 2026-10-25
+
+### Real-time monitoring + restored controls toggle
+- Dashboard **live poll** of `/api/realtime?scan=1` (8–12s) without full page reload
+- Restored **controls switch** (on/off) with reliable token API
+- CLI continuous monitor: `python3 sentinel.py monitor` (or `realtime-monitor`)
+
+
 ## [3.13.1] — 2026-10-25
 
 ### Real-time threats + dashboard control toggle

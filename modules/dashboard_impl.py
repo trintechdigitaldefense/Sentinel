@@ -76,7 +76,7 @@ def collect_full() -> dict:
         "ts": datetime.now(timezone.utc).isoformat(),
         "host": socket.gethostname(),
         "product": "SENTINEL",
-        "version": "3.13.1",
+        "version": "3.13.2",
     }
     try:
         out["local_ip"] = socket.gethostbyname(socket.gethostname())
@@ -430,6 +430,16 @@ th {{ color:var(--muted); font-weight:600; font-size:.7rem; text-transform:upper
   max-height:220px; overflow:auto; white-space:pre-wrap; border:1px solid var(--border);
 }}
 footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:center; }}
+.switch {{ position:relative; display:inline-block; width:42px; height:22px; vertical-align:middle; margin-left:.5rem; }}
+.switch input {{ opacity:0; width:0; height:0; }}
+.slider {{ position:absolute; cursor:pointer; inset:0; background:#334155; border-radius:22px; transition:.2s; }}
+.slider:before {{ position:absolute; content:""; height:16px; width:16px; left:3px; bottom:3px; background:white; border-radius:50%; transition:.2s; }}
+.switch input:checked + .slider {{ background:#1d4ed8; }}
+.switch input:checked + .slider:before {{ transform:translateX(20px); }}
+#rt-live {{ font-weight:600; }}
+#rt-live.pulse {{ animation: pulse 1.2s infinite; }}
+@keyframes pulse {{ 0%{{opacity:1}} 50%{{opacity:.45}} 100%{{opacity:1}} }}
+
 </style>
 </head>
 <body>
@@ -451,13 +461,17 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
     SIEM <span class="badge {siem_badge}">{siem_badge.upper()}</span>
     · FW <span class="badge {'on' if fw_backend!='none' else 'off'}">{esc(fw_backend)}</span>
     · Quiet <span class="badge {'warn' if quiet_on else 'off'}">{'ON' if quiet_on else 'OFF'}</span>
-    · <span id="ctrl-label">{'CONTROL' if control else 'VIEW-ONLY'}</span>
-    <button class="btn secondary" style="margin-left:.5rem" onclick="toggleControl()">{'Disable controls' if control else 'Enable controls'}</button>
+    · <span id="ctrl-label" data-control="{str(control).lower()}">{'CONTROL' if control else 'VIEW-ONLY'}</span>
+    <label class="switch" title="Enable or disable dashboard controls">
+      <input type="checkbox" id="ctrl-toggle" {'checked' if control else ''} onchange="toggleControl(this.checked)"/>
+      <span class="slider"></span>
+    </label>
+    <span class="muted" style="margin-left:.35rem;font-size:.75rem">{'Controls on' if control else 'Controls off'}</span>
   </div>
 </header>
 <div class="wrap">
   <div class="card section" id="realtime" style="margin-top:0">
-    <h2>Real-time threat detection</h2>
+    <h2>Real-time threat detection <span id="rt-live" class="badge on">LIVE</span></h2>
     <p>
       <span class="badge {rt_badge}">{esc(rt_level)}</span>
       · score <b>{esc(rt.get("score", 0))}</b>
@@ -577,17 +591,78 @@ async function runAction(name) {{
   const j = await r.json();
   if (out) out.textContent = JSON.stringify(j, null, 2);
 }}
-async function toggleControl() {{
-  const r = await fetch("/api/control-mode?token=" + encodeURIComponent(TOKEN), {{
-    method: "POST", headers: {{"Content-Type": "application/json"}},
-    body: JSON.stringify({{allow_control: !(document.getElementById("ctrl-label").textContent.trim() === "CONTROL")}})
-  }});
-  const j = await r.json();
-  if (!r.ok || !j.ok) {{ alert("Toggle failed: " + (j.error || r.status)); return; }}
-  location.reload();
+async function toggleControl(want) {{
+  if (typeof want !== "boolean") {{
+    const el = document.getElementById("ctrl-label");
+    const cur = el && el.getAttribute("data-control") === "true";
+    want = !cur;
+  }}
+  try {{
+    const r = await fetch("/api/control-mode?token=" + encodeURIComponent(TOKEN), {{
+      method: "POST",
+      headers: {{"Content-Type": "application/json"}},
+      body: JSON.stringify({{allow_control: want}})
+    }});
+    const j = await r.json();
+    if (!r.ok || !j.ok) {{
+      alert("Toggle failed: " + (j.error || r.status));
+      const box = document.getElementById("ctrl-toggle");
+      if (box) box.checked = !want;
+      return;
+    }}
+    location.reload();
+  }} catch (e) {{
+    alert("Toggle error: " + e);
+    const box = document.getElementById("ctrl-toggle");
+    if (box) box.checked = !want;
+  }}
 }}
+
+function renderThreats(rt) {{
+  const badge = document.querySelector("#realtime .badge");
+  const live = document.getElementById("rt-live");
+  if (live) {{ live.textContent = "LIVE"; live.className = "badge on pulse"; }}
+  if (!rt) return;
+  const level = rt.level || "UNKNOWN";
+  const map = {{CRITICAL:"bad", HIGH:"warn", ELEVATED:"warn", WATCH:"off", CLEAR:"on"}};
+  // first badge after h2 is level
+  const badges = document.querySelectorAll("#realtime .badge");
+  if (badges.length >= 2) {{
+    badges[1].textContent = level;
+    badges[1].className = "badge " + (map[level] || "off");
+  }}
+  const tbodyHint = document.querySelector("#realtime table");
+  if (!tbodyHint) return;
+  let rows = "";
+  const threats = rt.threats || [];
+  if (threats.length) {{
+    for (const t of threats.slice(0, 15)) {{
+      const det = t.cmd || t.detail || t.id || t.port || "";
+      rows += "<tr><td>" + (t.severity||"") + "</td><td class=\"crit\">" + (t.type||"") +
+              "</td><td class=\"mono\">" + String(det).slice(0,120) + "</td></tr>";
+    }}
+  }} else {{
+    rows = "<tr><td colspan=\"3\" class=\"muted\">No active threats detected</td></tr>";
+  }}
+  tbodyHint.innerHTML = "<tr><th>Severity</th><th>Type</th><th>Detail</th></tr>" + rows;
+  const scoreEl = document.querySelector("#realtime p b");
+  // update score/count text roughly via full p
+}}
+
+async function pollRealtime() {{
+  try {{
+    const r = await fetch("/api/realtime?token=" + encodeURIComponent(TOKEN) + "&scan=1");
+    if (!r.ok) return;
+    const j = await r.json();
+    renderThreats(j);
+  }} catch (e) {{}}
+}}
+
 const RT_LEVEL = "{esc(rt_level)}";
-const REFRESH_MS = (RT_LEVEL === "CRITICAL" || RT_LEVEL === "HIGH") ? 15000 : 45000;
+const POLL_MS = (RT_LEVEL === "CRITICAL" || RT_LEVEL === "HIGH") ? 8000 : 12000;
+setInterval(pollRealtime, POLL_MS);
+// soft full reload less often to refresh other panels
+const REFRESH_MS = (RT_LEVEL === "CRITICAL" || RT_LEVEL === "HIGH") ? 60000 : 120000;
 setTimeout(function(){{ location.href = location.pathname + location.search; }}, REFRESH_MS);
 </script>
 </body>
@@ -648,6 +723,13 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps(data.get("ops") or {}, indent=2, default=str).encode(), "application/json")
             return
         if path in ("/api/realtime", "/api/threats"):
+            q = parse_qs(urlparse(self.path).query)
+            if (q.get("scan") or ["0"])[0] in ("1", "true", "yes"):
+                try:
+                    from modules.realtime_threat import snapshot
+                    data["realtime"] = snapshot(emit_alerts=False)
+                except Exception as e:
+                    data["realtime"] = {"ok": False, "error": str(e)}
             self._send(200, json.dumps(data.get("realtime") or {}, indent=2, default=str).encode(), "application/json")
             return
         if path in ("/api/visibility",):
