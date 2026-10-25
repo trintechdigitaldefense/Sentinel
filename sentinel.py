@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.10.0"
+__version__ = "3.10.1"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2876,16 +2876,19 @@ def main():
 
     elif command in ("siem",):
         try:
-            from modules.siem import status as siem_status, test_emit, emit, to_cef
+            from modules.siem import status as siem_status, test_emit, to_cef, enable_defaults
             if not args or args[0] == "status":
                 print(json.dumps(siem_status(), indent=2, default=str))
             elif args[0] == "test":
                 print(json.dumps(test_emit(), indent=2, default=str))
             elif args[0] == "cef-sample":
                 print(to_cef("HIGH", "SAMPLE", "detail", {"type": "SAMPLE"}))
+            elif args[0] == "enable":
+                print(json.dumps(enable_defaults(True), indent=2, default=str))
+            elif args[0] == "disable":
+                print(json.dumps(enable_defaults(False), indent=2, default=str))
             else:
-                print("Usage: siem status|test|cef-sample")
-                print("Enable in config: alerting.siem.enabled = true")
+                print("Usage: siem status|test|enable|disable|cef-sample")
         except Exception as e:
             print("[!] siem:", e)
 

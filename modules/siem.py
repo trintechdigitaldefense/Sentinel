@@ -225,7 +225,7 @@ def emit(
     min_sev = (cfg.get("min_severity") or "LOW").upper()
     sev = (severity or "INFO").upper()
     try:
-        if order.index(sev) < order.index(min_sev):
+        if order.index(sev) < order.index(min_sev if min_sev in order else "LOW"):
             return {"ok": True, "skipped": True, "reason": f"below {min_sev}"}
     except ValueError:
         pass
@@ -312,8 +312,42 @@ def status() -> dict:
 
 def test_emit() -> dict:
     return emit(
-        "INFO",
+        "MEDIUM",
         "SIEM_TEST",
         detail="Sentinel SIEM connectivity test",
         meta={"type": "SIEM_TEST"},
     )
+
+
+
+def enable_defaults(enable: bool = True) -> dict:
+    """Ensure alerting.siem block exists and optionally enable ship_file + flag."""
+    import json
+    p = _home() / "config.json"
+    try:
+        cfg = json.loads(p.read_text()) if p.exists() else {}
+    except Exception:
+        cfg = {}
+    alerting = cfg.setdefault("alerting", {})
+    siem = alerting.setdefault("siem", {})
+    siem["enabled"] = bool(enable)
+    siem.setdefault("format", "json")
+    siem.setdefault("min_severity", "LOW")
+    siem.setdefault("syslog", {"enabled": False, "host": "", "port": 514, "protocol": "udp"})
+    siem.setdefault("splunk_hec", {"enabled": False, "url": "", "token": "", "verify_tls": True})
+    siem.setdefault("webhook", {"enabled": False, "url": "", "verify_tls": True})
+    sf = siem.setdefault("ship_file", {"enabled": True, "path": ""})
+    sf["enabled"] = True
+    alerting["siem"] = siem
+    cfg["alerting"] = alerting
+    # dashboard defaults
+    dash = cfg.setdefault("dashboard", {})
+    if not dash.get("token"):
+        import secrets
+        dash["token"] = secrets.token_urlsafe(24)
+    dash.setdefault("port", 8792)
+    dash.setdefault("allow_control", True)
+    cfg["dashboard"] = dash
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(cfg, indent=2))
+    return {"ok": True, "siem_enabled": siem["enabled"], "path": str(p), "dashboard_port": dash.get("port")}

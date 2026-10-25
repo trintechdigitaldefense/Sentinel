@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "3.10.0"
+VERSION = "3.10.1"
 HOME = Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel"))
 CONFIG = HOME / "config.json"
 DATA = HOME / "data"
@@ -209,6 +209,15 @@ def main() -> None:
     print("  python3 sentinel.py dash     # open cases on UI")
     print()
 
+
+# Ensure SIEM ship-file defaults exist (disabled until enable)
+try:
+    from modules.siem import enable_defaults
+    # only seed config keys; leave enabled=False on first install unless SENTINEL_SIEM=1
+    import os as _os
+    enable_defaults(_os.environ.get("SENTINEL_SIEM", "").lower() in ("1", "true", "yes"))
+except Exception:
+    pass
 
 if __name__ == "__main__":
     main()
