@@ -175,3 +175,12 @@ This document does **not** claim Sentinel is production-ready. Status is **devel
 - ransomware/honeyauth: reduced silent failures
 - fim_realtime.visibility_status for incomplete realtime coverage
 - regression tests added (not a full detection coverage proof)
+
+
+## Milestone 5 status
+
+- README rewritten: accurate status (pilot candidate), feature table with tested/partial labels, safe install path, security defaults, known limitations
+- INSTALL.md: non-destructive upgrade; explicit recovery only
+- SECURITY.md: reporting + defaults aligned with code
+- VERIFY.md points at TESTING + release checklist
+- No production-ready claim without RELEASE_CHECKLIST evidence

@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.14.6] — 2026-10-26
+
+### Milestone 5 — docs and product presentation
+- README: pilot-candidate status, truthful feature matrix, safe install
+- INSTALL.md / SECURITY.md / VERIFY.md aligned with non-destructive defaults
+- Cross-links to SECURITY_AUDIT, RELEASE_CHECKLIST, EVIDENCE_HASH
+
+
 ## [3.14.5] — 2026-10-26
 
 ### Milestone 4 — defensive module hardening
@@ -219,6 +227,14 @@
 
 
 # Changelog
+
+## [3.14.6] — 2026-10-26
+
+### Milestone 5 — docs and product presentation
+- README: pilot-candidate status, truthful feature matrix, safe install
+- INSTALL.md / SECURITY.md / VERIFY.md aligned with non-destructive defaults
+- Cross-links to SECURITY_AUDIT, RELEASE_CHECKLIST, EVIDENCE_HASH
+
 
 ## [3.14.5] — 2026-10-26
 

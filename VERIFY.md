@@ -1,19 +1,10 @@
-# Verify SENTINEL downloads
-
-## install.sh (main branch)
+# Verify your install
 
 ```bash
-curl -sSL -o install.sh https://raw.githubusercontent.com/trintechdigitaldefense/Sentinel/main/install.sh
-sha256sum install.sh
-# Compare to SHA256SUMS in this repo (or release notes).
+python3 setup.py --check
+python3 -m py_compile sentinel.py
+pytest -q tests/ --tb=line
+python3 sentinel.py doctor
 ```
 
-## v3.0.0 source tarball
-
-```bash
-curl -sL -o sentinel-v3.0.0.tar.gz \
-  https://github.com/trintechdigitaldefense/Sentinel/archive/refs/tags/v3.0.0.tar.gz
-sha256sum sentinel-v3.0.0.tar.gz
-```
-
-See `SHA256SUMS` in the repository root for published digests.
+Full notes: [docs/TESTING.md](docs/TESTING.md) · release gates: [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md)
