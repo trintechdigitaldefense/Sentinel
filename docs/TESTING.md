@@ -22,6 +22,13 @@ bash -n install.sh
 python scripts/firewall_smoke.py
 ```
 
+## Verified in Milestone 6 acceptance (2026-10-26)
+
+- `pytest -q tests/` → **131 passed**
+- compile all modules → **pass**
+- `bash -n install.sh` → **pass**
+- See [RELEASE_CANDIDATE.md](RELEASE_CANDIDATE.md)
+
 ## Verified in Milestone 3–4 environment (2026-10-26)
 
 Milestone 4 added self_defense / fim visibility / tripwire tests.

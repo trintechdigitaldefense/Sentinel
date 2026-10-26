@@ -184,3 +184,11 @@ This document does **not** claim Sentinel is production-ready. Status is **devel
 - SECURITY.md: reporting + defaults aligned with code
 - VERIFY.md points at TESTING + release checklist
 - No production-ready claim without RELEASE_CHECKLIST evidence
+
+
+## Milestone 6 status
+
+- Release candidate notes: docs/RELEASE_CANDIDATE.md (v3.14.6-rc1)
+- RELEASE_CHECKLIST updated with PASS/PARTIAL/OPEN evidence
+- Residual risks listed for human approval
+- **No production-ready declaration**

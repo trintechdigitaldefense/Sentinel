@@ -2,6 +2,10 @@
 
 ## [3.14.6] — 2026-10-26
 
+### Milestone 6 — release candidate packaging
+- docs/RELEASE_CANDIDATE.md + checklist evidence
+- Acceptance pytest 131 passed (local RC env)
+
 ### Milestone 5 — docs and product presentation
 - README: pilot-candidate status, truthful feature matrix, safe install
 - INSTALL.md / SECURITY.md / VERIFY.md aligned with non-destructive defaults
@@ -229,6 +233,10 @@
 # Changelog
 
 ## [3.14.6] — 2026-10-26
+
+### Milestone 6 — release candidate packaging
+- docs/RELEASE_CANDIDATE.md + checklist evidence
+- Acceptance pytest 131 passed (local RC env)
 
 ### Milestone 5 — docs and product presentation
 - README: pilot-candidate status, truthful feature matrix, safe install
