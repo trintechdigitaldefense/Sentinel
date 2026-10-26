@@ -1,3 +1,4 @@
+import logging
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """Host + network visibility: devices, processes, FIM, persistence inventory.
 
@@ -119,8 +120,8 @@ def inventory_devices(
             if send_alert:
                 try:
                     send_alert("NEW_DEVICE", entry)
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
             if logger:
                 logger.warning("NEW DEVICE %s (%s) mac=%s", host, ip, d.get("mac"))
         else:
@@ -132,8 +133,8 @@ def inventory_devices(
                 if send_alert:
                     try:
                         send_alert("DEVICE_RETURNED", devices[ip])
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
             last_seen[ip] = now
 
     gone = []
@@ -146,9 +147,8 @@ def inventory_devices(
                 if send_alert:
                     try:
                         send_alert("DEVICE_GONE", {"ip": ip, "mac": info.get("mac")})
-                    except Exception:
-                        pass
-
+                    except Exception as e:
+                        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
     db = {
         "devices": devices,
         "first_seen": first_seen,

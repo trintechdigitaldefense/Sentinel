@@ -11,13 +11,14 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.14.0"
+__version__ = "3.14.1"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
 import sys
 import os
 import json
+import logging
 import subprocess
 import socket
 import time
@@ -206,7 +207,7 @@ def init_config(logger):
             "scan_passwd": True,
             "scan_cron": True,
         },
-        "realtime": {"enabled": true, "emit_on_hunt": true},
+        "realtime": {"enabled": True, "emit_on_hunt": True},
         "process_monitor": {
             "active": True,
             "suspicious_commands": ["xmrig", "minerd", "cpuminer", "cspace", "coinhive", "kworkerds"],
@@ -222,7 +223,7 @@ def init_config(logger):
             "time_window": 600,
             "block_duration": 1800,
             "alert_on_block": True,
-            "auto_block": True,
+            "auto_block": False,
             "whitelist_ips": [],
         },
         "outbound_monitor": {
@@ -270,8 +271,7 @@ def init_config(logger):
                 for subkey, subval in default_config[key].items():
                     if subkey not in config[key]:
                         config[key][subkey] = subval
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(config, f, indent=2)
+        write_config_secure(config)
         logger.info(f"{C.GREEN}✓{C.RESET} Config loaded from {C.BOLD}{CONFIG_FILE}{C.RESET}")
     else:
         with open(CONFIG_FILE, "w") as f:
@@ -286,8 +286,7 @@ def init_config(logger):
         agent_cfg.setdefault("port", 8743)
         agent_cfg.setdefault("enabled", True)
         agent_cfg.setdefault("report_interval", 60)
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(config, f, indent=2)
+        write_config_secure(config)
         logger.info(f"{C.GREEN}✓{C.RESET} Generated agent shared_token")
 
     # Phase 1 defaults
@@ -307,11 +306,24 @@ def init_config(logger):
         "lock_user": False,
     })
     config.setdefault("client", {"name": ""})
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=2)
+    write_config_secure(config)
 
     return config
 
+
+
+def write_config_secure(config, path=None):
+    """Write config.json with restrictive permissions (0600)."""
+    import os
+    p = Path(path) if path else CONFIG_FILE
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "w") as f:
+        json.dump(config, f, indent=2, default=str)
+    try:
+        os.chmod(p, 0o600)
+    except Exception as e:
+        logging.getLogger("sentinel").debug("chmod config: %s", e)
+    return p
 
 def load_config_safe():
     try:
@@ -2547,9 +2559,8 @@ def main():
 
     elif command == "quiet":
         mode = (args[0] if args else "").lower()
-        config.setdefault("quiet", {})["enabled"] = mode in ("on", "1", "true", "enable")
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(config, f, indent=2)
+        config.setdefault("quiet", {})["enabled"] = mode in ("on", "1", "True", "enable")
+        write_config_secure(config)
         state = "ON" if config["quiet"]["enabled"] else "OFF"
         logger.info(f"{C.GREEN}✓{C.RESET} Quiet mode {C.BOLD}{state}{C.RESET}")
 

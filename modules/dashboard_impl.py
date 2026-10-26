@@ -1,6 +1,7 @@
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """SENTINEL visual dashboard — full visibility + safe control surface."""
 from __future__ import annotations
+import logging
 
 import json
 import os
@@ -52,7 +53,9 @@ def ensure_token() -> tuple:
     if not dash.get("token"):
         dash["token"] = secrets.token_urlsafe(24)
     dash.setdefault("port", DEFAULT_PORT)
-    dash.setdefault("allow_control", True)
+    dash.setdefault("allow_control", False)
+    dash.setdefault("role", "viewer")
+    dash.setdefault("bind", "127.0.0.1")
     cfg["dashboard"] = dash
     existing = _cfg()
     existing["dashboard"] = dash
@@ -196,7 +199,7 @@ def collect_full() -> dict:
         "siem_enabled": bool(((cfg.get("alerting") or {}).get("siem") or {}).get("enabled")),
         "ssh_blocking": bool((cfg.get("ssh_blocking") or {}).get("active", True)),
         "deception": bool((cfg.get("deception") or {}).get("active", True)),
-        "dashboard_control": bool((cfg.get("dashboard") or {}).get("allow_control", True)),
+        "dashboard_control": bool((cfg.get("dashboard") or {}).get("allow_control", False)),
         "quiet": quiet,
     }
     try:
@@ -205,7 +208,7 @@ def collect_full() -> dict:
     except Exception as e:
         out["realtime"] = {"ok": False, "error": str(e), "level": "UNKNOWN", "threats": []}
 
-    out["control"] = bool((cfg.get("dashboard") or {}).get("allow_control", True))
+    out["control"] = bool((cfg.get("dashboard") or {}).get("allow_control", False))
 
     try:
         from modules.dashboard_enrich import enrich
@@ -846,11 +849,22 @@ class _Handler(BaseHTTPRequestHandler):
         self._send(404, b'{"ok":false,"error":"unknown endpoint"}', "application/json")
 
 
-def start_dashboard(port: int | None = None, bind: str = "127.0.0.1"):
+def start_dashboard(port: int | None = None, bind: str | None = None):
     token, cfg_port, dash = ensure_token()
     port = int(port or cfg_port or DEFAULT_PORT)
+    bind = bind or dash.get("bind") or "127.0.0.1"
+    if bind in ("0.0.0.0", "::", "*") and not dash.get("allow_public_bind"):
+        print("[!] Refusing public bind without dashboard.allow_public_bind=true — using 127.0.0.1")
+        bind = "127.0.0.1"
     _Handler.token = token
-    _Handler.allow_control = bool(dash.get("allow_control", True))
+    _Handler.allow_control = bool(dash.get("allow_control", False))
+    try:
+        from modules.rbac import must_change_password
+        cfg = _cfg()
+        if "password" in (cfg.get("dashboard") or {}) and must_change_password(cfg):
+            print("[!] Default/empty dashboard.password — change it (doctor will FAIL on password check)")
+    except Exception as e:
+        logging.getLogger("sentinel").debug("rbac check: %s", e)
     server = HTTPServer((bind, port), _Handler)
     url = f"http://{bind}:{port}/?token={token}"
     print(f"[+] SENTINEL Dashboard on port {port}")

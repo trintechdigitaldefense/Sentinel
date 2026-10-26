@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.14.1] — 2026-10-26
+
+### Critical crash + security defaults (improvement brief)
+- Fix NameError `true` → `True` in init_config
+- auto_block default False; config.json 0600; progressive SSH bans
+- Dashboard loopback + viewer + allow_control False by default
+- Doctor: config perms + default password; log silent excepts
+- docs/EVIDENCE_HASH.md
+
+
 ## [3.14.0] — 2026-10-25
 
 ### Real-time threat detection (expanded)

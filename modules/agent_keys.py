@@ -1,3 +1,4 @@
+import logging
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """Per-agent API key issue / verify / revoke for central MSP mode.
 
@@ -42,10 +43,8 @@ def _save(data: dict) -> None:
     p.write_text(json.dumps(data, indent=2))
     try:
         os.chmod(p, 0o600)
-    except Exception:
-        pass
-
-
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
 def issue_key(agent_id: str, master_key: str, provided_master: str) -> dict:
     if not secrets.compare_digest(master_key, provided_master):
         return {"ok": False, "error": "invalid master key"}

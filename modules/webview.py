@@ -1,3 +1,4 @@
+import logging
 #!/usr/bin/env python3
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """FEATURE 04 — Client-facing read-only web portal slice."""
@@ -24,8 +25,8 @@ def _cfg() -> dict:
     if p.exists():
         try:
             return json.loads(p.read_text())
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
     return {}
 
 def ensure_portal_token() -> str:
@@ -66,8 +67,8 @@ def collect_snapshot() -> dict:
                 if line.strip():
                     snap["alerts_30d"].append(line.strip()[:200])
             snap["alert_count"] = len(snap["alerts_30d"])
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
     try:
         from modules.drift import trend
         snap["drift"] = trend()
@@ -82,15 +83,15 @@ def collect_snapshot() -> dict:
         from modules.attack_map import summarize_techniques
         alerts = [{"reason": a, "type": "alert"} for a in snap["alerts_30d"][:50]]
         snap["techniques"] = summarize_techniques(alerts)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
     dp = _data() / "devices.json"
     if dp.exists():
         try:
             d = json.loads(dp.read_text())
             snap["devices"] = len(d) if isinstance(d, (list, dict)) else 0
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
     return snap
 
 def render_html(snap: dict, client_name: str = "Client") -> str:

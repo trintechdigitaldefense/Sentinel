@@ -1,13 +1,12 @@
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """SSH / auth brute-force detection and host-firewall blocking.
-
 Parses journald + auth logs (IPv4/IPv6), thresholds failures, and applies
 blocks via modules.firewall (nft/iptables, lockout guard, audit, cases).
-
 Does not use shell-out iptables strings — all applies go through the
 firewall control plane.
 """
 from __future__ import annotations
+import logging
 
 import json
 import os
@@ -260,6 +259,36 @@ def apply_block(
     }
 
 
+
+def progressive_duration(ip: str, base: int, ssh: dict) -> int:
+    """Scale ban duration by repeat offenses for this IP. Cap at max_duration."""
+    import json
+    from pathlib import Path
+    base = max(60, int(base or 1800))
+    max_d = int(ssh.get("max_block_duration") or 86400)
+    mult = float(ssh.get("repeat_multiplier") or 2.0)
+    store = Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel")) / "data" / "ssh_offense_counts.json"
+    counts = {}
+    if store.exists():
+        try:
+            counts = json.loads(store.read_text())
+        except Exception as e:
+            logging.getLogger("sentinel").debug("offense load: %s", e)
+            counts = {}
+    n = int(counts.get(ip, 0)) + 1
+    counts[ip] = n
+    try:
+        store.parent.mkdir(parents=True, exist_ok=True)
+        store.write_text(json.dumps(counts, indent=2))
+        try:
+            os.chmod(store, 0o600)
+        except Exception as e:
+            logging.getLogger("sentinel").debug("offense chmod: %s", e)
+    except Exception as e:
+        logging.getLogger("sentinel").debug("offense save: %s", e)
+    dur = int(base * (mult ** max(0, n - 1)))
+    return min(dur, max_d)
+
 def check(
     config: Optional[dict] = None,
     send_alert: Optional[Callable] = None,
@@ -276,7 +305,7 @@ def check(
     failures = parse_failures(text)
     max_failures = int(ssh.get("max_failures") or 5)
     duration = int(ssh.get("block_duration") or 1800)
-    auto = ssh.get("auto_block", True)
+    auto = ssh.get("auto_block", False)  # opt-in
 
     blocked = []
     candidates = []

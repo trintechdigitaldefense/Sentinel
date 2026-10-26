@@ -31,13 +31,13 @@ def verify_password(password: str, stored: str) -> bool:
 
 def get_role(cfg: dict) -> str:
     dash = (cfg or {}).get("dashboard") or {}
-    role = (dash.get("role") or "admin").lower()
-    return role if role in ("admin", "viewer") else "admin"
+    role = (dash.get("role") or "viewer").lower()
+    return role if role in ("admin", "viewer") else "viewer"
 
 
 def can_control(cfg: dict) -> bool:
     dash = (cfg or {}).get("dashboard") or {}
-    if not dash.get("allow_control", True):
+    if not dash.get("allow_control", False):
         return False
     return get_role(cfg) == "admin"
 

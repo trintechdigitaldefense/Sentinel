@@ -1,7 +1,49 @@
+
+from __future__ import annotations
+
+def _check_dashboard_password(results):
+    try:
+        from modules.rbac import must_change_password
+        from pathlib import Path
+        import json, os
+        cfg_path = Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel")) / "config.json"
+        cfg = json.loads(cfg_path.read_text()) if cfg_path.exists() else {}
+        dash = cfg.get("dashboard") or {}
+        if "password" in dash and must_change_password(cfg):
+            results.append({"name": "dashboard_password", "ok": False, "level": "FAIL",
+                            "detail": "default/empty dashboard password — change dashboard.password"})
+        else:
+            results.append({"name": "dashboard_password", "ok": True, "level": "OK",
+                            "detail": "password ok or unused"})
+    except Exception as e:
+        results.append({"name": "dashboard_password", "ok": True, "level": "WARN", "detail": str(e)})
+
+
+def _check_config_perms(results):
+    try:
+        from pathlib import Path
+        import os
+        cfg_path = Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel")) / "config.json"
+        if not cfg_path.exists():
+            results.append({"name": "config_perms", "ok": True, "level": "OK", "detail": "no config yet"})
+            return
+        mode = cfg_path.stat().st_mode & 0o777
+        if mode & 0o077:
+            try:
+                os.chmod(cfg_path, 0o600)
+                results.append({"name": "config_perms", "ok": True, "level": "WARN",
+                                "detail": "was %s, tightened to 0600" % oct(mode)})
+            except Exception as e:
+                results.append({"name": "config_perms", "ok": False, "level": "FAIL",
+                                "detail": "mode %s: %s" % (oct(mode), e)})
+        else:
+            results.append({"name": "config_perms", "ok": True, "level": "OK", "detail": oct(mode)})
+    except Exception as e:
+        results.append({"name": "config_perms", "ok": True, "level": "WARN", "detail": str(e)})
+
 #!/usr/bin/env python3
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """SENTINEL doctor — single green/red readiness check for client installs."""
-from __future__ import annotations
 import json
 import os
 import socket
@@ -366,6 +408,26 @@ def run_doctor(verbose: bool = True) -> dict:
             mark = {"OK": "+", "WARN": "!", "FAIL": "X"}.get(c["status"], "?")
             print(f"  [{mark}] {c['status']:4}  {c['name']:12}  {c['detail']}")
         print("-" * 56)
+        # Security defaults (improvement brief)
+        extra = []
+        _check_config_perms(extra)
+        _check_dashboard_password(extra)
+        for e in extra:
+            status = e.get("level") or ("OK" if e.get("ok") else "FAIL")
+            checks.append({
+                "name": e.get("name", "extra"),
+                "status": status,
+                "detail": e.get("detail", ""),
+            })
+            if status == "OK":
+                ok += 1
+            elif status == "WARN":
+                warn += 1
+            else:
+                fail += 1
+            if verbose:
+                mark = "+" if status == "OK" else ("!" if status == "WARN" else "X")
+                print(f"  [{mark}] {status:4}  {e.get('name')}  {e.get('detail')}")
         print(f"  Summary: {ok} OK · {warn} WARN · {fail} FAIL")
         if result["client_ready"]:
             print("  Verdict: CLIENT-READY (fix remaining WARNs as needed)")

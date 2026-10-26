@@ -1,3 +1,4 @@
+import logging
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """Persistent critical alerts — survive restarts until acknowledged.
 
@@ -55,8 +56,8 @@ def _load() -> dict:
     if p.exists():
         try:
             return json.loads(p.read_text())
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
     return {"open": {}, "acked": {}, "updated": None}
 
 
@@ -76,8 +77,8 @@ def critical_types(extra: Optional[set] = None) -> set:
             cfg = json.loads(cfg_path.read_text())
             extra_cfg = (cfg.get("alerting") or {}).get("persistent_critical_types") or []
             types |= set(extra_cfg)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
     return types
 
 
