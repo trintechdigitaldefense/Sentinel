@@ -42,8 +42,15 @@ def create_baseline(repo_root: Path) -> dict:
     data = {str(p.resolve()): hash_file(p) for p in core_files(repo_root)}
     path = _baseline()
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"files": data}, indent=2))
-    return {"ok": True, "count": len(data), "path": str(path)}
+    payload = json.dumps({"files": data}, indent=2)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(payload)
+    tmp.replace(path)  # atomic on same filesystem
+    try:
+        os.chmod(path, 0o600)
+    except Exception as e:
+        log.debug("chmod baseline: %s", e)
+    return {"ok": True, "count": len(data), "path": str(path), "mode": "0600"}
 
 
 def verify(repo_root: Path) -> dict:

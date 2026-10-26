@@ -32,14 +32,22 @@ def _load_dedup() -> dict:
         return {}
     try:
         return json.loads(p.read_text())
-    except Exception:
+    except Exception as e:
+        log.debug("dedup load failed: %s", e)
         return {}
 
 
 def _save_dedup(d: dict) -> None:
     p = _dedup_path()
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(d))
+    tmp = p.with_suffix(p.suffix + ".tmp")
+    tmp.write_text(json.dumps(d))
+    tmp.replace(p)
+    try:
+        import os as _os
+        _os.chmod(p, 0o600)
+    except Exception as e:
+        log.debug("dedup chmod: %s", e)
 
 
 def _fingerprint(severity: str, title: str, detail: str) -> str:
@@ -181,8 +189,8 @@ class AlertEngine:
             }
             with open(ap, "a") as f:
                 f.write(json.dumps(rec) + "\n")
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning("alert log append failed: %s", e)
 
 
         # SIEM / centralized logging

@@ -22,6 +22,10 @@ bash -n install.sh
 python scripts/firewall_smoke.py
 ```
 
+## Verified in Milestone 3–4 environment (2026-10-26)
+
+Milestone 4 added self_defense / fim visibility / tripwire tests.
+
 ## Verified in Milestone 3 environment (2026-10-26)
 
 | Check | Result |

@@ -2,11 +2,13 @@
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """FEATURE 09 — Honey-credential auth monitor."""
 from __future__ import annotations
+import logging
 import json
 import os
 import re
 from datetime import datetime
 from pathlib import Path
+log = logging.getLogger("sentinel.honeyauth")
 
 def _home() -> Path:
     return Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel"))
@@ -27,8 +29,8 @@ def load_honey_usernames() -> set:
             mir = c.get("mirage") or {}
             for u in (mir.get("honey_usernames") or []):
                 names.add(str(u).lower())
-        except Exception:
-            pass
+        except Exception as e:
+            log.debug("honey config parse: %s", e)
     decoy = _data() / "deception_artifacts"
     if decoy.exists():
         for f in decoy.rglob("*"):

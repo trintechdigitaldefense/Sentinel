@@ -166,3 +166,12 @@ This document does **not** claim Sentinel is production-ready. Status is **devel
 - CI expanded: compile all modules, future-import guard, ruff on modules/tests, install.sh syntax
 - Tests: test_install_safe.py, expanded test_dashboard_authz.py
 - docs/TESTING.md with reproducible commands
+
+
+## Milestone 4 status
+
+- self_defense baseline atomic + mode 0600
+- alerting: log failures; atomic dedup store
+- ransomware/honeyauth: reduced silent failures
+- fim_realtime.visibility_status for incomplete realtime coverage
+- regression tests added (not a full detection coverage proof)

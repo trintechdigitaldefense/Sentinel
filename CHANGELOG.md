@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.14.5] — 2026-10-26
+
+### Milestone 4 — defensive module hardening
+- self_defense: atomic baseline write + 0600
+- alerting: no silent alert-log failure; atomic dedup + 0600
+- ransomware_tripwire / honeyauth: logged failures
+- fim_realtime.visibility_status() for incomplete coverage
+- tests: self_defense, fim visibility, tripwire
+
+
 ## [3.14.4] — 2026-10-26
 
 ### Milestone 3 — CI and regression tests
@@ -209,6 +219,16 @@
 
 
 # Changelog
+
+## [3.14.5] — 2026-10-26
+
+### Milestone 4 — defensive module hardening
+- self_defense: atomic baseline write + 0600
+- alerting: no silent alert-log failure; atomic dedup + 0600
+- ransomware_tripwire / honeyauth: logged failures
+- fim_realtime.visibility_status() for incomplete coverage
+- tests: self_defense, fim visibility, tripwire
+
 
 ## [3.14.4] — 2026-10-26
 

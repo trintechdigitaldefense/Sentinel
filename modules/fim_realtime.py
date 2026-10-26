@@ -48,6 +48,18 @@ def has_inotifywait() -> bool:
     return shutil.which("inotifywait") is not None
 
 
+def visibility_status() -> dict:
+    """Report whether realtime FIM can observe events fully."""
+    ok = has_inotifywait()
+    return {
+        "ok": True,
+        "inotifywait": ok,
+        "mode": "inotify" if ok else "poll_or_unavailable",
+        "incomplete": not ok,
+        "detail": None if ok else "inotifywait not installed — realtime FIM coverage reduced",
+    }
+
+
 def run_watch(
     config: dict,
     send_alert: Optional[Callable] = None,

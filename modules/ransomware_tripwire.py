@@ -2,6 +2,7 @@
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """FEATURE 15 — Ransomware tripwire folder."""
 from __future__ import annotations
+import logging
 import hashlib
 import json
 import math
@@ -9,6 +10,7 @@ import os
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
+log = logging.getLogger("sentinel.tripwire")
 
 def _data() -> Path:
     d = Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel")) / "data"
@@ -46,6 +48,10 @@ def deploy(n_files: int = 8) -> dict:
             base[f.name] = {"sha256": hashlib.sha256(raw).hexdigest(), "entropy": round(_entropy(raw), 3),
                             "size": len(raw), "suffix": f.suffix.lower()}
     baseline_path().write_text(json.dumps({"created": datetime.now().isoformat(), "files": base}, indent=2))
+    try:
+        os.chmod(bp, 0o600)
+    except Exception as e:
+        log.debug("chmod tripwire baseline: %s", e)
     return {"ok": True, "dir": str(d), "files": len(files), "path": str(baseline_path())}
 
 def check() -> dict:
@@ -55,8 +61,9 @@ def check() -> dict:
         return {"ok": True, "needs_deploy": True, "events": [], "detail": "run tripwire-deploy first"}
     try:
         base = json.loads(bp.read_text()).get("files") or {}
-    except Exception:
-        return {"ok": False, "events": [], "detail": "corrupt baseline"}
+    except Exception as e:
+        log.warning("tripwire baseline unreadable: %s", e)
+        return {"ok": False, "events": [], "detail": "corrupt baseline", "error": str(e)}
     events = []
     current = {f.name: f for f in d.iterdir() if f.is_file()}
     for name in base:
