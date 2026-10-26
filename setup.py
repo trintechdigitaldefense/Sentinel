@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "3.14.1"
+VERSION = "3.14.2"
 HOME = Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel"))
 CONFIG = HOME / "config.json"
 DATA = HOME / "data"
@@ -26,6 +26,59 @@ OPTIONAL = {
     "reportlab": "PDF client reports",
     "requests": "threat intel HTTP (optional)",
 }
+
+
+
+def ensure_git_clean() -> None:
+    """Warn or hard-reset if the install tree drifts from origin/main."""
+    import subprocess
+    if not (ROOT / ".git").is_dir():
+        return
+    keep = os.environ.get("SENTINEL_KEEP_LOCAL", "").lower() in ("1", "true", "yes")
+    force = os.environ.get("SENTINEL_FORCE_SYNC", "").lower() in ("1", "true", "yes") or "--force-sync" in sys.argv
+    try:
+        dirty = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=str(ROOT), capture_output=True, text=True, timeout=15,
+        )
+    except Exception as e:
+        print(f"[=] git status skipped: {e}")
+        return
+    is_dirty = bool((dirty.stdout or "").strip())
+    try:
+        subprocess.run(["git", "fetch", "origin"], cwd=str(ROOT), capture_output=True, timeout=60)
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=str(ROOT), capture_output=True, text=True, timeout=15
+        ).stdout.strip()
+        remote = subprocess.run(
+            ["git", "rev-parse", "origin/main"], cwd=str(ROOT), capture_output=True, text=True, timeout=15
+        ).stdout.strip()
+    except Exception:
+        head = remote = ""
+    behind = head and remote and head != remote
+    if not is_dirty and not behind:
+        short = (head or "")[:8]
+        print(f"[+] Git tree clean @ {short or 'unknown'}")
+        return
+    if keep and not force:
+        print("[!] Local git drift detected (SENTINEL_KEEP_LOCAL=1 — not resetting)")
+        if is_dirty:
+            print((dirty.stdout or "")[:500])
+        print("    To sync: SENTINEL_FORCE_SYNC=1 python3 setup.py")
+        print("    Or:      git fetch origin && git reset --hard origin/main")
+        return
+    print("[*] Resetting install tree to origin/main …")
+    try:
+        subprocess.run(["git", "checkout", "-B", "main", "origin/main"], cwd=str(ROOT), check=False)
+        subprocess.run(["git", "reset", "--hard", "origin/main"], cwd=str(ROOT), check=True)
+        subprocess.run(["git", "clean", "-fd"], cwd=str(ROOT), check=False)
+        head2 = subprocess.run(
+            ["git", "rev-parse", "--short", "HEAD"], cwd=str(ROOT), capture_output=True, text=True, timeout=15
+        ).stdout.strip()
+        print(f"[+] Synced to origin/main ({head2})")
+    except Exception as e:
+        print(f"[!] git reset failed: {e}")
+        print("    Run manually: git fetch origin && git reset --hard origin/main")
 
 
 def check_engine() -> bool:
@@ -161,7 +214,11 @@ def init_config() -> None:
                     changed = True
             if changed:
                 CONFIG.write_text(json.dumps(existing, indent=2))
-                print("[+] Config merged with new defaults")
+                try:
+                    os.chmod(CONFIG, 0o600)
+                except Exception:
+                    pass
+                print("[+] Config merged with new defaults (0600)")
             return
         except Exception as e:
             print(f"[!] Config unreadable ({e}) — rewriting defaults")
@@ -201,12 +258,16 @@ def main() -> None:
         pass
 
     print("\n" + "=" * 56)
-    print("  SETUP COMPLETE")
+    print(f"  SETUP COMPLETE  (v{VERSION})")
     print("=" * 56)
-    print("  python3 sentinel.py          # interactive menu (incl. Cases 16/17)")
-    print("  python3 scripts/phase8_smoke.py")
-    print("  python3 sentinel.py cases list")
-    print("  python3 sentinel.py dash     # open cases on UI")
+    print("  python3 sentinel.py doctor")
+    print("  python3 sentinel.py go-live")
+    print("  python3 sentinel.py          # interactive menu")
+    print("  python3 sentinel.py service-install")
+    print("  python3 sentinel.py dashboard")
+    print()
+    print("  If menu crashes or version looks old:")
+    print("    git fetch origin && git reset --hard origin/main && python3 setup.py")
     print()
 
 

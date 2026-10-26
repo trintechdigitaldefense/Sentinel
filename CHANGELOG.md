@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.14.2] — 2026-10-26
+
+### Install path — no more stale trees
+- `install.sh` hard-resets to `origin/main` (use `SENTINEL_KEEP_LOCAL=1` to opt out)
+- `setup.py` detects dirty/behind git and resets unless `SENTINEL_KEEP_LOCAL=1`
+- Config merge always `chmod 0600`
+
+
 ## [3.14.1] — 2026-10-26
 
 ### Critical crash + security defaults (improvement brief)
