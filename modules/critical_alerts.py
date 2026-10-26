@@ -1,4 +1,3 @@
-import logging
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """Persistent critical alerts — survive restarts until acknowledged.
 
@@ -7,6 +6,7 @@ re-surfaced on hunt cycles and ops status until an operator ACKs them.
 Quiet hours / hygiene must not drop these (callers should bypass suppress).
 """
 from __future__ import annotations
+import logging
 
 import hashlib
 import json

@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.14.3] — 2026-10-26
+
+### Production-readiness Milestone 2 (hardening branch)
+- Fix C-01: future import order (agent_keys, critical_alerts, visibility, webview)
+- Fix C-02: install/setup non-destructive by default; SENTINEL_RECOVER_SYNC=1 for recovery
+- H-01/H-02: dashboard control-mode cannot enable controls via token; class default False
+- H-03: doctor no longer prints CLIENT-READY
+- tests: test_dashboard_authz.py; 120 passed in audit environment
+
+
 ## [3.14.2] — 2026-10-26
 
 ### Install path — no more stale trees
@@ -191,6 +201,16 @@
 
 
 # Changelog
+
+## [3.14.3] — 2026-10-26
+
+### Production-readiness Milestone 2 (hardening branch)
+- Fix C-01: future import order (agent_keys, critical_alerts, visibility, webview)
+- Fix C-02: install/setup non-destructive by default; SENTINEL_RECOVER_SYNC=1 for recovery
+- H-01/H-02: dashboard control-mode cannot enable controls via token; class default False
+- H-03: doctor no longer prints CLIENT-READY
+- tests: test_dashboard_authz.py; 120 passed in audit environment
+
 
 ## 3.7.1 — 2026-10-24
 

@@ -1,8 +1,8 @@
-import logging
 #!/usr/bin/env python3
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """FEATURE 04 — Client-facing read-only web portal slice."""
 from __future__ import annotations
+import logging
 import json
 import os
 import secrets

@@ -361,7 +361,7 @@ def run_doctor(verbose: bool = True) -> dict:
     ok = sum(1 for c in checks if c["status"] == "OK")
     warn = sum(1 for c in checks if c["status"] == "WARN")
     fail = sum(1 for c in checks if c["status"] == "FAIL")
-    ready = fail == 0 and ok >= 8
+    ready = fail == 0 and ok >= 8  # install-ok only; not production certification
     result = {
         "ok": fail == 0,
         "client_ready": ready and warn <= 4,
@@ -430,9 +430,9 @@ def run_doctor(verbose: bool = True) -> dict:
                 print(f"  [{mark}] {status:4}  {e.get('name')}  {e.get('detail')}")
         print(f"  Summary: {ok} OK · {warn} WARN · {fail} FAIL")
         if result["client_ready"]:
-            print("  Verdict: CLIENT-READY (fix remaining WARNs as needed)")
+            print("  Verdict: INSTALL OK — no FAIL items; review WARNs before production (not a production certification)")
         elif result["ok"]:
-            print("  Verdict: INSTALL OK — complete WARNs before production")
+            print("  Verdict: INSTALL OK — complete WARNs before production (not production-certified)")
         else:
             print("  Verdict: NOT READY — fix FAIL items first")
         if result["next"]:

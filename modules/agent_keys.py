@@ -1,10 +1,10 @@
-import logging
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """Per-agent API key issue / verify / revoke for central MSP mode.
 
 Phase 5: added resolve_agent_id() for key-only auth without trusting client headers.
 """
 from __future__ import annotations
+import logging
 
 import hashlib
 import json

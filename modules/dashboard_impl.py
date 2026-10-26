@@ -688,7 +688,7 @@ setTimeout(function(){{ location.href = location.pathname + location.search; }},
 
 class _Handler(BaseHTTPRequestHandler):
     token = ""
-    allow_control = True
+    allow_control = False  # safe class default
 
     def log_message(self, fmt, *args):
         pass
@@ -763,7 +763,9 @@ class _Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         body_in = self._read_json_body()
 
-        # Control-mode toggle — allowed with token even in view-only (re-enable controls)
+        # Control-mode: only allow *disabling* controls with the shareable token.
+        # Enabling controls requires dashboard.allow_control already true in config
+        # or explicit role=admin with allow_control already granted by an operator on disk.
         if "control-mode" in path or path.rstrip("/").endswith("control-mode"):
             want = body_in.get("allow_control")
             if want is None:
@@ -771,12 +773,26 @@ class _Handler(BaseHTTPRequestHandler):
             want = bool(want)
             cfg = _cfg()
             dash = cfg.setdefault("dashboard", {})
+            current = bool(dash.get("allow_control", False))
+            role = str(dash.get("role") or "viewer").lower()
+            # Escalation denied: token alone cannot turn controls ON
+            if want and not current:
+                self._send(
+                    403,
+                    json.dumps({
+                        "ok": False,
+                        "error": "cannot enable controls via token alone; set dashboard.allow_control=true in config.json on the host",
+                    }).encode(),
+                    "application/json",
+                )
+                return
+            # Allow turning OFF for safety, or confirming ON if already enabled
             dash["allow_control"] = want
             cfg["dashboard"] = dash
             _save_cfg(cfg)
             self.allow_control = want
             _Handler.allow_control = want
-            self._send(200, json.dumps({"ok": True, "allow_control": want}).encode(), "application/json")
+            self._send(200, json.dumps({"ok": True, "allow_control": want, "role": role}).encode(), "application/json")
             return
 
         if not self.allow_control:

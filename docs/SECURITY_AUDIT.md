@@ -147,3 +147,15 @@ This document does **not** claim Sentinel is production-ready. Status is **devel
 - No claim that Sentinel is free of vulnerabilities.
 - No claim that CI is green on `main` until C-01 is fixed and Actions are re-run.
 - Multi-client isolation on central was previously assessed positively in external review; **not re-verified with runtime tests in this audit.**
+
+
+## Milestone 2 remediation status (branch work)
+
+| ID | Status on branch |
+|----|------------------|
+| C-01 | Fixed — `__future__` order in agent_keys, critical_alerts, visibility, webview |
+| C-02 | Fixed — install/setup non-destructive by default; recovery only via `SENTINEL_RECOVER_SYNC=1` |
+| H-01 | Mitigated — token cannot enable controls; only disable or confirm already-enabled |
+| H-02 | Fixed — class default `allow_control = False` |
+| H-03 | Mitigated — verdict no longer says CLIENT-READY |
+| H-04 | Open — token still accepted via query string (prefer Bearer); deferred |

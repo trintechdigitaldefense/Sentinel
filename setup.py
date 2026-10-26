@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "3.14.2"
+VERSION = "3.14.3"
 HOME = Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel"))
 CONFIG = HOME / "config.json"
 DATA = HOME / "data"
@@ -30,12 +30,11 @@ OPTIONAL = {
 
 
 def ensure_git_clean() -> None:
-    """Warn or hard-reset if the install tree drifts from origin/main."""
+    """Warn on drift; never hard-reset unless SENTINEL_RECOVER_SYNC=1."""
     import subprocess
     if not (ROOT / ".git").is_dir():
         return
-    keep = os.environ.get("SENTINEL_KEEP_LOCAL", "").lower() in ("1", "true", "yes")
-    force = os.environ.get("SENTINEL_FORCE_SYNC", "").lower() in ("1", "true", "yes") or "--force-sync" in sys.argv
+    recover = os.environ.get("SENTINEL_RECOVER_SYNC", "").lower() in ("1", "true", "yes")
     try:
         dirty = subprocess.run(
             ["git", "status", "--porcelain"],
@@ -55,30 +54,31 @@ def ensure_git_clean() -> None:
         ).stdout.strip()
     except Exception:
         head = remote = ""
-    behind = head and remote and head != remote
+    behind = bool(head and remote and head != remote)
+
     if not is_dirty and not behind:
-        short = (head or "")[:8]
-        print(f"[+] Git tree clean @ {short or 'unknown'}")
+        print(f"[+] Git tree clean @ {(head or '')[:8] or 'unknown'}")
         return
-    if keep and not force:
-        print("[!] Local git drift detected (SENTINEL_KEEP_LOCAL=1 — not resetting)")
-        if is_dirty:
-            print((dirty.stdout or "")[:500])
-        print("    To sync: SENTINEL_FORCE_SYNC=1 python3 setup.py")
-        print("    Or:      git fetch origin && git reset --hard origin/main")
+
+    if is_dirty:
+        print("[!] Local uncommitted changes detected — leaving tree untouched")
+        print((dirty.stdout or "")[:400])
+    if behind:
+        print("[!] Branch differs from origin/main")
+        print("    Safe upgrade: git pull --ff-only")
+        print("    Or:           git merge --ff-only origin/main")
+
+    if recover:
+        print("[!] SENTINEL_RECOVER_SYNC=1 — hard reset to origin/main")
+        try:
+            subprocess.run(["git", "reset", "--hard", "origin/main"], cwd=str(ROOT), check=True)
+            print("[+] Recovered to origin/main")
+        except Exception as e:
+            print(f"[!] reset failed: {e}")
         return
-    print("[*] Resetting install tree to origin/main …")
-    try:
-        subprocess.run(["git", "checkout", "-B", "main", "origin/main"], cwd=str(ROOT), check=False)
-        subprocess.run(["git", "reset", "--hard", "origin/main"], cwd=str(ROOT), check=True)
-        subprocess.run(["git", "clean", "-fd"], cwd=str(ROOT), check=False)
-        head2 = subprocess.run(
-            ["git", "rev-parse", "--short", "HEAD"], cwd=str(ROOT), capture_output=True, text=True, timeout=15
-        ).stdout.strip()
-        print(f"[+] Synced to origin/main ({head2})")
-    except Exception as e:
-        print(f"[!] git reset failed: {e}")
-        print("    Run manually: git fetch origin && git reset --hard origin/main")
+
+    print("    Recovery (destructive): SENTINEL_RECOVER_SYNC=1 python3 setup.py")
+
 
 
 def check_engine() -> bool:
@@ -267,7 +267,7 @@ def main() -> None:
     print("  python3 sentinel.py dashboard")
     print()
     print("  If menu crashes or version looks old:")
-    print("    git fetch origin && git reset --hard origin/main && python3 setup.py")
+    print("    git pull --ff-only   # or SENTINEL_RECOVER_SYNC=1 only if you intend to discard local changes")
     print()
 
 

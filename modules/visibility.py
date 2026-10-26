@@ -1,4 +1,3 @@
-import logging
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """Host + network visibility: devices, processes, FIM, persistence inventory.
 
@@ -6,6 +5,7 @@ Single entry point for "what is on this host / LAN right now" — used by
 report, doctor-adjacent status, and continuous hunt enrichment.
 """
 from __future__ import annotations
+import logging
 
 import json
 import os
