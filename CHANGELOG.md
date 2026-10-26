@@ -1,5 +1,13 @@
 # Changelog
 
+## [3.14.4] — 2026-10-26
+
+### Milestone 3 — CI and regression tests
+- Compile-all + future-import guard in CI
+- test_install_safe.py; expanded dashboard authz tests
+- docs/TESTING.md
+
+
 ## [3.14.3] — 2026-10-26
 
 ### Production-readiness Milestone 2 (hardening branch)
@@ -201,6 +209,14 @@
 
 
 # Changelog
+
+## [3.14.4] — 2026-10-26
+
+### Milestone 3 — CI and regression tests
+- Compile-all + future-import guard in CI
+- test_install_safe.py; expanded dashboard authz tests
+- docs/TESTING.md
+
 
 ## [3.14.3] — 2026-10-26
 

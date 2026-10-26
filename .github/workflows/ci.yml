@@ -2,9 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, hardening/**]
   pull_request:
     branches: [main]
+
+permissions:
+  contents: read
 
 jobs:
   lint-test:
@@ -26,20 +29,58 @@ jobs:
           pip install ruff pytest
           pip install -r requirements.txt
 
-      - name: Ruff lint (critical paths)
+      - name: Ruff syntax/undefined names (all maintained sources)
         run: |
-          ruff check sentinel.py modules/firewall.py modules/behavioral_shell.py \
-            modules/persistence_hunt.py --select E9,F821
+          ruff check sentinel.py setup.py modules tests --select E9,F821,F823
 
-      - name: Compile core
+      - name: Compile all Python modules
         run: |
-          python -m py_compile sentinel.py setup.py
-          python -m py_compile modules/firewall.py modules/alerting.py \
-            modules/persistence_hunt.py modules/behavioral_shell.py \
-            modules/fim_suid.py modules/fim_realtime.py modules/doctor.py
+          python - <<'PY'
+          import py_compile, sys
+          from pathlib import Path
+          failed = []
+          paths = [Path("sentinel.py"), Path("setup.py")]
+          paths += sorted(Path("modules").rglob("*.py"))
+          paths += sorted(Path("tests").rglob("*.py"))
+          for p in paths:
+              if not p.is_file():
+                  continue
+              try:
+                  py_compile.compile(str(p), doraise=True)
+              except Exception as e:
+                  failed.append(f"{p}: {e}")
+          if failed:
+              print("\n".join(failed))
+              sys.exit(1)
+          print(f"OK compiled {len(paths)} files")
+          PY
+
+      - name: Future-import order guard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import sys
+          bad = []
+          for p in Path("modules").rglob("*.py"):
+              lines = p.read_text(errors="replace").splitlines()
+              for i, ln in enumerate(lines):
+                  if ln.strip().startswith("from __future__"):
+                      for prev in lines[:i]:
+                          s = prev.strip()
+                          if s.startswith("import ") or (s.startswith("from ") and "future" not in s):
+                              bad.append(str(p))
+                      break
+          if bad:
+              print("imports before __future__:", bad)
+              sys.exit(1)
+          print("OK no imports before __future__")
+          PY
 
       - name: Firewall smoke (dry-run, no root)
         run: python scripts/firewall_smoke.py
 
       - name: Pytest
         run: pytest -q tests/ --tb=line
+
+      - name: Installer script syntax
+        run: bash -n install.sh

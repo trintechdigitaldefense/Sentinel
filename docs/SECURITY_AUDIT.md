@@ -159,3 +159,10 @@ This document does **not** claim Sentinel is production-ready. Status is **devel
 | H-02 | Fixed — class default `allow_control = False` |
 | H-03 | Mitigated — verdict no longer says CLIENT-READY |
 | H-04 | Open — token still accepted via query string (prefer Bearer); deferred |
+
+
+## Milestone 3 status
+
+- CI expanded: compile all modules, future-import guard, ruff on modules/tests, install.sh syntax
+- Tests: test_install_safe.py, expanded test_dashboard_authz.py
+- docs/TESTING.md with reproducible commands
