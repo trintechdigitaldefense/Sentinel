@@ -1,9 +1,5 @@
 # © 2026 TrinTech Digital Defense — authorized defensive use only
-"""Plain-language PDF security report for non-technical clients.
-
-Enhanced layout: cover bar, status cards, protection checklist,
-categorized activity, clear next steps, and honest disclaimers.
-"""
+"""Professional plain-language PDF security report for non-technical clients."""
 from __future__ import annotations
 
 import json
@@ -30,6 +26,19 @@ def _cfg() -> dict:
         return json.loads(p.read_text())
     except Exception:
         return {}
+
+
+def _logo_path() -> Optional[Path]:
+    here = Path(__file__).resolve().parent
+    candidates = [
+        here / "assets" / "trintech_sentinel_logo.png",
+        here.parent / "assets" / "trintech_sentinel_logo.png",
+        here / "assets" / "logo.png",
+    ]
+    for p in candidates:
+        if p.is_file() and p.stat().st_size > 100:
+            return p
+    return None
 
 
 def _load_status() -> dict:
@@ -77,7 +86,6 @@ def _heartbeat_ok(status: dict) -> bool:
 
 
 def _plain_verdict(status: dict) -> tuple[str, str, str]:
-    """Return (headline, explanation, level) where level is green|amber|red."""
     alive = _heartbeat_ok(status)
     can_ok, can_total = _canary_counts(status)
     open_alerts = _alert_count(status)
@@ -90,7 +98,7 @@ def _plain_verdict(status: dict) -> tuple[str, str, str]:
     if open_crit > 0:
         return (
             "Critical issues open",
-            f"{open_crit} critical alert(s) still need an operator acknowledgement. "
+            f"{open_crit} critical alert(s) still need operator acknowledgement. "
             "TrinTech should review these before treating the site as clear.",
             "red",
         )
@@ -112,21 +120,21 @@ def _plain_verdict(status: dict) -> tuple[str, str, str]:
         return (
             "Possible intrusion activity",
             f"Some digital tripwires (canaries) were disturbed ({can_ok} of {can_total} intact). "
-            "This can mean someone accessed sensitive-looking files. Investigation is recommended.",
+            "Investigation is recommended.",
             "red",
         )
     if open_alerts > 25:
         return (
             "Elevated alert volume",
             f"About {open_alerts} recent security events were recorded. "
-            "Many may be routine baseline noise; a guided review of the highest-priority items is recommended.",
+            "A guided review of the highest-priority items is recommended.",
             "amber",
         )
     if open_alerts > 10:
         return (
             "Elevated alert volume",
             f"About {open_alerts} recent security events were recorded. "
-            "Most may be routine, but a review of the highest-priority items is recommended.",
+            "Most may be routine; a review of priority items is recommended.",
             "amber",
         )
     if drift is not None:
@@ -135,87 +143,62 @@ def _plain_verdict(status: dict) -> tuple[str, str, str]:
                 return (
                     "System changes detected",
                     f"File integrity is at about {float(drift):.0f}% of the known-good baseline. "
-                    "Important system files may have changed. Confirm whether these changes were authorized.",
+                    "Confirm whether these changes were authorized.",
                     "amber",
                 )
         except Exception:
             pass
-    if ready and ready not in ("OK", "READY", "PASS", "FULL", ""):
-        if ready in ("PARTIAL", "WARN"):
-            return (
-                "Protection partially ready",
-                "Most defenses are in place, but go-live still reports a partial status. "
-                "Finish remaining setup steps (service, baselines, or alert channel) with TrinTech.",
-                "amber",
-            )
+    if ready in ("PARTIAL", "WARN"):
+        return (
+            "Protection partially ready",
+            "Most defenses are in place, but go-live still reports partial status. "
+            "Finish remaining setup with TrinTech.",
+            "amber",
+        )
     return (
         "All clear",
         "Continuous monitoring is active, digital tripwires are intact, and there are no critical open issues. "
-        "Your network is under normal Sentinel protection.",
+        "Your systems are under normal Sentinel protection.",
         "green",
     )
 
 
 def _protection_rows(status: dict) -> list[tuple[str, str, str]]:
-    """List of (name, status_label, note)."""
     rows = []
     alive = _heartbeat_ok(status)
     rows.append((
         "Continuous monitoring",
         "Running" if alive else "Not running",
-        "Heartbeat from the hunt/service loop" if alive else "Start service-install or hunt",
+        "Live heartbeat from hunt/service" if alive else "Start service-install or hunt",
     ))
     can_ok, can_total = _canary_counts(status)
     if can_total:
-        rows.append((
-            "Canary tripwires",
-            f"{can_ok}/{can_total} intact",
-            "Harmless decoy files that alert if touched",
-        ))
+        rows.append(("Canary tripwires", f"{can_ok}/{can_total} intact", "Decoy files that alert if opened"))
     else:
-        rows.append(("Canary tripwires", "Not deployed", "Run deception / go-live to plant canaries"))
+        rows.append(("Canary tripwires", "Not deployed", "Run deception / go-live"))
 
+    gl = status.get("go_live") or {}
+    steps = (gl.get("steps") if isinstance(gl, dict) else None) or {}
+    fim_ok = isinstance(steps, dict) and steps.get("fim_baseline") in ("ok", "OK", True)
     fim = status.get("fim") or status.get("integrity") or {}
-    if isinstance(fim, dict) and (fim.get("baseline") or fim.get("files")):
-        n = fim.get("files") or fim.get("count") or "yes"
-        rows.append(("File integrity (FIM)", "Baseline active", f"Tracking {n} paths" if n != "yes" else "Baseline present"))
+    if fim_ok or (isinstance(fim, dict) and (fim.get("baseline") or fim.get("files"))):
+        n = (fim.get("files") if isinstance(fim, dict) else None) or "active"
+        rows.append(("File integrity (FIM)", "Baseline active", f"Tracking {n} paths" if n != "active" else "Known-good snapshot"))
     else:
-        # try go_live flags
-        gl = status.get("go_live") or {}
-        steps = (gl.get("steps") if isinstance(gl, dict) else None) or {}
-        if isinstance(steps, dict) and steps.get("fim_baseline") in ("ok", "OK", True):
-            rows.append(("File integrity (FIM)", "Baseline active", "Known-good file snapshot in place"))
-        else:
-            rows.append(("File integrity (FIM)", "Check recommended", "Run integrity / go-live"))
+        rows.append(("File integrity (FIM)", "Check recommended", "Run integrity / go-live"))
 
     svc = status.get("service") or {}
-    if isinstance(svc, dict):
-        active = svc.get("active") or svc.get("running")
-        rows.append((
-            "Always-on service",
-            "Installed" if active else "Not installed",
-            "Survives logout / reboot when installed",
-        ))
-    else:
-        rows.append(("Always-on service", "Unknown", "Check service-status"))
+    active = isinstance(svc, dict) and (svc.get("active") or svc.get("running"))
+    rows.append(("Always-on service", "Installed" if active else "Not installed", "Survives logout when installed"))
 
     fw = status.get("firewall") or {}
-    if isinstance(fw, dict) and fw:
-        backend = fw.get("backend") or "host"
-        rows.append(("Host firewall", str(backend), "Host control plane — not a perimeter appliance"))
-    else:
-        rows.append(("Host firewall", "Available", "Dry-run by default until you apply rules"))
+    backend = (fw.get("backend") if isinstance(fw, dict) else None) or "host"
+    rows.append(("Host firewall", str(backend), "Host control — not a perimeter appliance"))
 
     crit = status.get("critical") or {}
     open_crit = len(crit.get("open") or []) if isinstance(crit, dict) else 0
-    rows.append((
-        "Critical alerts",
-        "None open" if open_crit == 0 else f"{open_crit} open",
-        "Critical items stay open until acknowledged",
-    ))
-
-    n_alerts = _alert_count(status)
-    rows.append(("Recent alerts", str(n_alerts), "Includes baseline learning noise on first runs"))
+    rows.append(("Critical alerts", "None open" if open_crit == 0 else f"{open_crit} open", "Stay open until acknowledged"))
+    rows.append(("Recent alerts", str(_alert_count(status)), "May include first-run baseline noise"))
     return rows
 
 
@@ -233,11 +216,7 @@ def _simplify_alert_line(item: Any) -> str:
 
 
 def _categorize_recent(status: dict) -> dict[str, list[str]]:
-    buckets = {
-        "Needs attention": [],
-        "Baseline / routine": [],
-        "Other": [],
-    }
+    buckets = {"Needs attention": [], "Baseline / routine": [], "Other": []}
     recent = status.get("recent_alerts") or status.get("alerts") or []
     if not isinstance(recent, list):
         return buckets
@@ -247,7 +226,7 @@ def _categorize_recent(status: dict) -> dict[str, list[str]]:
     )
     routine_keys = (
         "NEW_SUID", "NEW_PERSISTENCE", "NEW_CRON", "RC_FILE", "FIM_MODIFIED",
-        "REMOVED_PERSISTENCE", "systemd",
+        "REMOVED_PERSISTENCE", "SYSTEMD",
     )
     for item in recent[:40]:
         line = _simplify_alert_line(item)
@@ -262,16 +241,19 @@ def _categorize_recent(status: dict) -> dict[str, list[str]]:
 
 
 def generate_client_pdf(out_path: Optional[Path] = None, client_name: Optional[str] = None) -> dict:
-    """Generate an enhanced non-technical PDF report. Returns {ok, path, error?}."""
+    """Generate a professional non-technical PDF report with logo."""
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.lib import colors
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.units import mm
         from reportlab.platypus import (
-            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable, KeepTogether,
+            SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+            HRFlowable, Image, Flowable,
         )
-        from reportlab.lib.enums import TA_CENTER, TA_LEFT
+        from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
     except ImportError:
         return {"ok": False, "error": "reportlab not installed — run: pip install reportlab"}
 
@@ -285,148 +267,187 @@ def generate_client_pdf(out_path: Optional[Path] = None, client_name: Optional[s
     )
     host = status.get("host") or socket.gethostname()
     ip = status.get("ip") or status.get("local_ip") or "—"
-    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+    ts = datetime.now().strftime("%d %B %Y · %H:%M")
     file_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_path = Path(out_path) if out_path else (_data() / "reports" / f"Client_Report_{file_ts}.pdf")
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     headline, explanation, level = _plain_verdict(status)
-    level_colors = {
-        "green": colors.HexColor("#1B7F4E"),
-        "amber": colors.HexColor("#B8860B"),
-        "red": colors.HexColor("#B00020"),
+    level_map = {
+        "green": (colors.HexColor("#059669"), colors.HexColor("#ECFDF5"), "STABLE"),
+        "amber": (colors.HexColor("#D97706"), colors.HexColor("#FFFBEB"), "REVIEW"),
+        "red": (colors.HexColor("#DC2626"), colors.HexColor("#FEF2F2"), "ACTION"),
     }
-    accent = level_colors.get(level, colors.HexColor("#0E7C7B"))
+    accent, soft_bg, badge = level_map.get(level, level_map["amber"])
     navy = colors.HexColor("#0B1F3A")
     teal = colors.HexColor("#0E7C7B")
-    light = colors.HexColor("#F4F6F8")
+    slate = colors.HexColor("#334155")
     muted = colors.HexColor("#64748B")
+    light = colors.HexColor("#F1F5F9")
+    white = colors.white
 
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(
-        name="CoverTitle", fontName="Helvetica-Bold", fontSize=18,
-        textColor=colors.white, alignment=TA_CENTER, spaceAfter=4, leading=22,
-    ))
-    styles.add(ParagraphStyle(
-        name="CoverSub", fontName="Helvetica", fontSize=10,
-        textColor=colors.HexColor("#E2E8F0"), alignment=TA_CENTER, spaceAfter=2, leading=13,
-    ))
-    styles.add(ParagraphStyle(
-        name="H2", fontName="Helvetica-Bold", fontSize=12,
-        textColor=navy, spaceBefore=12, spaceAfter=6, leading=15,
-    ))
-    styles.add(ParagraphStyle(
-        name="BodyT", fontName="Helvetica", fontSize=9.5,
-        textColor=colors.HexColor("#1E293B"), leading=13, spaceAfter=4, alignment=TA_LEFT,
-    ))
-    styles.add(ParagraphStyle(
-        name="Verdict", fontName="Helvetica-Bold", fontSize=14,
-        textColor=accent, alignment=TA_CENTER, spaceBefore=6, spaceAfter=4, leading=18,
-    ))
-    styles.add(ParagraphStyle(
-        name="VerdictBody", fontName="Helvetica", fontSize=10,
-        textColor=colors.HexColor("#334155"), alignment=TA_CENTER, leading=13, spaceAfter=8,
-    ))
-    styles.add(ParagraphStyle(
-        name="Foot", fontName="Helvetica", fontSize=8,
-        textColor=muted, leading=10, spaceAfter=2,
-    ))
-    styles.add(ParagraphStyle(
-        name="Cell", fontName="Helvetica", fontSize=8.5, leading=11, textColor=colors.HexColor("#1E293B"),
-    ))
-    styles.add(ParagraphStyle(
-        name="CellBold", fontName="Helvetica-Bold", fontSize=8.5, leading=11, textColor=navy,
-    ))
-    styles.add(ParagraphStyle(
-        name="SmallCenter", fontName="Helvetica", fontSize=8,
-        textColor=muted, alignment=TA_CENTER, leading=10,
-    ))
+    styles.add(ParagraphStyle(name="Brand", fontName="Helvetica-Bold", fontSize=16,
+                              textColor=white, leading=20, alignment=TA_LEFT))
+    styles.add(ParagraphStyle(name="BrandSub", fontName="Helvetica", fontSize=8.5,
+                              textColor=colors.HexColor("#94A3B8"), leading=11, alignment=TA_LEFT))
+    styles.add(ParagraphStyle(name="DocTitle", fontName="Helvetica-Bold", fontSize=11,
+                              textColor=white, leading=14, alignment=TA_RIGHT))
+    styles.add(ParagraphStyle(name="DocMeta", fontName="Helvetica", fontSize=8,
+                              textColor=colors.HexColor("#94A3B8"), leading=10, alignment=TA_RIGHT))
+    styles.add(ParagraphStyle(name="H2", fontName="Helvetica-Bold", fontSize=11,
+                              textColor=navy, spaceBefore=14, spaceAfter=6, leading=14))
+    styles.add(ParagraphStyle(name="BodyT", fontName="Helvetica", fontSize=9,
+                              textColor=slate, leading=12.5, spaceAfter=3, alignment=TA_LEFT))
+    styles.add(ParagraphStyle(name="VerdictH", fontName="Helvetica-Bold", fontSize=15,
+                              textColor=accent, alignment=TA_CENTER, spaceBefore=4, spaceAfter=4, leading=18))
+    styles.add(ParagraphStyle(name="VerdictB", fontName="Helvetica", fontSize=9.5,
+                              textColor=slate, alignment=TA_CENTER, leading=13, spaceAfter=4))
+    styles.add(ParagraphStyle(name="Badge", fontName="Helvetica-Bold", fontSize=8,
+                              textColor=white, alignment=TA_CENTER, leading=10))
+    styles.add(ParagraphStyle(name="Foot", fontName="Helvetica", fontSize=7.5,
+                              textColor=muted, leading=10, spaceAfter=1))
+    styles.add(ParagraphStyle(name="Cell", fontName="Helvetica", fontSize=8, leading=11, textColor=slate))
+    styles.add(ParagraphStyle(name="CellBold", fontName="Helvetica-Bold", fontSize=8, leading=11, textColor=navy))
+    styles.add(ParagraphStyle(name="TH", fontName="Helvetica-Bold", fontSize=8, leading=11, textColor=white))
+    styles.add(ParagraphStyle(name="CenterMuted", fontName="Helvetica", fontSize=8,
+                              textColor=muted, alignment=TA_CENTER, leading=10))
 
-    story = []
+    story: list = []
+    logo = _logo_path()
 
-    # Cover banner table
-    banner = Table(
-        [[Paragraph("SENTINEL", styles["CoverTitle"])],
-         [Paragraph("Security status report for business owners", styles["CoverSub"])],
-         [Paragraph("TrinTech Digital Defense · Trinidad &amp; Tobago / Caribbean", styles["CoverSub"])]],
-        colWidths=[170 * mm],
-    )
-    banner.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), navy),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("LEFTPADDING", (0, 0), (-1, -1), 12),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+    # ── Header with logo ──────────────────────────────────────────
+    left_cell = []
+    if logo:
+        try:
+            left_cell.append(Image(str(logo), width=16 * mm, height=16 * mm))
+        except Exception:
+            pass
+    left_text = Table([
+        [Paragraph("TRINTECH DIGITAL DEFENSE", styles["Brand"])],
+        [Paragraph("Caribbean cybersecurity · Authorized defensive use only", styles["BrandSub"])],
+    ], colWidths=[95 * mm])
+    left_text.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 1),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
     ]))
-    story.append(banner)
+    if left_cell:
+        brand_inner = Table([[left_cell[0], left_text]], colWidths=[18 * mm, 95 * mm])
+        brand_inner.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 0),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        left_flow = brand_inner
+    else:
+        left_flow = left_text
+
+    right_flow = Table([
+        [Paragraph("SENTINEL STATUS REPORT", styles["DocTitle"])],
+        [Paragraph(ts, styles["DocMeta"])],
+        [Paragraph(f"ID {file_ts}", styles["DocMeta"])],
+    ], colWidths=[55 * mm])
+    right_flow.setStyle(TableStyle([
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 1),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 1),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ALIGN", (0, 0), (-1, -1), "RIGHT"),
+    ]))
+
+    header = Table([[left_flow, right_flow]], colWidths=[118 * mm, 55 * mm])
+    header.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), navy),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+    ]))
+    story.append(header)
+    # teal accent line
+    story.append(Table([[""]], colWidths=[173 * mm], rowHeights=[2.5]))
+    story[-1].setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), teal)]))
     story.append(Spacer(1, 10))
 
-    # Meta strip
+    # ── Client meta ───────────────────────────────────────────────
     meta = Table([
-        [Paragraph(f"<b>Client</b><br/>{client}", styles["Cell"]),
-         Paragraph(f"<b>Host</b><br/>{host}", styles["Cell"]),
-         Paragraph(f"<b>Generated</b><br/>{ts}", styles["Cell"])],
-        [Paragraph(f"<b>IP</b><br/>{ip}", styles["Cell"]),
-         Paragraph(f"<b>Report ID</b><br/>{file_ts}", styles["Cell"]),
-         Paragraph("<b>Prepared by</b><br/>TrinTech Digital Defense", styles["Cell"])],
-    ], colWidths=[56 * mm, 56 * mm, 56 * mm])
+        [
+            Paragraph(f"<b>Prepared for</b><br/>{client}", styles["Cell"]),
+            Paragraph(f"<b>Host</b><br/>{host}", styles["Cell"]),
+            Paragraph(f"<b>Network address</b><br/>{ip}", styles["Cell"]),
+            Paragraph(f"<b>Classification</b><br/>Confidential — client", styles["Cell"]),
+        ],
+    ], colWidths=[43 * mm, 43 * mm, 43 * mm, 44 * mm])
     meta.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), light),
-        ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
         ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 8),
         ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-        ("TOPPADDING", (0, 0), (-1, -1), 6),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
     ]))
     story.append(meta)
     story.append(Spacer(1, 12))
 
-    # Verdict box
-    story.append(Paragraph("Overall status", styles["H2"]))
-    verdict_tbl = Table([
-        [Paragraph(headline, styles["Verdict"])],
-        [Paragraph(explanation, styles["VerdictBody"])],
-    ], colWidths=[170 * mm])
-    verdict_tbl.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
-        ("BOX", (0, 0), (-1, -1), 1.5, accent),
-        ("TOPPADDING", (0, 0), (-1, -1), 8),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
-        ("LEFTPADDING", (0, 0), (-1, -1), 12),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+    # ── Executive verdict ─────────────────────────────────────────
+    story.append(Paragraph("1. Executive status", styles["H2"]))
+    badge_tbl = Table([[Paragraph(badge, styles["Badge"])]], colWidths=[28 * mm])
+    badge_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), accent),
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("ROUNDEDCORNERS", [3, 3, 3, 3]),
     ]))
-    story.append(verdict_tbl)
+    verdict_inner = Table([
+        [badge_tbl],
+        [Paragraph(headline, styles["VerdictH"])],
+        [Paragraph(explanation, styles["VerdictB"])],
+    ], colWidths=[165 * mm])
+    verdict_inner.setStyle(TableStyle([
+        ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+        ("BACKGROUND", (0, 0), (-1, -1), soft_bg),
+        ("BOX", (0, 0), (-1, -1), 1.2, accent),
+        ("TOPPADDING", (0, 0), (-1, 0), 10),
+        ("BOTTOMPADDING", (0, -1), (-1, -1), 10),
+        ("LEFTPADDING", (0, 0), (-1, -1), 14),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 14),
+    ]))
+    story.append(verdict_inner)
 
-    # Protection checklist
-    story.append(Paragraph("Protection at a glance", styles["H2"]))
+    # ── Protection table ──────────────────────────────────────────
+    story.append(Paragraph("2. Protection at a glance", styles["H2"]))
     story.append(Paragraph(
-        "These are the main defenses Sentinel runs on this host. "
-        "Green-style “Running / intact” means the control is present; amber or not-running means follow-up.",
+        "Summary of defenses currently observed on this host. "
+        "“Running / intact” indicates the control is present; follow-up items are noted in plain language.",
         styles["BodyT"],
     ))
-    header = [
-        Paragraph("<b>Control</b>", styles["CellBold"]),
-        Paragraph("<b>Status</b>", styles["CellBold"]),
-        Paragraph("<b>What it means</b>", styles["CellBold"]),
-    ]
-    data = [header]
+    data = [[
+        Paragraph("Control", styles["TH"]),
+        Paragraph("Status", styles["TH"]),
+        Paragraph("Notes", styles["TH"]),
+    ]]
     for name, st, note in _protection_rows(status):
         data.append([
             Paragraph(name, styles["CellBold"]),
             Paragraph(st, styles["Cell"]),
             Paragraph(note, styles["Cell"]),
         ])
-    pt = Table(data, colWidths=[42 * mm, 38 * mm, 90 * mm])
+    pt = Table(data, colWidths=[45 * mm, 38 * mm, 90 * mm])
     pt.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), navy),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("BACKGROUND", (0, 1), (-1, -1), colors.white),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, light]),
-        ("BOX", (0, 0), (-1, -1), 0.4, colors.HexColor("#CBD5E1")),
-        ("INNERGRID", (0, 0), (-1, -1), 0.3, colors.HexColor("#E2E8F0")),
+        ("BACKGROUND", (0, 1), (-1, -1), white),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [white, light]),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E2E8F0")),
         ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("LEFTPADDING", (0, 0), (-1, -1), 6),
         ("RIGHTPADDING", (0, 0), (-1, -1), 6),
@@ -435,18 +456,18 @@ def generate_client_pdf(out_path: Optional[Path] = None, client_name: Optional[s
     ]))
     story.append(pt)
 
-    # What Sentinel does
-    story.append(Paragraph("What Sentinel does for you", styles["H2"]))
+    # ── Capability narrative ──────────────────────────────────────
+    story.append(Paragraph("3. What Sentinel provides", styles["H2"]))
     story.append(Paragraph(
-        "Sentinel is continuous monitoring and early warning for small and medium businesses. "
+        "Sentinel is continuous monitoring and early warning for small and medium businesses across the Caribbean. "
         "It watches for suspicious programs (including reverse-shell style activity), tracks important file changes, "
-        "plants canary files that act like digital tripwires, and can help block repeated SSH guessing attacks. "
-        "It is designed to give clear visibility without the cost of a full security operations centre.",
+        "plants canary files that act as digital tripwires, and can help contain repeated SSH guessing attacks. "
+        "The goal is clear visibility and faster response — without the cost or complexity of a full security operations centre.",
         styles["BodyT"],
     ))
 
-    # Recent activity categorized
-    story.append(Paragraph("Recent activity (simplified)", styles["H2"]))
+    # ── Activity ──────────────────────────────────────────────────
+    story.append(Paragraph("4. Recent activity (simplified)", styles["H2"]))
     buckets = _categorize_recent(status)
     any_lines = False
     for title, lines in buckets.items():
@@ -454,79 +475,108 @@ def generate_client_pdf(out_path: Optional[Path] = None, client_name: Optional[s
             continue
         any_lines = True
         story.append(Paragraph(f"<b>{title}</b>", styles["BodyT"]))
-        for line in lines[:12]:
+        for line in lines[:10]:
             story.append(Paragraph(f"• {line}", styles["BodyT"]))
     if not any_lines:
         story.append(Paragraph("No notable recent alerts in the current snapshot.", styles["BodyT"]))
     story.append(Paragraph(
-        "First-time runs often show many “new” system items while Sentinel learns a normal baseline. "
-        "That is expected and usually settles after baselines are saved.",
+        "Note: First-time deployments often show many “new” system items while Sentinel learns a normal baseline. "
+        "That usually settles after baselines are saved.",
         styles["Foot"],
     ))
 
-    # Next steps
-    story.append(Paragraph("Recommended next steps", styles["H2"]))
+    # ── Recommendations ───────────────────────────────────────────
+    story.append(Paragraph("5. Recommended next steps", styles["H2"]))
     if level == "green":
         steps = [
             "Keep continuous monitoring running (always-on service).",
             "Review this report monthly or after major IT changes.",
-            "Do not delete canary files or disable monitoring without telling your security contact.",
-            "Ask TrinTech for a technical export if auditors need more detail.",
+            "Do not delete canary files or disable monitoring without informing your security contact.",
+            "Request a technical export from TrinTech if auditors need deeper detail.",
         ]
     elif level == "amber":
         steps = [
             "Share this report with TrinTech Digital Defense for a guided review.",
-            "Confirm the always-on service is installed and heartbeat is fresh.",
-            "After authorized IT changes, refresh integrity baselines so noise drops.",
+            "Confirm the always-on service is installed and the heartbeat is fresh.",
+            "After authorized IT changes, refresh integrity baselines to reduce noise.",
             "Keep canaries and monitoring enabled until the review is complete.",
         ]
     else:
         steps = [
             "Contact TrinTech Digital Defense promptly and share this report.",
             "Do not ignore open critical alerts — acknowledge only after review.",
-            "Preserve logs and avoid wiping the host until advised.",
-            "If canaries were touched, treat it as a lead to investigate, not automatic proof of breach.",
+            "Preserve logs; avoid wiping the host until advised.",
+            "Treat disturbed canaries as investigation leads, not automatic proof of breach.",
         ]
-    for s in steps:
-        story.append(Paragraph(f"• {s}", styles["BodyT"]))
+    for i, s in enumerate(steps, 1):
+        story.append(Paragraph(f"<b>{i}.</b>  {s}", styles["BodyT"]))
 
-    # Contact
-    story.append(Paragraph("About this report", styles["H2"]))
+    # ── Closing ───────────────────────────────────────────────────
+    story.append(Paragraph("6. Scope and limitations", styles["H2"]))
     story.append(Paragraph(
-        "Prepared by <b>TrinTech Digital Defense</b> using Sentinel continuous monitoring. "
-        "This document is written for owners and managers. It is <b>not</b> a certification that systems are "
-        "free of compromise, and it is <b>not</b> legal advice. Technical detail and evidence packs are available on request.",
+        "This report is prepared by <b>TrinTech Digital Defense</b> using the Sentinel continuous-monitoring platform. "
+        "It is written for owners and managers. It is <b>not</b> a certification that systems are free of compromise, "
+        "and it is <b>not</b> legal advice. Findings are based on host visibility at generation time. "
+        "Technical evidence packs and operator detail are available on request.",
         styles["BodyT"],
     ))
+
+    story.append(Spacer(1, 12))
+    story.append(HRFlowable(width="100%", thickness=1.2, color=teal, spaceBefore=2, spaceAfter=8))
+
+    foot_left = Paragraph(
+        "TrinTech Digital Defense<br/>Trinidad &amp; Tobago · Caribbean SMB security",
+        styles["Foot"],
+    )
+    foot_right = Paragraph(
+        f"Report ID {file_ts}<br/>Host {host} · Confidential",
+        styles["Foot"],
+    )
+    foot = Table([[foot_left, foot_right]], colWidths=[95 * mm, 78 * mm])
+    foot.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+    ]))
+    story.append(foot)
+    story.append(Spacer(1, 4))
     story.append(Paragraph(
-        "Authorized defensive use only · Caribbean SMB focused · Pilot / supervised deployments recommended for new sites.",
-        styles["SmallCenter"],
+        "Authorized defensive use only · Pilot / supervised deployments recommended for new sites",
+        styles["CenterMuted"],
     ))
 
-    story.append(Spacer(1, 10))
-    story.append(HRFlowable(width="100%", thickness=1, color=teal, spaceAfter=6))
-    story.append(Paragraph(
-        f"Report ID {file_ts} · Host {host} · {ts} · TrinTech Digital Defense",
-        styles["Foot"],
-    ))
+    def _page(canvas_obj, doc):
+        canvas_obj.saveState()
+        canvas_obj.setStrokeColor(colors.HexColor("#E2E8F0"))
+        canvas_obj.setLineWidth(0.4)
+        canvas_obj.line(18 * mm, 12 * mm, A4[0] - 18 * mm, 12 * mm)
+        canvas_obj.setFont("Helvetica", 7)
+        canvas_obj.setFillColor(muted)
+        canvas_obj.drawString(18 * mm, 7 * mm, "TrinTech Digital Defense — Sentinel")
+        canvas_obj.drawRightString(A4[0] - 18 * mm, 7 * mm, f"Page {doc.page}")
+        canvas_obj.restoreState()
 
     doc = SimpleDocTemplate(
         str(out_path),
         pagesize=A4,
         leftMargin=18 * mm,
         rightMargin=18 * mm,
-        topMargin=14 * mm,
-        bottomMargin=14 * mm,
-        title=f"Sentinel Report — {client}",
+        topMargin=12 * mm,
+        bottomMargin=18 * mm,
+        title=f"Sentinel Status Report — {client}",
         author="TrinTech Digital Defense",
+        subject="Client security status report",
+        creator="Sentinel by TrinTech Digital Defense",
     )
-    doc.build(story)
+    doc.build(story, onFirstPage=_page, onLaterPages=_page)
     return {
         "ok": True,
         "path": str(out_path),
         "headline": headline,
         "level": level,
         "client": client,
+        "logo": str(logo) if logo else None,
     }
 
 
