@@ -28,16 +28,25 @@ def _cfg() -> dict:
         return {}
 
 
-def _logo_path() -> Optional[Path]:
+def _logo_path(*, header: bool = False) -> Optional[Path]:
+    """Official TrinTech brand mark (user-provided) preferred over fallbacks."""
     here = Path(__file__).resolve().parent
-    candidates = [
-        here / "assets" / "trintech_sentinel_logo.png",
-        here.parent / "assets" / "trintech_sentinel_logo.png",
-        here / "assets" / "logo.png",
-    ]
-    for p in candidates:
-        if p.is_file() and p.stat().st_size > 100:
-            return p
+    if header:
+        ordered = [
+            here / "assets" / "trintech_logo_header.png",
+            here / "assets" / "trintech_sentinel_logo.png",
+            here / "assets" / "trintech_brand.png",
+        ]
+    else:
+        ordered = [
+            here / "assets" / "trintech_brand.png",
+            here / "assets" / "trintech_sentinel_logo.png",
+            here / "assets" / "trintech_logo_header.png",
+            here / "assets" / "logo.png",
+        ]
+    for cand in ordered:
+        if cand.is_file() and cand.stat().st_size > 100:
+            return cand
     return None
 
 
@@ -315,15 +324,19 @@ def generate_client_pdf(out_path: Optional[Path] = None, client_name: Optional[s
                               textColor=muted, alignment=TA_CENTER, leading=10))
 
     story: list = []
-    logo = _logo_path()
+    logo = _logo_path(header=True)
+    logo_full = _logo_path(header=True)  # compact asset keeps PDF lean
 
     # ── Header with logo ──────────────────────────────────────────
     left_cell = []
     if logo:
         try:
-            left_cell.append(Image(str(logo), width=16 * mm, height=16 * mm))
+            left_cell.append(Image(str(logo), width=18 * mm, height=18 * mm, mask="auto"))
         except Exception:
-            pass
+            try:
+                left_cell.append(Image(str(logo), width=18 * mm, height=18 * mm))
+            except Exception:
+                pass
     left_text = Table([
         [Paragraph("TRINTECH DIGITAL DEFENSE", styles["Brand"])],
         [Paragraph("Caribbean cybersecurity · Authorized defensive use only", styles["BrandSub"])],
@@ -395,7 +408,32 @@ def generate_client_pdf(out_path: Optional[Path] = None, client_name: Optional[s
         ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
     ]))
     story.append(meta)
-    story.append(Spacer(1, 12))
+    story.append(Spacer(1, 8))
+    # Brand emblem (official TrinTech artwork)
+    if logo_full:
+        try:
+            emblem = Image(str(logo_full), width=42 * mm, height=42 * mm, mask="auto")
+        except Exception:
+            try:
+                emblem = Image(str(logo_full), width=42 * mm, height=42 * mm)
+            except Exception:
+                emblem = None
+        if emblem is not None:
+            emb_tbl = Table([[emblem]], colWidths=[173 * mm])
+            emb_tbl.setStyle(TableStyle([
+                ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]))
+            story.append(emb_tbl)
+            story.append(Paragraph(
+                "Defend · Detect · Dominate — Your Caribbean Cybersecurity Guardians",
+                styles["CenterMuted"],
+            ))
+            story.append(Spacer(1, 8))
+    else:
+        story.append(Spacer(1, 4))
 
     # ── Executive verdict ─────────────────────────────────────────
     story.append(Paragraph("1. Executive status", styles["H2"]))
@@ -525,7 +563,7 @@ def generate_client_pdf(out_path: Optional[Path] = None, client_name: Optional[s
     story.append(HRFlowable(width="100%", thickness=1.2, color=teal, spaceBefore=2, spaceAfter=8))
 
     foot_left = Paragraph(
-        "TrinTech Digital Defense<br/>Trinidad &amp; Tobago · Caribbean SMB security",
+        "TrinTech Digital Defense<br/>Trinidad &amp; Tobago · Caribbean SMB security<br/>WhatsApp: +1 868 362-0679",
         styles["Foot"],
     )
     foot_right = Paragraph(
