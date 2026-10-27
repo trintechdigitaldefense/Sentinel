@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.14.8"
+__version__ = "3.15.0"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2037,14 +2037,52 @@ def interactive_menu(config=None, logger=None):
             print(f"\n{C.YELLOW}Stopped.{C.RESET}")
 
     def run_continuous_defense():
-        print(f"\n  {C.CYAN}{C.BOLD}[*] Full start (scan + decoys + checks)...{C.RESET}\n")
+        """Start full client protection stack then continuous hunt."""
+        print(f"\n  {C.CYAN}{C.BOLD}[*] CONTINUOUS PROTECTION — full stack{C.RESET}\n")
+        # 1) Fleet discovery (ARP + rustscan/masscan/nmap if present)
+        try:
+            from modules.network_fleet import continuous_protect_bootstrap, fleet_status
+            boot = continuous_protect_bootstrap(logger=None)
+            fleet = boot.get("steps", {}).get("fleet") or fleet_status()
+            print(f"  {C.GREEN}[+]{C.RESET} Devices discovered: {fleet.get('count', 0)}  "
+                  f"(method={fleet.get('scan_method')})")
+            print(f"  {C.GREEN}[+]{C.RESET} Local canaries: {boot.get('steps', {}).get('local_canaries', {})}")
+            pending = (boot.get("steps", {}).get("remote_plan") or {}).get("pending_agent_canaries") or []
+            if pending:
+                print(f"  {C.YELLOW}[!]{C.RESET} Remote hosts needing agent canaries: {len(pending)}")
+            print(f"  {C.GRAY}    Supervised review before client flags: "
+                  f"{boot.get('steps', {}).get('supervised_review', True)}{C.RESET}")
+        except Exception as e:
+            print(f"  {C.YELLOW}[!]{C.RESET} Fleet bootstrap: {e}")
+        # 2) Classic start (scan + deception + LoD checks)
+        print(f"\n  {C.CYAN}[*] Host start (scan + decoys + checks)...{C.RESET}\n")
         run("start")
-        print(f"\n  {C.GREEN}{C.BOLD}[*] Continuous protection ON — hunt loop{C.RESET}")
-        print(f"  {C.GRAY}Ctrl+C to stop and return to menu{C.RESET}\n")
+        # 3) Firewall status (read-only; no silent apply)
+        try:
+            run("firewall", "status")
+        except Exception:
+            pass
+        # 4) Dashboard in background so clients can view live
+        try:
+            import subprocess as _sp
+            _logp = _Path.home() / ".sentinel" / "data"
+            _logp.mkdir(parents=True, exist_ok=True)
+            _sp.Popen(
+                [_sys.executable, str(eng), "dashboard"],
+                stdout=open(str(_logp / "dashboard_bg.log"), "a"),
+                stderr=_sp.STDOUT,
+                start_new_session=True,
+            )
+            print(f"  {C.GREEN}[+]{C.RESET} Dashboard starting in background (see dashboard-url)")
+        except Exception as e:
+            print(f"  {C.YELLOW}[!]{C.RESET} Dashboard bg: {e}")
+        # 5) Continuous hunt (blocks until Ctrl+C)
+        print(f"\n  {C.GREEN}{C.BOLD}[*] Continuous protection ON — hunt loop + live dashboard{C.RESET}")
+        print(f"  {C.GRAY}Ctrl+C to stop hunt and return to menu (dashboard may keep running){C.RESET}\n")
         run("hunt")
 
     main_items = [
-        ("1",  "START continuous protection (scan + hunt)", ("__continuous__",)),
+        ("1",  "START continuous protection (fleet + scan + hunt + dashboard)", ("__continuous__",)),
         ("2",  "Quick network scan (one-shot)", ("scan",)),
         ("3",  "Hunt only (continuous) — Ctrl+C to stop", ("hunt",)),
         ("4",  "Deploy deception / canary traps", ("deception",)),
@@ -3419,6 +3457,40 @@ Examples:
             print("\n[+] Monitor stopped")
         except Exception as e:
             print("[!] realtime-monitor:", e)
+
+
+    elif command in ("fleet-scan", "fleet", "devices-scan"):
+        try:
+            from modules.network_fleet import merge_discovery, plan_remote_canaries, fleet_status
+            print(json.dumps(merge_discovery(logger=logger), indent=2, default=str))
+            print(json.dumps(plan_remote_canaries(), indent=2, default=str))
+            print(json.dumps(fleet_status(), indent=2, default=str))
+        except Exception as e:
+            print("[!] fleet-scan:", e)
+    elif command in ("review-list", "pending-review"):
+        try:
+            from modules.network_fleet import list_pending_review
+            print(json.dumps(list_pending_review(), indent=2, default=str))
+        except Exception as e:
+            print("[!] review-list:", e)
+    elif command == "review-approve" and args:
+        try:
+            from modules.network_fleet import resolve_review
+            print(json.dumps(resolve_review(args[0], "approve"), indent=2, default=str))
+        except Exception as e:
+            print("[!] review-approve:", e)
+    elif command == "review-reject" and args:
+        try:
+            from modules.network_fleet import resolve_review
+            print(json.dumps(resolve_review(args[0], "reject"), indent=2, default=str))
+        except Exception as e:
+            print("[!] review-reject:", e)
+    elif command in ("continuous-protect", "protect-all"):
+        try:
+            from modules.network_fleet import continuous_protect_bootstrap
+            print(json.dumps(continuous_protect_bootstrap(logger=logger), indent=2, default=str))
+        except Exception as e:
+            print("[!] continuous-protect:", e)
 
     elif command in ("dashboard", "dash", "ui"):
         try:

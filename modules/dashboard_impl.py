@@ -102,6 +102,10 @@ def collect_full() -> dict:
             "raw": inv,
         }
     out["visibility"] = _safe(_vis, {})
+    def _fleet():
+        from modules.network_fleet import fleet_status
+        return fleet_status()
+    out["fleet"] = _safe(_fleet, {"count": 0, "devices": {}})
 
     mp = _data() / "hunt_metrics.json"
     if mp.exists():
@@ -267,6 +271,23 @@ def _html(token: str, data: dict) -> str:
         )
 
     control = bool(data.get("control", True))
+
+    fleet = data.get("fleet") or {}
+    try:
+        _prev = {
+            k: {
+                "ip": v.get("ip"),
+                "mac": v.get("mac"),
+                "status": v.get("status"),
+                "canary": v.get("canary"),
+                "ports": (v.get("ports") or [])[:12],
+            }
+            for k, v in list((fleet.get("devices") or {}).items())[:40]
+        }
+        fleet_json = json.dumps(_prev, indent=2)
+    except Exception:
+        fleet_json = "{}"
+
     ops = data.get("ops") or {}
     siem = data.get("siem") or {}
     crit = data.get("critical") or {}
@@ -531,7 +552,9 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
       <div class="muted">persist until ACK</div></div>
     <div class="card"><h2>Alerts total</h2><div class="metric">{esc(data.get('alert_total', 0))}</div>
       <div class="muted">offline q {esc(ops.get('offline_queue', 0))}</div></div>
-    <div class="card"><h2>Devices</h2><div class="metric">{esc(vis.get('devices', 0))}</div>
+    <div class="card"><h2>Devices (fleet)</h2><div class="metric">{esc((data.get('fleet') or {}).get('count') or vis.get('devices', 0))}</div>
+    <div class="meta">scan={esc((data.get('fleet') or {}).get('scan_method'))} · canaries local/pending={esc((data.get('fleet') or {}).get('canary_planted'))}/{esc((data.get('fleet') or {}).get('canary_pending_agent'))}</div>
+    <div class="meta">pending operator review: {esc((data.get('fleet') or {}).get('pending_review') or 0)}</div>
       <div class="muted">ARP live {esc(vis.get('live_arp', 0))}</div></div>
     <div class="card"><h2>Processes</h2><div class="metric">{esc(vis.get('processes', 0))}</div>
       <div class="muted">FIM {(vis.get('fim') or {}).get('files', '—')}</div></div>
@@ -591,6 +614,14 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
       <a class="btn btn-pdf" href="/api/report/pdf?token={esc(token)}" target="_blank" rel="noopener">Generate &amp; view client PDF</a>
       <a class="btn secondary" href="/api/report/technical?token={esc(token)}" target="_blank" rel="noopener">Technical PDF</a>
     </div>
+  </div>
+
+
+  <div class="section card" id="fleet">
+    <h2>Network fleet</h2>
+    <p class="muted">All discovered devices on the client network. Local host gets canary files; other hosts need a Sentinel agent for file canaries. High-severity items can wait in operator review before client-critical flags.</p>
+    <div class="meta">Hosts: {esc(fleet.get('count', 0))} · Scan: {esc(fleet.get('scan_method'))} · Local canaries: {esc(fleet.get('canary_planted'))} · Agent canaries pending: {esc(fleet.get('canary_pending_agent'))} · Review queue: {esc(fleet.get('pending_review', 0))}</div>
+    <pre style="max-height:240px;overflow:auto;font-size:11px">{esc(fleet_json)}</pre>
   </div>
 
 {control_panel}
