@@ -100,26 +100,33 @@ def snapshot() -> dict:
     homes = [Path("/root")]
     home_root = Path("/home")
     if home_root.is_dir():
-        homes.extend([p for p in home_root.iterdir() if p.is_dir()][:30])
+        try:
+            homes.extend([p for p in home_root.iterdir() if p.is_dir()][:30])
+        except (PermissionError, OSError):
+            pass
     for home in homes:
         for keyfile in [home / ".ssh" / "authorized_keys", home / ".ssh" / "authorized_keys2"]:
-            if keyfile.exists():
-                # Also store line count for quick drift signal
-                try:
-                    lines = [ln for ln in keyfile.read_text().splitlines() if ln.strip() and not ln.strip().startswith("#")]
-                    nkeys = len(lines)
-                except (PermissionError, OSError):
+            try:
+                if not keyfile.exists():
                     continue
-                except Exception:
-                    nkeys = -1
-                try:
-                    entries[str(keyfile)] = {
-                        "sha256": _hash_file(keyfile),
-                        "type": "authorized_keys",
-                        "key_count": nkeys,
-                    }
-                except (PermissionError, OSError):
-                    continue
+            except (PermissionError, OSError):
+                continue
+            # Also store line count for quick drift signal
+            try:
+                lines = [ln for ln in keyfile.read_text().splitlines() if ln.strip() and not ln.strip().startswith("#")]
+                nkeys = len(lines)
+            except (PermissionError, OSError):
+                continue
+            except Exception:
+                nkeys = -1
+            try:
+                entries[str(keyfile)] = {
+                    "sha256": _hash_file(keyfile),
+                    "type": "authorized_keys",
+                    "key_count": nkeys,
+                }
+            except (PermissionError, OSError):
+                continue
 
     # --- LD_PRELOAD surface ---
     ld = Path("/etc/ld.so.preload")
