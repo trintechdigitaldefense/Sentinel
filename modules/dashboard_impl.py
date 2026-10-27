@@ -356,9 +356,9 @@ def _html(token: str, data: dict) -> str:
     <h2>Quick actions (control mode)</h2>
     <div class="actions">
       <button class="btn" onclick="runAction('refresh')">Refresh status</button>
-      <button class="btn btn-pdf" onclick="runAction('pdf-report')" title="One-click client PDF report">📄 Generate PDF report</button>
-      <button class="btn secondary" onclick="runAction('client-report')">Client PDF (plain language)</button>
-      <button class="btn secondary" onclick="runAction('tech-report')">Technical PDF</button>
+      <a class="btn btn-pdf" id="btn-pdf-report" href="/api/report/pdf?token={esc(token)}" target="_blank" rel="noopener" title="Opens PDF report now">📄 Generate PDF report</a>
+      <a class="btn secondary" href="/api/report/client?token={esc(token)}" target="_blank" rel="noopener">Client PDF (plain language)</a>
+      <a class="btn secondary" href="/api/report/technical?token={esc(token)}" target="_blank" rel="noopener">Technical PDF</a>
       <button class="btn secondary" onclick="runAction('doctor')">Run doctor</button>
       <button class="btn secondary" onclick="runAction('ops')">Refresh ops</button>
       <button class="btn secondary" onclick="runAction('go-live-status')">Show go-live report</button>
@@ -566,7 +566,17 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
     </table>
   </div>
 
-  {control_panel}
+  
+  <div class="section card" id="reports">
+    <h2>📄 PDF reports</h2>
+    <p class="muted">Tap a button to open the report immediately in this browser. You can download from the viewer.</p>
+    <div class="actions">
+      <a class="btn btn-pdf" href="/api/report/pdf?token={esc(token)}" target="_blank" rel="noopener">Generate &amp; view client PDF</a>
+      <a class="btn secondary" href="/api/report/technical?token={esc(token)}" target="_blank" rel="noopener">Technical PDF</a>
+    </div>
+  </div>
+
+{control_panel}
 
   <div class="section card">
     <h2>API</h2>
@@ -842,6 +852,66 @@ class _Handler(BaseHTTPRequestHandler):
         if path in ("/api/visibility",):
             self._send(200, json.dumps(data.get("visibility") or {}, indent=2, default=str).encode(), "application/json")
             return
+
+        # One-click PDF: generate + stream (works without JS / POST)
+        if path in ("/api/report/pdf", "/api/report/client", "/api/report/generate"):
+            try:
+                from modules.client_report import generate_client_pdf
+                reports = _reports_dir()
+                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                out_path = reports / f"Client_Report_{ts}.pdf"
+                result = generate_client_pdf(out_path=out_path)
+                if not result.get("ok"):
+                    self._send(500, json.dumps({"ok": False, "error": result.get("error")}).encode(), "application/json")
+                    return
+                path_out = Path(str(result.get("path") or out_path))
+                if not path_out.is_file():
+                    self._send(500, b'{"ok":false,"error":"pdf missing after generate"}', "application/json")
+                    return
+                body = path_out.read_bytes()
+                extra = {
+                    "Content-Disposition": f'inline; filename="{path_out.name}"',
+                    "Cache-Control": "no-store",
+                    "X-Sentinel-Report": path_out.name,
+                }
+                self._send(200, body, "application/pdf", extra_headers=extra)
+            except Exception as e:
+                logging.getLogger("sentinel").exception("GET report pdf")
+                self._send(500, json.dumps({"ok": False, "error": str(e)}).encode(), "application/json")
+            return
+
+        if path in ("/api/report/technical", "/api/report/tech"):
+            try:
+                result = _generate_dashboard_pdfs("tech-report")
+                if not result.get("ok"):
+                    # fallback client-style
+                    from modules.client_report import generate_client_pdf
+                    reports = _reports_dir()
+                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+                    out_path = reports / f"Sentinel_Technical_{ts}.pdf"
+                    result2 = generate_client_pdf(out_path=out_path)
+                    if not result2.get("ok"):
+                        self._send(500, json.dumps({"ok": False, "error": result.get("error") or result2.get("error")}).encode(), "application/json")
+                        return
+                    path_out = Path(str(result2.get("path") or out_path))
+                else:
+                    # pick first generated path
+                    gens = result.get("generated") or []
+                    path_out = Path((gens[0] or {}).get("path") or result.get("path") or "")
+                if not path_out.is_file():
+                    self._send(404, b'{"ok":false,"error":"technical pdf not found"}', "application/json")
+                    return
+                body = path_out.read_bytes()
+                extra = {
+                    "Content-Disposition": f'inline; filename="{path_out.name}"',
+                    "Cache-Control": "no-store",
+                }
+                self._send(200, body, "application/pdf", extra_headers=extra)
+            except Exception as e:
+                logging.getLogger("sentinel").exception("GET tech pdf")
+                self._send(500, json.dumps({"ok": False, "error": str(e)}).encode(), "application/json")
+            return
+
         if path in ("/api/report/download", "/api/reports/download"):
             q = parse_qs(urlparse(self.path).query)
             name = (q.get("name") or [""])[0]
