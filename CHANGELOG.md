@@ -1,3 +1,10 @@
+## [3.14.8] — 2026-10-27
+
+### Reports & dashboard
+- Enhanced client PDF (logo, verdict badge, protection table, TrinTech contact)
+- Dashboard logo + `/api/assets/logo` + one-click GET PDF
+- Overview & cheatsheet doc
+
 # Changelog
 
 ## [3.14.7] — 2026-10-26

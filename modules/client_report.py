@@ -269,6 +269,11 @@ def generate_client_pdf(out_path: Optional[Path] = None, client_name: Optional[s
     )
     host = status.get("host") or socket.gethostname()
     ip = status.get("ip") or status.get("local_ip") or "—"
+    try:
+        from sentinel import __version__ as sentinel_ver
+    except Exception:
+        sentinel_ver = status.get("version") or "3.x"
+
     ts = datetime.now().strftime("%d %B %Y · %H:%M")
     file_ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out_path = Path(out_path) if out_path else (_data() / "reports" / f"Client_Report_{file_ts}.pdf")
@@ -387,7 +392,7 @@ def generate_client_pdf(out_path: Optional[Path] = None, client_name: Optional[s
             Paragraph(f"<b>Prepared for</b><br/>{client}", styles["Cell"]),
             Paragraph(f"<b>Host</b><br/>{host}", styles["Cell"]),
             Paragraph(f"<b>Network address</b><br/>{ip}", styles["Cell"]),
-            Paragraph(f"<b>Classification</b><br/>Confidential — client", styles["Cell"]),
+            Paragraph(f"<b>Platform</b><br/>Sentinel v{sentinel_ver}", styles["Cell"]),
         ],
     ], colWidths=[43 * mm, 43 * mm, 43 * mm, 44 * mm])
     meta.setStyle(TableStyle([
@@ -543,11 +548,20 @@ def generate_client_pdf(out_path: Optional[Path] = None, client_name: Optional[s
         story.append(Paragraph(f"<b>{i}.</b>  {s}", styles["BodyT"]))
 
     # ── Closing ───────────────────────────────────────────────────
-    story.append(Paragraph("6. Scope and limitations", styles["H2"]))
+    story.append(Paragraph("6. How to reach TrinTech", styles["H2"]))
+    story.append(Paragraph(
+        "<b>TrinTech Digital Defense</b> — Trinidad &amp; Tobago / Caribbean<br/>"
+        "WhatsApp: <b>+1 868 362-0679</b><br/>"
+        "Services: continuous monitoring (Sentinel), network visibility, deception canaries, "
+        "hardening guidance, and incident review support for SMBs.",
+        styles["BodyT"],
+    ))
+
+    story.append(Paragraph("7. Scope and limitations", styles["H2"]))
     story.append(Paragraph(
         "This report is prepared by <b>TrinTech Digital Defense</b> using the Sentinel continuous-monitoring platform. "
         "It is written for owners and managers. It is <b>not</b> a certification that systems are free of compromise, "
-        "and it is <b>not</b> legal advice. Findings are based on host visibility at generation time. "
+        "and it is <b>not</b> legal advice. Findings reflect host visibility at generation time only. "
         "Technical evidence packs and operator detail are available on request.",
         styles["BodyT"],
     ))
