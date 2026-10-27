@@ -47,12 +47,13 @@ def deploy(n_files: int = 8) -> dict:
             raw = f.read_bytes()
             base[f.name] = {"sha256": hashlib.sha256(raw).hexdigest(), "entropy": round(_entropy(raw), 3),
                             "size": len(raw), "suffix": f.suffix.lower()}
-    baseline_path().write_text(json.dumps({"created": datetime.now().isoformat(), "files": base}, indent=2))
+    bp = baseline_path()
+    bp.write_text(json.dumps({"created": datetime.now().isoformat(), "files": base}, indent=2))
     try:
         os.chmod(bp, 0o600)
     except Exception as e:
         log.debug("chmod tripwire baseline: %s", e)
-    return {"ok": True, "dir": str(d), "files": len(files), "path": str(baseline_path())}
+    return {"ok": True, "dir": str(d), "files": len(files), "path": str(bp)}
 
 def check() -> dict:
     bp = baseline_path()

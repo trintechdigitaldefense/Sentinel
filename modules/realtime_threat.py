@@ -129,6 +129,7 @@ def scan_reverse_shell_cmds() -> list:
                 hits.append({
                     "type": "REVERSE_SHELL_CMDLINE",
                     "severity": "CRITICAL",
+                    "confidence": "medium",
                     "pid": pid,
                     "user": user,
                     "pattern": pat,
@@ -163,6 +164,7 @@ def scan_deleted_exe() -> list:
             hits.append({
                 "type": "DELETED_EXE",
                 "severity": "HIGH",
+                "confidence": "medium",
                 "pid": p.name,
                 "path": target[:160],
                 "cmd": cmdline,
@@ -218,6 +220,7 @@ def scan_risky_ports() -> list:
             hits.append({
                 "type": "RISKY_LISTENER",
                 "severity": "HIGH",
+                "confidence": "low",
                 "port": p,
                 "detail": f"listener on port {p}",
             })
@@ -425,6 +428,7 @@ def snapshot(
         "threats": threats[:50],
         "recent_high_alerts": recent,
         "realtime": True,
+        "disclaimer": "Heuristics are leads, not proof of compromise.",
         "detectors": [
             "criticals", "reverse_shell", "behavioral", "risky_ports",
             "deleted_exe", "ld_preload", "canaries",

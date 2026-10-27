@@ -498,7 +498,7 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
     </table>
     <div class="actions">
       <button class="btn secondary" onclick="runAction('realtime-scan')">Re-scan now</button>
-      <a class="btn secondary" href="/api/realtime?token={esc(token)}">Realtime JSON</a>
+      <a class="btn secondary" href="/api/realtime">Realtime JSON</a>
     </div>
   </div>
   <div class="grid" id="overview">
@@ -565,20 +565,26 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
   <div class="section card">
     <h2>API</h2>
     <div class="actions">
-      <a class="btn secondary" href="?token={esc(token)}">Reload UI</a>
-      <a class="btn secondary" href="/api/status?token={esc(token)}">Full JSON</a>
-      <a class="btn secondary" href="/api/critical?token={esc(token)}">Critical JSON</a>
-      <a class="btn secondary" href="/api/go-live?token={esc(token)}">Go-live JSON</a>
+      <a class="btn secondary" href="/">Reload UI</a>
+      <a class="btn secondary" href="/api/status">Full JSON</a>
+      <a class="btn secondary" href="/api/critical">Critical JSON</a>
+      <a class="btn secondary" href="/api/go-live">Go-live JSON</a>
     </div>
   </div>
 </div>
 <footer>TrinTech Digital Defense · Authorized defensive use only · Token required</footer>
 <script>
 const TOKEN = "{esc(token)}";
+function authHeaders(json) {{
+  const h = {{"Authorization": "Bearer " + TOKEN}};
+  if (json) h["Content-Type"] = "application/json";
+  return h;
+}}
+
 async function ackCritical(id) {{
   if (!confirm("ACK critical " + id + "?")) return;
-  const r = await fetch("/api/critical/ack?token=" + encodeURIComponent(TOKEN), {{
-    method: "POST", headers: {{"Content-Type": "application/json"}},
+  const r = await fetch("/api/critical/ack", {{
+    method: "POST", headers: authHeaders(true),
     body: JSON.stringify({{id}})
   }});
   const j = await r.json();
@@ -587,8 +593,8 @@ async function ackCritical(id) {{
 }}
 async function ackAllCritical() {{
   if (!confirm("ACK ALL open criticals?")) return;
-  const r = await fetch("/api/critical/ack-all?token=" + encodeURIComponent(TOKEN), {{
-    method: "POST", headers: {{"Content-Type": "application/json"}}, body: "{{}}"
+  const r = await fetch("/api/critical/ack-all", {{
+    method: "POST", headers: authHeaders(true), body: "{{}}"
   }});
   const j = await r.json();
   if (!r.ok || !j.ok) {{ alert("Failed: " + (j.error || r.status)); return; }}
@@ -598,8 +604,8 @@ async function runAction(name) {{
   const out = document.getElementById("action-out");
   if (out) out.textContent = "Running " + name + "...";
   if (name === "refresh") {{ location.reload(); return; }}
-  const r = await fetch("/api/action?token=" + encodeURIComponent(TOKEN), {{
-    method: "POST", headers: {{"Content-Type": "application/json"}},
+  const r = await fetch("/api/action", {{
+    method: "POST", headers: authHeaders(true),
     body: JSON.stringify({{action: name}})
   }});
   const j = await r.json();
@@ -612,9 +618,9 @@ async function toggleControl(want) {{
     want = !cur;
   }}
   try {{
-    const r = await fetch("/api/control-mode?token=" + encodeURIComponent(TOKEN), {{
+    const r = await fetch("/api/control-mode", {{
       method: "POST",
-      headers: {{"Content-Type": "application/json"}},
+      headers: authHeaders(true),
       body: JSON.stringify({{allow_control: want}})
     }});
     const j = await r.json();
@@ -667,7 +673,7 @@ function renderThreats(rt) {{
 
 async function pollRealtime() {{
   try {{
-    const r = await fetch("/api/realtime?token=" + encodeURIComponent(TOKEN) + "&scan=1");
+    const r = await fetch("/api/realtime?scan=1", {{ headers: authHeaders(false) }});
     if (!r.ok) return;
     const j = await r.json();
     renderThreats(j);
@@ -694,20 +700,34 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
     def _auth_ok(self) -> bool:
+        """Prefer Authorization Bearer, then cookie, then query token (deprecated)."""
+        # 1) Bearer
+        auth = self.headers.get("Authorization") or ""
+        if auth.startswith("Bearer ") and auth[7:].strip() == self.token:
+            return True
+        # 2) Cookie sentinel_token=
+        cookie = self.headers.get("Cookie") or ""
+        for part in cookie.split(";"):
+            part = part.strip()
+            if part.startswith("sentinel_token="):
+                if part.split("=", 1)[1].strip() == self.token:
+                    return True
+        # 3) Query string (deprecated — still accepted for first page load)
         q = parse_qs(urlparse(self.path).query)
         t = (q.get("token") or [""])[0]
         if t and t == self.token:
             return True
-        auth = self.headers.get("Authorization") or ""
-        if auth.startswith("Bearer ") and auth[7:] == self.token:
-            return True
         return False
 
-    def _send(self, code: int, body: bytes, ctype: str = "text/html; charset=utf-8"):
+
+    def _send(self, code: int, body: bytes, ctype: str = "text/html; charset=utf-8", extra_headers: dict | None = None):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        if extra_headers:
+            for k, v in extra_headers.items():
+                self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
 
@@ -724,7 +744,7 @@ class _Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if not self._auth_ok():
-            self._send(401, b"Unauthorized - add ?token=...")
+            self._send(401, b'{"ok":false,"error":"unauthorized","hint":"Authorization: Bearer <token> or initial ?token="}', "application/json")
             return
         path = urlparse(self.path).path
         data = collect_full()
@@ -754,7 +774,13 @@ class _Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/"):
             self._send(200, json.dumps(data, indent=2, default=str).encode(), "application/json")
             return
-        self._send(200, _html(self.token, data).encode("utf-8"))
+        # Prefer cookie for subsequent requests (H-04 mitigation)
+        body = _html(self.token, data).encode("utf-8")
+        extra = {
+            "Set-Cookie": f"sentinel_token={self.token}; Path=/; HttpOnly; SameSite=Strict",
+            "X-Token-Deprecation": "Prefer Authorization: Bearer; query token is deprecated",
+        }
+        self._send(200, body, "text/html; charset=utf-8", extra_headers=extra)
 
     def do_POST(self):
         if not self._auth_ok():

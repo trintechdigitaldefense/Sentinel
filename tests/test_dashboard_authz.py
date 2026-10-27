@@ -114,3 +114,48 @@ def test_post_action_denied_when_view_only(monkeypatch):
     # Should hit view-only 403 before action runs
     assert h.sent is not None
     assert h.sent[0] == 403
+
+
+def test_auth_ok_bearer_preferred():
+    from modules.dashboard_impl import _Handler
+
+    class H(_Handler):
+        token = "secret"
+        headers = {"Authorization": "Bearer secret"}
+        path = "/api/status"
+
+        def __init__(self):
+            pass
+
+    assert H()._auth_ok() is True
+
+
+def test_auth_ok_cookie():
+    from modules.dashboard_impl import _Handler
+
+    class H(_Handler):
+        token = "secret"
+        headers = {"Cookie": "sentinel_token=secret; other=1"}
+        path = "/api/status"
+
+        def __init__(self):
+            pass
+
+    assert H()._auth_ok() is True
+
+
+def test_auth_rejects_bad_token():
+    from modules.dashboard_impl import _Handler
+
+    class H(_Handler):
+        token = "secret"
+        headers = {"Authorization": "Bearer wrong"}
+        path = "/api/status?token=wrong"
+
+        def __init__(self):
+            pass
+
+    # wrong bearer and wrong query
+    h = H()
+    h.path = "/api/status"
+    assert h._auth_ok() is False

@@ -1,5 +1,14 @@
 # Changelog
 
+## [3.14.7] — 2026-10-26
+
+### Milestone 7 — residual risk mitigations
+- Dashboard: Bearer + cookie auth preferred (query token deprecated)
+- Fix ruff F821 `bp` in ransomware_tripwire (CI green path)
+- Realtime heuristic confidence + disclaimer
+- Tests: alert chaos smoke, firewall dry-run contract, auth bearer/cookie
+
+
 ## [3.14.6] — 2026-10-26
 
 ### Milestone 6 — release candidate packaging
@@ -231,6 +240,15 @@
 
 
 # Changelog
+
+## [3.14.7] — 2026-10-26
+
+### Milestone 7 — residual risk mitigations
+- Dashboard: Bearer + cookie auth preferred (query token deprecated)
+- Fix ruff F821 `bp` in ransomware_tripwire (CI green path)
+- Realtime heuristic confidence + disclaimer
+- Tests: alert chaos smoke, firewall dry-run contract, auth bearer/cookie
+
 
 ## [3.14.6] — 2026-10-26
 

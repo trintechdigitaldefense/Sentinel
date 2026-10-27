@@ -192,3 +192,10 @@ This document does **not** claim Sentinel is production-ready. Status is **devel
 - RELEASE_CHECKLIST updated with PASS/PARTIAL/OPEN evidence
 - Residual risks listed for human approval
 - **No production-ready declaration**
+
+
+## Milestone 7 status
+
+- H-04 mitigated (Bearer/cookie preferred)
+- CI F821 bp fixed
+- Residual docs: docs/MILESTONE7_RESIDUALS.md
