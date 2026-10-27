@@ -610,36 +610,76 @@ async function runAction(name) {{
   const out = document.getElementById("action-out");
   if (out) out.textContent = "Running " + name + "...";
   if (name === "refresh") {{ location.reload(); return; }}
-  const r = await fetch("/api/action", {{
-    method: "POST", headers: authHeaders(true),
-    body: JSON.stringify({{action: name}})
-  }});
-  const j = await r.json();
-  if (!out) return;
-  if (j && (j.download || j.downloads || j.path)) {{
-    const links = [];
-    if (j.download) links.push(j.download);
-    if (Array.isArray(j.downloads)) links.push(...j.downloads);
-    const bits = ["OK — report ready", JSON.stringify(j, null, 2)];
-    if (links.length) {{
-      bits.push("");
-      bits.push("Open / download:");
-      links.forEach((u, i) => bits.push((i+1) + ") " + u));
-      // auto-open primary client report
-      try {{ window.open(links[0], "_blank"); }} catch (e) {{}}
+  try {{
+    const r = await fetch("/api/action", {{
+      method: "POST",
+      headers: authHeaders(true),
+      body: JSON.stringify({{action: name}})
+    }});
+    let j = null;
+    const text = await r.text();
+    try {{ j = JSON.parse(text); }} catch (e) {{
+      if (out) out.textContent = "Bad response (" + r.status + "): " + text.slice(0, 500);
+      alert("Action failed (" + r.status + "). See status box.");
+      return;
     }}
-    out.textContent = bits.join("\n");
-    // also inject clickable links under the pre if possible
-    let box = document.getElementById("report-links");
-    if (!box) {{
-      box = document.createElement("div");
-      box.id = "report-links";
-      box.className = "report-links";
-      out.parentNode.insertBefore(box, out.nextSibling);
+    if (!r.ok || (j && j.ok === false)) {{
+      const err = (j && (j.error || j.message)) || ("HTTP " + r.status);
+      if (out) out.textContent = "FAILED: " + err + "\n\n" + text.slice(0, 1500);
+      alert("Action failed: " + err);
+      return;
     }}
-    box.innerHTML = links.map((u,i) => '<a class="btn secondary" href="'+u+'" target="_blank">Download report '+(i+1)+'</a>').join(" ");
-  }} else {{
-    out.textContent = JSON.stringify(j, null, 2);
+    // PDF / downloadable reports — open for viewing + download links
+    if (j && (j.download || j.downloads || j.path)) {{
+      let links = [];
+      if (j.download) links.push(j.download);
+      if (Array.isArray(j.downloads)) links.push.apply(links, j.downloads);
+      // unique
+      links = links.filter(function(v, i, a) {{ return a.indexOf(v) === i; }});
+      // attach token for top-level navigation (Bearer not sent on <a> / window.open)
+      function withToken(u) {{
+        if (!u) return u;
+        if (u.indexOf("token=") >= 0) return u;
+        return u + (u.indexOf("?") >= 0 ? "&" : "?") + "token=" + encodeURIComponent(TOKEN);
+      }}
+      links = links.map(withToken);
+      if (out) {{
+        out.textContent = "OK — report ready. Use View / Download below.";
+      }}
+      let box = document.getElementById("report-links");
+      if (!box) {{
+        box = document.createElement("div");
+        box.id = "report-links";
+        box.className = "report-links";
+        if (out && out.parentNode) out.parentNode.insertBefore(box, out.nextSibling);
+      }}
+      let viewer = document.getElementById("pdf-viewer-wrap");
+      if (!viewer) {{
+        viewer = document.createElement("div");
+        viewer.id = "pdf-viewer-wrap";
+        viewer.className = "pdf-viewer-wrap";
+        if (box.parentNode) box.parentNode.insertBefore(viewer, box.nextSibling);
+      }}
+      box.innerHTML = links.map(function(u, i) {{
+        const label = (i === 0) ? "Client / primary report" : ("Report " + (i + 1));
+        return '<div class="report-row">'
+          + '<a class="btn btn-pdf" href="' + u + '" target="_blank" rel="noopener">View ' + label + '</a> '
+          + '<a class="btn secondary" href="' + u + '" download>Download</a>'
+          + '</div>';
+      }}).join("");
+      // Inline viewer for first PDF
+      if (links[0]) {{
+        viewer.innerHTML = '<p class="muted">Preview (if the browser supports PDF)</p>'
+          + '<iframe class="pdf-frame" title="PDF report" src="' + links[0] + '"></iframe>';
+        // Also open a tab for mobile browsers that block iframes
+        try {{ window.open(links[0], "_blank"); }} catch (e) {{}}
+      }}
+      return;
+    }}
+    if (out) out.textContent = JSON.stringify(j, null, 2);
+  }} catch (e) {{
+    if (out) out.textContent = "Error: " + e;
+    alert("Action error: " + e);
   }}
 }}
 async function toggleControl(want) {{
@@ -826,7 +866,7 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(500, json.dumps({"ok": False, "error": str(e)}).encode(), "application/json")
                 return
             extra = {
-                "Content-Disposition": f'attachment; filename="{name}"',
+                "Content-Disposition": f'inline; filename="{name}"',
                 "Cache-Control": "no-store",
             }
             self._send(200, body, "application/pdf", extra_headers=extra)
