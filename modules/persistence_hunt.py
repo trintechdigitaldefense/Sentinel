@@ -51,10 +51,17 @@ def snapshot() -> dict:
                     entries[str(f)] = {"sha256": _hash_file(f), "type": "cron"}
 
     for spool in [Path("/var/spool/cron/crontabs"), Path("/var/spool/cron")]:
-        if spool.is_dir():
+        try:
+            if not spool.is_dir():
+                continue
             for f in spool.iterdir():
-                if f.is_file():
-                    entries[str(f)] = {"sha256": _hash_file(f), "type": "cron_user"}
+                try:
+                    if f.is_file():
+                        entries[str(f)] = {"sha256": _hash_file(f), "type": "cron_user"}
+                except (PermissionError, OSError):
+                    continue
+        except (PermissionError, OSError):
+            continue
 
     # --- Systemd services + timers (timers increasingly favored over cron) ---
     for d in ["/etc/systemd/system", "/usr/lib/systemd/system",
@@ -101,18 +108,26 @@ def snapshot() -> dict:
                 try:
                     lines = [ln for ln in keyfile.read_text().splitlines() if ln.strip() and not ln.strip().startswith("#")]
                     nkeys = len(lines)
+                except (PermissionError, OSError):
+                    continue
                 except Exception:
                     nkeys = -1
-                entries[str(keyfile)] = {
-                    "sha256": _hash_file(keyfile),
-                    "type": "authorized_keys",
-                    "key_count": nkeys,
-                }
+                try:
+                    entries[str(keyfile)] = {
+                        "sha256": _hash_file(keyfile),
+                        "type": "authorized_keys",
+                        "key_count": nkeys,
+                    }
+                except (PermissionError, OSError):
+                    continue
 
     # --- LD_PRELOAD surface ---
     ld = Path("/etc/ld.so.preload")
     if ld.exists():
-        entries[str(ld)] = {"sha256": _hash_file(ld), "type": "ld_preload", "content_preview": ld.read_text()[:200]}
+        try:
+            entries[str(ld)] = {"sha256": _hash_file(ld), "type": "ld_preload", "content_preview": ld.read_text()[:200]}
+        except (PermissionError, OSError):
+            pass
     else:
         # Record absence so a future CREATE is detected
         entries["/etc/ld.so.preload"] = {"sha256": "", "type": "ld_preload", "absent": True}
