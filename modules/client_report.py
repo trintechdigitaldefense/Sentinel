@@ -224,6 +224,11 @@ def generate_client_pdf(out_path: Optional[Path] = None, client_name: Optional[s
         "This report is written for business owners and managers. Technical detail is available on request from TrinTech Digital Defense.",
         styles["Foot"],
     ))
+    story.append(Spacer(1, 8))
+    story.append(Paragraph(
+        f"Report ID: {file_ts} · Host: {host} · Authorized defensive use only · Not a certification of compromise or clearance.",
+        styles.get("Footer", styles["Normal"]),
+    ))
     doc.build(story)
     return {"ok": True, "path": str(out_path), "headline": headline, "client": client}
 

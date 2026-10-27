@@ -356,6 +356,9 @@ def _html(token: str, data: dict) -> str:
     <h2>Quick actions (control mode)</h2>
     <div class="actions">
       <button class="btn" onclick="runAction('refresh')">Refresh status</button>
+      <button class="btn btn-pdf" onclick="runAction('pdf-report')" title="One-click client PDF report">📄 Generate PDF report</button>
+      <button class="btn secondary" onclick="runAction('client-report')">Client PDF (plain language)</button>
+      <button class="btn secondary" onclick="runAction('tech-report')">Technical PDF</button>
       <button class="btn secondary" onclick="runAction('doctor')">Run doctor</button>
       <button class="btn secondary" onclick="runAction('ops')">Refresh ops</button>
       <button class="btn secondary" onclick="runAction('go-live-status')">Show go-live report</button>
@@ -431,6 +434,9 @@ th, td {{ text-align:left; padding:.4rem .35rem; border-bottom:1px solid var(--b
 th {{ color:var(--muted); font-weight:600; font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; }}
 .mono {{ font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:.78rem; color:#c7d2fe; }}
 .actions {{ display:flex; flex-wrap:wrap; gap:.45rem; margin-top:.5rem; }}
+.btn-pdf {{ background:linear-gradient(135deg,#0E7C7B,#0B5F5E) !important; color:#fff !important; font-weight:700; border:none; padding:.55rem 1rem; }}
+.btn-pdf:hover {{ filter:brightness(1.08); }}
+.report-links a {{ color:#7dd3d0; margin-right:.75rem; }}
 .btn {{
   background:#1d4ed8; color:white; border:none; border-radius:8px; padding:.4rem .75rem;
   font-size:.8rem; cursor:pointer; text-decoration:none; display:inline-block;
@@ -609,7 +615,32 @@ async function runAction(name) {{
     body: JSON.stringify({{action: name}})
   }});
   const j = await r.json();
-  if (out) out.textContent = JSON.stringify(j, null, 2);
+  if (!out) return;
+  if (j && (j.download || j.downloads || j.path)) {{
+    const links = [];
+    if (j.download) links.push(j.download);
+    if (Array.isArray(j.downloads)) links.push(...j.downloads);
+    const bits = ["OK — report ready", JSON.stringify(j, null, 2)];
+    if (links.length) {{
+      bits.push("");
+      bits.push("Open / download:");
+      links.forEach((u, i) => bits.push((i+1) + ") " + u));
+      // auto-open primary client report
+      try {{ window.open(links[0], "_blank"); }} catch (e) {{}}
+    }}
+    out.textContent = bits.join("\n");
+    // also inject clickable links under the pre if possible
+    let box = document.getElementById("report-links");
+    if (!box) {{
+      box = document.createElement("div");
+      box.id = "report-links";
+      box.className = "report-links";
+      out.parentNode.insertBefore(box, out.nextSibling);
+    }}
+    box.innerHTML = links.map((u,i) => '<a class="btn secondary" href="'+u+'" target="_blank">Download report '+(i+1)+'</a>').join(" ");
+  }} else {{
+    out.textContent = JSON.stringify(j, null, 2);
+  }}
 }}
 async function toggleControl(want) {{
   if (typeof want !== "boolean") {{
@@ -771,6 +802,35 @@ class _Handler(BaseHTTPRequestHandler):
         if path in ("/api/visibility",):
             self._send(200, json.dumps(data.get("visibility") or {}, indent=2, default=str).encode(), "application/json")
             return
+        if path in ("/api/report/download", "/api/reports/download"):
+            q = parse_qs(urlparse(self.path).query)
+            name = (q.get("name") or [""])[0]
+            # path traversal guard
+            name = Path(name).name
+            if not name or not name.endswith(".pdf"):
+                self._send(400, b'{"ok":false,"error":"name required (.pdf)"}', "application/json")
+                return
+            # search reports dir then data dir
+            candidates = [
+                _reports_dir() / name,
+                _data() / name,
+                _data() / "reports" / name,
+            ]
+            target = next((c for c in candidates if c.is_file()), None)
+            if not target:
+                self._send(404, b'{"ok":false,"error":"report not found"}', "application/json")
+                return
+            try:
+                body = target.read_bytes()
+            except Exception as e:
+                self._send(500, json.dumps({"ok": False, "error": str(e)}).encode(), "application/json")
+                return
+            extra = {
+                "Content-Disposition": f'attachment; filename="{name}"',
+                "Cache-Control": "no-store",
+            }
+            self._send(200, body, "application/pdf", extra_headers=extra)
+            return
         if path.startswith("/api/"):
             self._send(200, json.dumps(data, indent=2, default=str).encode(), "application/json")
             return
@@ -855,7 +915,21 @@ class _Handler(BaseHTTPRequestHandler):
                 "visibility": ("visibility",),
                 "service-status": ("service-status",),
                 "realtime-scan": ("realtime",),
+                "pdf-report": None,       # handled below — client + technical
+                "client-report": None,   # plain-language client PDF
+                "tech-report": None,     # technical PDF via CLI
             }
+            # One-push / dedicated PDF report generation (non-destructive)
+            if action in ("pdf-report", "client-report", "tech-report"):
+                try:
+                    result = _generate_dashboard_pdfs(action)
+                    self._send(200 if result.get("ok") else 500,
+                               json.dumps(result, default=str).encode(),
+                               "application/json")
+                except Exception as e:
+                    logging.getLogger("sentinel").exception("dashboard pdf-report")
+                    self._send(500, json.dumps({"ok": False, "error": str(e)}).encode(), "application/json")
+                return
             if action == "realtime-scan":
                 try:
                     from modules.realtime_threat import snapshot
@@ -889,6 +963,118 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         self._send(404, b'{"ok":false,"error":"unknown endpoint"}', "application/json")
+
+
+
+def _reports_dir() -> Path:
+    d = _data() / "reports"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _generate_dashboard_pdfs(action: str = "pdf-report") -> dict:
+    """Generate client and/or technical PDF reports for dashboard one-push."""
+    import logging
+    log = logging.getLogger("sentinel")
+    reports = _reports_dir()
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    out: dict = {"ok": True, "action": action, "generated": [], "downloads": []}
+    client_path = reports / f"Client_Report_{ts}.pdf"
+    tech_path = reports / f"Sentinel_Technical_{ts}.pdf"
+
+    if action in ("pdf-report", "client-report"):
+        try:
+            from modules.client_report import generate_client_pdf
+            r = generate_client_pdf(out_path=client_path)
+            if r.get("ok"):
+                path = Path(str(r.get("path") or client_path))
+                dest = reports / path.name
+                try:
+                    if path.is_file() and path.resolve() != dest.resolve():
+                        dest.write_bytes(path.read_bytes())
+                        path = dest
+                    elif path.is_file():
+                        dest = path
+                except Exception:
+                    dest = path if path.is_file() else client_path
+                out["generated"].append({"type": "client", "path": str(dest)})
+                out["path"] = str(dest)
+                out["download"] = f"/api/report/download?name={dest.name}"
+                out["downloads"].append(out["download"])
+            else:
+                out["client_error"] = r.get("error") or "client PDF failed"
+                if action == "client-report":
+                    out["ok"] = False
+                    out["error"] = out["client_error"]
+                    return out
+        except Exception as e:
+            log.exception("client PDF")
+            out["client_error"] = str(e)
+            if action == "client-report":
+                out["ok"] = False
+                out["error"] = str(e)
+                return out
+
+    if action in ("pdf-report", "tech-report"):
+        try:
+            cli = run_cli("pdf")
+            out["tech_cli"] = {"ok": cli.get("ok"), "code": cli.get("code")}
+            candidates = []
+            for base in (reports, _data(), Path.home(), _engine().parent):
+                try:
+                    for f in Path(base).glob("*.pdf"):
+                        if f.stat().st_mtime > (datetime.now().timestamp() - 180):
+                            candidates.append(f)
+                except Exception:
+                    pass
+            tech_done = None
+            for c in sorted(candidates, key=lambda x: x.stat().st_mtime, reverse=True):
+                if c.name.startswith("Client_Report"):
+                    continue
+                dest = reports / c.name
+                try:
+                    if c.resolve() != dest.resolve():
+                        dest.write_bytes(c.read_bytes())
+                    tech_done = dest
+                except Exception:
+                    tech_done = c
+                break
+            if tech_done and Path(tech_done).is_file():
+                out["generated"].append({"type": "technical", "path": str(tech_done)})
+                dl = f"/api/report/download?name={Path(tech_done).name}"
+                if dl not in out["downloads"]:
+                    out["downloads"].append(dl)
+                if not out.get("download"):
+                    out["download"] = dl
+                    out["path"] = str(tech_done)
+            elif action == "tech-report":
+                from modules.client_report import generate_client_pdf
+                r2 = generate_client_pdf(out_path=tech_path)
+                if r2.get("ok"):
+                    out["generated"].append({"type": "technical_fallback", "path": str(tech_path)})
+                    dl = f"/api/report/download?name={tech_path.name}"
+                    out["downloads"].append(dl)
+                    out["download"] = dl
+                    out["path"] = str(tech_path)
+                else:
+                    out["ok"] = False
+                    out["error"] = r2.get("error") or "technical PDF failed"
+        except Exception as e:
+            log.exception("tech PDF")
+            out["tech_error"] = str(e)
+            if action == "tech-report" and not out.get("downloads"):
+                out["ok"] = False
+                out["error"] = str(e)
+
+    if not out.get("downloads") and out.get("ok"):
+        out["ok"] = False
+        out["error"] = out.get("client_error") or out.get("tech_error") or "no PDF produced"
+    out["message"] = (
+        "PDF report generated. Use the download link(s). "
+        "Client report is plain-language for stakeholders; technical includes operator detail when available."
+    )
+    return out
+
 
 
 def start_dashboard(port: int | None = None, bind: str | None = None):
