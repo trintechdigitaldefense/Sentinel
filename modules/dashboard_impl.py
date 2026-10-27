@@ -246,6 +246,16 @@ def run_cli(*args: str) -> dict:
         return {"ok": False, "error": str(e), "args": list(args)}
 
 
+
+def _logo_asset() -> Path | None:
+    """Resolve official report/dashboard logo PNG."""
+    base = Path(__file__).resolve().parent / "assets"
+    for name in ("trintech_logo_header.png", "trintech_sentinel_logo.png", "trintech_brand.png"):
+        cand = base / name
+        if cand.is_file() and cand.stat().st_size > 100:
+            return cand
+    return None
+
 def _html(token: str, data: dict) -> str:
     def esc(s):
         return (
@@ -383,6 +393,7 @@ def _html(token: str, data: dict) -> str:
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
+  <link rel="icon" type="image/png" href="/api/assets/logo?token={esc(token)}"/>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>SENTINEL Dashboard</title>
@@ -393,6 +404,9 @@ def _html(token: str, data: dict) -> str:
 }}
 * {{ box-sizing:border-box; }}
 body {{
+.brand-row {{ display:flex; align-items:center; gap:.75rem; }}
+.brand-logo {{ width:48px; height:48px; border-radius:50%; background:#0b1f3a; object-fit:cover; border:2px solid #0e7c7b; }}
+
   margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   background: radial-gradient(1200px 600px at 10% -10%, #1a2744 0%, var(--bg) 55%);
   color:var(--text); min-height:100vh;
@@ -464,7 +478,9 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
 </head>
 <body>
 <header>
-  <div>
+  <div class="brand-row">
+    <img class="brand-logo" src="/api/assets/logo?token={esc(token)}" alt="TrinTech" width="48" height="48"/>
+    <div>
     <h1>SENTINEL · Full dashboard</h1>
     <div class="meta">{esc(data.get('host'))} · {esc(data.get('local_ip'))} · v{esc(data.get('version'))} · {esc(str(data.get('ts') or '')[:19])}Z</div>
     <nav>
@@ -476,6 +492,7 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
       <a href="#cases">Cases</a>
       <a href="#control">Control</a>
     </nav>
+    </div>
   </div>
   <div class="meta">
     SIEM <span class="badge {siem_badge}">{siem_badge.upper()}</span>
@@ -854,13 +871,24 @@ class _Handler(BaseHTTPRequestHandler):
             return
 
         # One-click PDF: generate + stream (works without JS / POST)
+
+        if path in ("/api/assets/logo", "/logo.png", "/favicon.ico"):
+            logo = _logo_asset()
+            if not logo:
+                self._send(404, b'{"ok":false,"error":"logo missing"}', "application/json")
+                return
+            body = logo.read_bytes()
+            ctype = "image/png"
+            self._send(200, body, ctype, extra_headers={"Cache-Control": "public, max-age=3600"})
+            return
+
         if path in ("/api/report/pdf", "/api/report/client", "/api/report/generate"):
             try:
                 from modules.client_report import generate_client_pdf
                 reports = _reports_dir()
                 ts = datetime.now().strftime("%Y%m%d_%H%M%S")
                 out_path = reports / f"Client_Report_{ts}.pdf"
-                result = generate_client_pdf(out_path=out_path)
+                result = generate_client_pdf(out_path=out_path, client_name=(_cfg().get('dashboard') or {}).get('client_name') or _cfg().get('client_name'))
                 if not result.get("ok"):
                     self._send(500, json.dumps({"ok": False, "error": result.get("error")}).encode(), "application/json")
                     return
@@ -1095,7 +1123,9 @@ def _generate_dashboard_pdfs(action: str = "pdf-report") -> dict:
     if action in ("pdf-report", "client-report"):
         try:
             from modules.client_report import generate_client_pdf
-            r = generate_client_pdf(out_path=client_path)
+            cfg = _cfg()
+            cname = (cfg.get("dashboard") or {}).get("client_name") or cfg.get("client_name")
+            r = generate_client_pdf(out_path=client_path, client_name=cname)
             if r.get("ok"):
                 path = Path(str(r.get("path") or client_path))
                 dest = reports / path.name
