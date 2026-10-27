@@ -29,21 +29,14 @@ def _cfg() -> dict:
 
 
 def _logo_path(*, header: bool = False) -> Optional[Path]:
-    """Official TrinTech brand mark (user-provided) preferred over fallbacks."""
-    here = Path(__file__).resolve().parent
-    if header:
-        ordered = [
-            here / "assets" / "trintech_logo_header.png",
-            here / "assets" / "trintech_sentinel_logo.png",
-            here / "assets" / "trintech_brand.png",
-        ]
-    else:
-        ordered = [
-            here / "assets" / "trintech_brand.png",
-            here / "assets" / "trintech_sentinel_logo.png",
-            here / "assets" / "trintech_logo_header.png",
-            here / "assets" / "logo.png",
-        ]
+    """Official TrinTech brand circle only (marketing artwork)."""
+    here = Path(__file__).resolve().parent / "assets"
+    # header uses slightly smaller file for lean PDFs; same artwork
+    ordered = [
+        here / "trintech_logo_header.png",
+        here / "trintech_sentinel_logo.png",
+        here / "trintech_brand.png",
+    ]
     for cand in ordered:
         if cand.is_file() and cand.stat().st_size > 100:
             return cand
@@ -325,16 +318,16 @@ def generate_client_pdf(out_path: Optional[Path] = None, client_name: Optional[s
 
     story: list = []
     logo = _logo_path(header=True)
-    logo_full = _logo_path(header=True)  # compact asset keeps PDF lean
+    logo_full = _logo_path(header=True)
 
     # ── Header with logo ──────────────────────────────────────────
     left_cell = []
     if logo:
         try:
-            left_cell.append(Image(str(logo), width=18 * mm, height=18 * mm, mask="auto"))
+            left_cell.append(Image(str(logo), width=20 * mm, height=20 * mm, mask="auto"))
         except Exception:
             try:
-                left_cell.append(Image(str(logo), width=18 * mm, height=18 * mm))
+                left_cell.append(Image(str(logo), width=20 * mm, height=20 * mm))
             except Exception:
                 pass
     left_text = Table([
@@ -412,10 +405,10 @@ def generate_client_pdf(out_path: Optional[Path] = None, client_name: Optional[s
     # Brand emblem (official TrinTech artwork)
     if logo_full:
         try:
-            emblem = Image(str(logo_full), width=42 * mm, height=42 * mm, mask="auto")
+            emblem = Image(str(logo_full), width=48 * mm, height=48 * mm, mask="auto")
         except Exception:
             try:
-                emblem = Image(str(logo_full), width=42 * mm, height=42 * mm)
+                emblem = Image(str(logo_full), width=48 * mm, height=48 * mm)
             except Exception:
                 emblem = None
         if emblem is not None:
