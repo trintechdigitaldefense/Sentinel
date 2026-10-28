@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.16.0"
+__version__ = "3.16.1"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -1763,10 +1763,19 @@ def agent_report_to_central(central_url, data, token=None):
         except Exception:
             pass
         payload = json.dumps(data).encode()
+        headers = {}
+        try:
+            headers = dict(tls_agent_headers(token or "") or {})
+        except Exception:
+            headers = {}
+        if token:
+            headers.setdefault("X-Sentinel-Token", token)
+            headers.setdefault("Authorization", f"Bearer {token}")
+        headers.setdefault("Content-Type", "application/json")
         req = urllib.request.Request(
             central_url.rstrip("/") + "/agent/report",
             data=payload,
-            headers=tls_agent_headers(token or ""),
+            headers=headers,
             method="POST"
         )
         with urllib.request.urlopen(req, timeout=10) as resp:
@@ -1803,14 +1812,44 @@ def run_agent_mode(config, logger, central_url=None, interval=60):
         logger.info(f"{C.GREEN}✓{C.RESET} Agent stopped")
 
 
+
 class AgentHandler(http.server.BaseHTTPRequestHandler):
+    """Central multi-host agent API — token auth, fleet + canary status."""
+
     def log_message(self, format, *args):
         pass
 
+    def _token_ok(self) -> bool:
+        config = load_config_safe()
+        expected = (config.get("agent") or {}).get("shared_token") or ""
+        if not expected:
+            return False
+        received = self.headers.get("X-Sentinel-Token") or ""
+        auth = self.headers.get("Authorization") or ""
+        if auth.startswith("Bearer "):
+            received = received or auth[7:].strip()
+        return bool(received) and secrets.compare_digest(str(received), str(expected))
+
+    def _json(self, code: int, obj: dict):
+        body = json.dumps(obj, default=str).encode()
+        try:
+            self.send_response(code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(body)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
     def do_GET(self):
-        if self.path.startswith("/canary/beacon"):
-            from urllib.parse import urlparse, parse_qs
-            qs = parse_qs(urlparse(self.path).query)
+        from urllib.parse import urlparse, parse_qs
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/") or "/"
+
+        # Canary beacon (may be unauthenticated by design — id is capability)
+        if path.startswith("/canary/beacon") or path == "/canary/beacon":
+            qs = parse_qs(parsed.query)
             cid = (qs.get("id") or [""])[0]
             config = load_config_safe()
             meta = {"client": self.client_address[0], "path": self.path}
@@ -1818,71 +1857,168 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
                 handle_canary_beacon(cid, meta, config, send_alert=send_alert)
             except Exception:
                 pass
-            try:
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(b'{"status":"recorded"}')
-            except (BrokenPipeError, ConnectionResetError):
-                pass
+            self._json(200, {"status": "recorded", "id": cid})
             return
-        self.send_response(404)
-        self.end_headers()
+
+        # Health is open so operators can probe the listener
+        if path in ("/health", "/agent/health"):
+            self._json(200, {
+                "ok": True,
+                "service": "sentinel-central",
+                "host": socket.gethostname(),
+                "ts": datetime.now().isoformat(),
+            })
+            return
+
+        # Authenticated status endpoints
+        if not self._token_ok():
+            self._json(401, {"error": "unauthorized"})
+            return
+
+        if path in ("/agents", "/agent/list", "/api/agents"):
+            try:
+                from modules.remote_agent import list_remote_agents
+                self._json(200, list_remote_agents())
+            except Exception as e:
+                self._json(500, {"ok": False, "error": str(e)})
+            return
+
+        if path in ("/fleet", "/api/fleet"):
+            try:
+                from modules.network_fleet import fleet_status
+                self._json(200, fleet_status())
+            except Exception as e:
+                self._json(500, {"ok": False, "error": str(e)})
+            return
+
+        if path in ("/agent/status", "/status"):
+            try:
+                from modules.remote_agent import list_remote_agents
+                from modules.network_fleet import fleet_status
+                agents = list_remote_agents()
+                fleet = fleet_status()
+                self._json(200, {
+                    "ok": True,
+                    "agents": agents.get("count", 0),
+                    "fleet_hosts": fleet.get("count", 0),
+                    "canary_planted": fleet.get("canary_planted", 0),
+                    "canary_pending_agent": fleet.get("canary_pending_agent", 0),
+                    "pending_review": fleet.get("pending_review", 0),
+                    "ts": datetime.now().isoformat(),
+                })
+            except Exception as e:
+                self._json(500, {"ok": False, "error": str(e)})
+            return
+
+        self._json(404, {"error": "not found", "path": path})
 
     def do_POST(self):
-        if self.path != "/agent/report":
-            self.send_response(404)
-            self.end_headers()
+        from urllib.parse import urlparse
+        path = urlparse(self.path).path.rstrip("/") or "/"
+
+        if path not in ("/agent/report", "/api/agent/report"):
+            self._json(404, {"error": "not found"})
             return
-        config = load_config_safe()
-        expected = config.get("agent", {}).get("shared_token", "")
-        received = self.headers.get("X-Sentinel-Token", "")
-        if not expected or received != expected:
-            self.send_response(401)
-            self.end_headers()
-            self.wfile.write(b'{"error":"unauthorized"}')
+
+        if not self._token_ok():
+            self._json(401, {"error": "unauthorized"})
             return
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length)
+
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        body = self.rfile.read(length) if length > 0 else b"{}"
         try:
-            data = json.loads(body.decode())
+            data = json.loads(body.decode() or "{}")
+            if not isinstance(data, dict):
+                data = {"raw": data}
+
+            # Enrich with peer IP if agent omitted local IP
+            if not data.get("ip"):
+                data["ip"] = self.client_address[0]
+
             AGENT_DATA_DIR.mkdir(parents=True, exist_ok=True)
-            host = re.sub(r'[^a-zA-Z0-9_-]', '_', data.get("hostname", "unknown"))[:40]
-            fname = AGENT_DATA_DIR / f"{host}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+            host = re.sub(r"[^a-zA-Z0-9_-]", "_", str(data.get("hostname") or "unknown"))[:40]
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            fname = AGENT_DATA_DIR / f"{host}_{ts}.json"
             with open(fname, "w") as f:
                 json.dump(data, f, indent=2)
+            # Latest snapshot per host for dashboard / status
+            latest = AGENT_DATA_DIR / f"{host}_latest.json"
+            with open(latest, "w") as f:
+                json.dump(data, f, indent=2)
+
+            reg = {"ok": False}
             try:
                 from modules.remote_agent import register_agent_checkin
-                register_agent_checkin(data)
-            except Exception:
-                pass
-            for p in data.get("processes", []):
-                if p.get("reason") == "reverse_shell":
-                    send_alert("AGENT_REVERSE_SHELL", {"agent": data.get("hostname"), "ip": data.get("ip"), "cmd": p.get("cmd")})
-            try:
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(b'{"status":"ok"}')
-            except (BrokenPipeError, ConnectionResetError):
-                pass
+                reg = register_agent_checkin(data)
+            except Exception as e:
+                reg = {"ok": False, "error": str(e)}
+
+            # Canary missing on agent
+            for fpath, meta in (data.get("canaries") or {}).items():
+                if isinstance(meta, dict) and meta.get("status") == "missing":
+                    try:
+                        send_alert("AGENT_CANARY_MISSING", {
+                            "agent": data.get("hostname"),
+                            "ip": data.get("ip"),
+                            "path": fpath,
+                            "canary_id": meta.get("canary_id"),
+                        })
+                    except Exception:
+                        pass
+
+            for p in data.get("processes") or []:
+                if isinstance(p, dict) and p.get("reason") == "reverse_shell":
+                    try:
+                        send_alert("AGENT_REVERSE_SHELL", {
+                            "agent": data.get("hostname"),
+                            "ip": data.get("ip"),
+                            "cmd": p.get("cmd"),
+                        })
+                    except Exception:
+                        pass
+
+            self._json(200, {
+                "status": "ok",
+                "registered": reg.get("ok", False),
+                "canary_count": reg.get("canary_count", 0),
+                "saved": str(fname.name),
+            })
         except Exception as e:
-            try:
-                self.send_response(400)
-                self.end_headers()
-                self.wfile.write(str(e).encode())
-            except (BrokenPipeError, ConnectionResetError):
-                pass
+            self._json(400, {"error": str(e)})
 
 
 def start_central_listener(logger, port=None):
+    """Start multi-host central API (agent reports, fleet, health)."""
     port = port or load_config_safe().get("agent", {}).get("port", AGENT_PORT)
     AGENT_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    server = socketserver.TCPServer(("0.0.0.0", port), AgentHandler)
+    # Ensure token exists
+    try:
+        from modules.remote_agent import ensure_agent_token
+        tok = ensure_agent_token()
+        if logger:
+            logger.info(f"{C.GREEN}✓{C.RESET} Agent shared_token ready ({len(tok)} chars)")
+    except Exception as e:
+        if logger:
+            logger.warning(f"{C.YELLOW}!{C.RESET} token ensure: {e}")
+
+    class _ReusableTCPServer(socketserver.TCPServer):
+        allow_reuse_address = True
+
+    try:
+        server = _ReusableTCPServer(("0.0.0.0", int(port)), AgentHandler)
+    except OSError as e:
+        if logger:
+            logger.error(f"{C.RED}✗{C.RESET} Central bind failed on {port}: {e}")
+        raise
     t = threading.Thread(target=server.serve_forever, daemon=True)
     t.start()
-    logger.info(f"{C.GREEN}✓{C.RESET} Central agent listener on port {C.BOLD}{port}{C.RESET} (token auth required)")
+    if logger:
+        logger.info(
+            f"{C.GREEN}✓{C.RESET} Central agent listener on port {C.BOLD}{port}{C.RESET} "
+            f"(report=/agent/report health=/health agents=/agents fleet=/fleet)"
+        )
     return server
+
 
 
 # ════════════════════════════════════════════════════════════════════
