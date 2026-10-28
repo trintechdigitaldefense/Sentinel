@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.15.0"
+__version__ = "3.16.0"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -1756,6 +1756,12 @@ def agent_report_to_central(central_url, data, token=None):
     try:
         if token is None:
             token = load_config_safe().get("agent", {}).get("shared_token", "")
+        # Always record check-in locally (central on same box benefits; agents keep a copy)
+        try:
+            from modules.remote_agent import register_agent_checkin
+            register_agent_checkin(data if isinstance(data, dict) else {})
+        except Exception:
+            pass
         payload = json.dumps(data).encode()
         req = urllib.request.Request(
             central_url.rstrip("/") + "/agent/report",
@@ -1776,6 +1782,13 @@ def run_agent_mode(config, logger, central_url=None, interval=60):
         logger.error(f"{C.RED}✗ No central URL. Use: sentinel agent http://CENTRAL_IP:8743{C.RESET}")
         return
     logger.info(f"{C.CYAN}[*]{C.RESET} Agent mode → {C.BOLD}{central_url}{C.RESET} (interval {interval}s)")
+    # Plant canaries on this agent host at startup
+    try:
+        from modules.remote_agent import agent_plant_canaries
+        plant = agent_plant_canaries(logger=logger)
+        logger.info(f"{C.GREEN}✓{C.RESET} Agent canaries: {plant}")
+    except Exception as e:
+        logger.warning(f"{C.YELLOW}!{C.RESET} Agent canary plant: {e}")
     try:
         while True:
             data = agent_collect_local()
@@ -1838,6 +1851,11 @@ class AgentHandler(http.server.BaseHTTPRequestHandler):
             fname = AGENT_DATA_DIR / f"{host}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
             with open(fname, "w") as f:
                 json.dump(data, f, indent=2)
+            try:
+                from modules.remote_agent import register_agent_checkin
+                register_agent_checkin(data)
+            except Exception:
+                pass
             for p in data.get("processes", []):
                 if p.get("reason") == "reverse_shell":
                     send_alert("AGENT_REVERSE_SHELL", {"agent": data.get("hostname"), "ip": data.get("ip"), "cmd": p.get("cmd")})
@@ -3458,6 +3476,50 @@ Examples:
         except Exception as e:
             print("[!] realtime-monitor:", e)
 
+
+
+    elif command in ("agent-bundle", "agent-install-bundle"):
+        try:
+            from modules.remote_agent import build_install_bundle
+            url = args[0] if args else None
+            print(json.dumps(build_install_bundle(central_url=url), indent=2, default=str))
+        except Exception as e:
+            print("[!] agent-bundle:", e)
+    elif command == "agent-push":
+        try:
+            from modules.remote_agent import push_via_ssh
+            if not args:
+                print("Usage: sentinel agent-push user@host [--identity PATH] [--port 22]")
+            else:
+                target = args[0]
+                identity = None
+                port = 22
+                if "--identity" in args:
+                    i = args.index("--identity")
+                    if i + 1 < len(args):
+                        identity = args[i + 1]
+                if "--port" in args:
+                    i = args.index("--port")
+                    if i + 1 < len(args):
+                        port = int(args[i + 1])
+                print(json.dumps(push_via_ssh(target, identity=identity, port=port), indent=2, default=str))
+        except Exception as e:
+            print("[!] agent-push:", e)
+    elif command in ("agent-canary", "agent-canaries"):
+        try:
+            from modules.remote_agent import agent_plant_canaries, deploy_canaries_fleet_plan
+            if args and args[0] == "fleet":
+                print(json.dumps(deploy_canaries_fleet_plan(), indent=2, default=str))
+            else:
+                print(json.dumps(agent_plant_canaries(logger=logger), indent=2, default=str))
+        except Exception as e:
+            print("[!] agent-canary:", e)
+    elif command in ("agents-list", "remote-agents"):
+        try:
+            from modules.remote_agent import list_remote_agents
+            print(json.dumps(list_remote_agents(), indent=2, default=str))
+        except Exception as e:
+            print("[!] agents-list:", e)
 
     elif command in ("fleet-scan", "fleet", "devices-scan"):
         try:
