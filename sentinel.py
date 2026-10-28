@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.16.2"
+__version__ = "3.16.3"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -1995,63 +1995,69 @@ def print_banner():
     print()
 
 
+
 def interactive_menu(config=None, logger=None):
-    """Numbered menu — full feature surface, submenus for advanced tools."""
+    """Numbered menu — every option maps to a real CLI handler."""
     import subprocess
     import sys as _sys
     from pathlib import Path as _Path
 
     eng = _Path(__file__).resolve()
 
-    def run(*args):
+    def pause():
         try:
-            subprocess.call([_sys.executable, str(eng), *args])
+            input(f"\n  {C.GRAY}Press Enter to continue...{C.RESET}")
+        except (EOFError, KeyboardInterrupt):
+            print()
+
+    def run(*args):
+        """Dispatch to the same CLI as `python3 sentinel.py <args>`."""
+        if not args:
+            print(f"  {C.RED}No command wired for this option{C.RESET}")
+            return 1
+        print(f"  {C.GRAY}$ python3 sentinel.py {' '.join(str(a) for a in args)}{C.RESET}\n")
+        try:
+            rc = subprocess.call([_sys.executable, str(eng), *[str(a) for a in args]])
+            if rc not in (0, None):
+                print(f"\n  {C.YELLOW}[!] Command exited with code {rc}{C.RESET}")
+            return rc
         except KeyboardInterrupt:
             print(f"\n{C.YELLOW}Stopped.{C.RESET}")
+            return 130
+        except Exception as e:
+            print(f"  {C.RED}Menu dispatch error:{C.RESET} {e}")
+            return 1
 
     def run_continuous_defense():
-        """Start full client protection stack then continuous hunt."""
         print(f"\n  {C.CYAN}{C.BOLD}[*] CONTINUOUS PROTECTION — full stack{C.RESET}\n")
-        # 1) Fleet discovery (ARP + rustscan/masscan/nmap if present)
         try:
             from modules.network_fleet import continuous_protect_bootstrap, fleet_status
             boot = continuous_protect_bootstrap(logger=None)
             fleet = boot.get("steps", {}).get("fleet") or fleet_status()
-            print(f"  {C.GREEN}[+]{C.RESET} Devices discovered: {fleet.get('count', 0)}  "
-                  f"(method={fleet.get('scan_method')})")
-            print(f"  {C.GREEN}[+]{C.RESET} Local canaries: {boot.get('steps', {}).get('local_canaries', {})}")
+            print(f"  {C.GREEN}[+]{C.RESET} Devices: {fleet.get('count', 0)}  method={fleet.get('scan_method')}")
             pending = (boot.get("steps", {}).get("remote_plan") or {}).get("pending_agent_canaries") or []
             if pending:
                 print(f"  {C.YELLOW}[!]{C.RESET} Remote hosts needing agent canaries: {len(pending)}")
-            print(f"  {C.GRAY}    Supervised review before client flags: "
-                  f"{boot.get('steps', {}).get('supervised_review', True)}{C.RESET}")
         except Exception as e:
             print(f"  {C.YELLOW}[!]{C.RESET} Fleet bootstrap: {e}")
-        # 2) Classic start (scan + deception + LoD checks)
-        print(f"\n  {C.CYAN}[*] Host start (scan + decoys + checks)...{C.RESET}\n")
         run("start")
-        # 3) Firewall status (read-only; no silent apply)
         try:
             run("firewall", "status")
         except Exception:
             pass
-        # 4) Dashboard in background so clients can view live
         try:
-            import subprocess as _sp
             _logp = _Path.home() / ".sentinel" / "data"
             _logp.mkdir(parents=True, exist_ok=True)
-            _sp.Popen(
+            subprocess.Popen(
                 [_sys.executable, str(eng), "dashboard"],
                 stdout=open(str(_logp / "dashboard_bg.log"), "a"),
-                stderr=_sp.STDOUT,
+                stderr=subprocess.STDOUT,
                 start_new_session=True,
             )
-            print(f"  {C.GREEN}[+]{C.RESET} Dashboard starting in background (see dashboard-url)")
+            print(f"  {C.GREEN}[+]{C.RESET} Dashboard background started")
         except Exception as e:
             print(f"  {C.YELLOW}[!]{C.RESET} Dashboard bg: {e}")
-        # 5) Continuous hunt (blocks until Ctrl+C)
-        print(f"\n  {C.GREEN}{C.BOLD}[*] Continuous protection ON — hunt loop + live dashboard{C.RESET}")
-        print(f"  {C.GRAY}Ctrl+C to stop hunt and return to menu (dashboard may keep running){C.RESET}\n")
+        print(f"\n  {C.GREEN}{C.BOLD}[*] Hunt loop — Ctrl+C to return to menu{C.RESET}\n")
         run("hunt")
 
     main_items = [
@@ -2069,12 +2075,14 @@ def interactive_menu(config=None, logger=None):
         ("12", "Status + ops metrics", ("ops",)),
         ("13", "Always-on service (install)", ("service-install",)),
         ("14", "Service status", ("service-status",)),
-        ("15", "Schedule WhatsApp digest", ("digest-cron",)),
-        ("16", "Pilot validation workflow", ("pilot",)),
-        ("17", "Doctor (health check)", ("doctor",)),
+        ("15", "Doctor (health check)", ("doctor",)),
+        ("16", "Go-live readiness", ("go-live",)),
+        ("17", "Pilot validation workflow", ("pilot",)),
         ("18", "Firewall tools →", ("__firewall__",)),
-        ("19", "Ops (PDF, dashboard, cases, sim) →", ("__ops__",)),
-        ("20", "Phase 4 advanced tools →", ("__phase4__",)),
+        ("19", "Ops (PDF, dashboard, cases) →", ("__ops__",)),
+        ("20", "Fleet + agents (multi-host) →", ("__fleet__",)),
+        ("21", "Phase 4 advanced tools →", ("__phase4__",)),
+        ("22", "Schedule WhatsApp digest", ("digest-cron",)),
         ("0",  "Exit", ("__exit__",)),
     ]
 
@@ -2126,6 +2134,21 @@ def interactive_menu(config=None, logger=None):
         ("10", "Ops status (hunt/alerts/service)", ("ops",)),
         ("11", "Critical alerts (open)", ("critical", "status")),
         ("12", "SIEM status", ("siem", "status")),
+        ("13", "Central summary", ("central-summary",)),
+        ("0", "Back to main menu", ("__back__",)),
+    ]
+
+    fleet_items = [
+        ("1", "Fleet scan (discover network devices)", ("fleet-scan",)),
+        ("2", "List remote agents", ("agents-list",)),
+        ("3", "Build agent install bundle", ("agent-bundle",)),
+        ("4", "Plan remote canaries (bundle)", ("agent-canary", "fleet")),
+        ("5", "Plant canaries on THIS host (agent)", ("agent-canary",)),
+        ("6", "Pending operator review", ("review-list",)),
+        ("7", "Start central listener", ("central",)),
+        ("8", "Central summary", ("central-summary",)),
+        ("9", "Stale agents (15 min)", ("agent-stale", "15")),
+        ("10", "Go-live readiness", ("go-live",)),
         ("0", "Back to main menu", ("__back__",)),
     ]
 
@@ -2152,7 +2175,10 @@ def interactive_menu(config=None, logger=None):
             try:
                 print_banner()
             except Exception:
-                print("\n  SENTINEL — Interactive Menu\n")
+                try:
+                    banner()
+                except Exception:
+                    print("\n  SENTINEL — Interactive Menu\n")
             show(items, title)
             try:
                 pick = input(f"\n  {C.BOLD}Select:{C.RESET} ").strip()
@@ -2170,35 +2196,43 @@ def interactive_menu(config=None, logger=None):
             if args[0] == "__back__":
                 return "back"
             if args[0] == "__phase4__":
-                loop(p4_items, "PHASE 4 — Advanced tools")
+                if loop(p4_items, "PHASE 4 — Advanced tools") == "exit":
+                    return "exit"
                 continue
             if args[0] == "__detect__":
-                loop(detect_items, "DETECTION TOOLS")
+                if loop(detect_items, "DETECTION TOOLS") == "exit":
+                    return "exit"
                 continue
             if args[0] == "__firewall__":
-                loop(firewall_items, "HOST FIREWALL")
+                if loop(firewall_items, "HOST FIREWALL") == "exit":
+                    return "exit"
                 continue
             if args[0] == "__ops__":
-                loop(ops_items, "OPS — Reports & control")
+                if loop(ops_items, "OPS — Reports & control") == "exit":
+                    return "exit"
+                continue
+            if args[0] == "__fleet__":
+                if loop(fleet_items, "FLEET + AGENTS") == "exit":
+                    return "exit"
                 continue
             if args[0] == "__continuous__":
                 run_continuous_defense()
             elif args[0] == "__sim_all__":
-                print(f"  {C.YELLOW}Requires confirmation — running sim --scenario all --confirm{C.RESET}")
+                print(f"  {C.YELLOW}Requires confirmation — sim --scenario all --confirm{C.RESET}")
                 run("sim", "--scenario", "all", "--confirm")
             elif args[0] == "__fw_protect__":
                 run("firewall", "protect-operator", "--confirm")
             elif args[0] == "__fw_defend__":
-                print(f"  {C.YELLOW}Applying defense pack caribbean_smb — ensure console access{C.RESET}")
+                print(f"  {C.YELLOW}Applying defense pack caribbean_smb{C.RESET}")
                 run("firewall", "defense-pack", "caribbean_smb", "--confirm")
             else:
                 run(*args)
-            try:
-                input(f"\n  {C.GRAY}Press Enter to continue...{C.RESET}")
-            except EOFError:
-                pass
+            # Continuous commands return via KeyboardInterrupt; still pause for one-shots
+            if args[0] not in ("__continuous__", "hunt", "watch", "dashboard", "central"):
+                pause()
 
     loop(main_items, "MAIN MENU")
+
 
 
 
@@ -2210,40 +2244,7 @@ def main():
     # fix_ui: open numbered menu when no command given
     # fix_ui: open numbered menu when no command given
     # fix_ui: open numbered menu when no command given
-    if len(sys.argv) < 2:
-        banner()
-        print(f"{C.BOLD}{C.BLUE}USAGE:{C.RESET}")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}start[ -v]{C.RESET}          Full scan + deception + Line of Defense")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}scan[ -v]{C.RESET}           Quick network scan")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}report{C.RESET}              Show full report")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}status{C.RESET}              Show current status")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}config[ -v]{C.RESET}        Initialize/edit config")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}alerts{C.RESET}               Show recent alerts")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}deception{C.RESET}           Deploy deception artifacts")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}hunt[ -v]{C.RESET}              Start persistence hunting")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}info{C.RESET}                 System info")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}clean{C.RESET}                 Reset all tracking data")
-        print()
-        print(f"{C.BOLD}{C.CYAN}LINE OF DEFENSE:{C.RESET}")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}integrity{C.RESET}         Generate integrity baseline (or check if --check)")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}integrity --check{C.RESET}  Check integrity only")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}watch[ -v]{C.RESET}             Start real-time filesystem watcher")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}processes{C.RESET}            Scan for suspicious processes")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}outbound{C.RESET}              Show outbound connections")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}blocklist{C.RESET}             Show blocked IPs")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}unblock <ip>{C.RESET}         Unblock an IP")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}users{C.RESET}                 Show user accounts & sudo")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}cron{C.RESET}                   Check cron integrity")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}hardening{C.RESET}              Run system hardening audit")
-        print()
-        print(f"{C.BOLD}{C.CYAN}PHASE 1:{C.RESET}")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}onboard --client NAME{C.RESET}  Client onboarding")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}quiet on|off{C.RESET}           Quiet mode")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}phase1{C.RESET}                 Phase 1 self-check")
-        print(f"  {C.BOLD}sentinel{C.RESET} {C.CYAN}quarantine --status{C.RESET}   Quarantine evidence")
-        print()
-        sys.exit(0)
-
+    
     command = sys.argv[1]
     verbose = "-v" in sys.argv or "--verbose" in sys.argv
     args = sys.argv[2:]
