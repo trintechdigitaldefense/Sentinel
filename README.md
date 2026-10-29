@@ -1,7 +1,7 @@
 # SENTINEL
 
 [![CI](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-3.16.11-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.16.12-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-Authorized%20defensive%20use-red)](LICENSE)
 [![Status](https://img.shields.io/badge/status-pilot%20candidate-yellow)](docs/RELEASE_CHECKLIST.md)
 
@@ -9,7 +9,28 @@
 
 > **Authorized defensive use only.** Detect · Alert · Report. No offensive capability.
 
-**Status:** pilot candidate (v3.16.11) on main — **not** a certified production release until [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) gates are evidenced and owner-approved.
+**Status:** pilot candidate (v3.16.12) on main — **not** a certified production release until [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) gates are evidenced and owner-approved.
+
+
+## Deployment model (SMB pilot)
+
+**Single-sensor pilot (recommended):** install Sentinel on **one always-on device** (Linux preferred; Android/Termux acceptable for light pilots). It monitors that host deeply, discovers other devices on the LAN, and does **not** fully protect every PC unless you enroll agents.
+
+```bash
+git clone https://github.com/trintechdigitaldefense/Sentinel.git
+cd Sentinel && python3 setup.py
+python3 sentinel.py autosubnet          # safe local /24
+python3 sentinel.py doctor
+python3 sentinel.py                     # menu → 1 continuous protection
+python3 sentinel.py service-status      # confirm always-on
+```
+
+**Weekly / biweekly supervision:** `doctor`, client PDF, review critical alerts, confirm canaries.
+
+**False positives:**  
+`python3 sentinel.py suppress-add SUSPICIOUS_PROCESS "pattern"`  
+`python3 sentinel.py suppress`
+
 
 ---
 

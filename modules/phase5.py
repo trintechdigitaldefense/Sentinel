@@ -30,16 +30,35 @@ def _run(cmd, timeout=12) -> str:
         return str(e)
 
 def detect_local_subnets() -> list:
+    """Detect local IPv4 subnets; prefer real prefix, clamp to /16–/24, skip docker/veth."""
     found = []
+    skip_ifaces = ("docker", "br-", "veth", "virbr", "lxc", "cni", "flannel", "tun", "wg")
     out = _run(["ip", "-o", "-4", "addr", "show"])
     for line in out.splitlines():
+        low = line.lower()
+        if any(x in low for x in skip_ifaces):
+            continue
         m = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)/(\d+)", line)
-        if not m: continue
-        ip = m.group(1)
-        if ip.startswith("127."): continue
-        parts = ip.split(".")
-        cidr = f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
-        if cidr not in found: found.append(cidr)
+        if not m:
+            continue
+        ip, prefix = m.group(1), int(m.group(2))
+        if ip.startswith("127.") or ip.startswith("169.254."):
+            continue
+        # Prefer observed prefix but never wider than /16 for scanning
+        if prefix < 16:
+            prefix = 24
+        if prefix > 24:
+            # still scan the /24 containing the host
+            prefix = 24
+        parts = [int(x) for x in ip.split(".")]
+        # network address for /24 or /16
+        if prefix >= 24:
+            cidr = f"{parts[0]}.{parts[1]}.{parts[2]}.0/24"
+        else:
+            # /16-style
+            cidr = f"{parts[0]}.{parts[1]}.0.0/{prefix}"
+        if cidr not in found:
+            found.append(cidr)
     if not found:
         out = _run(["hostname", "-I"])
         for tok in out.split():
@@ -47,18 +66,29 @@ def detect_local_subnets() -> list:
                 parts = tok.split(".")
                 found.append(f"{parts[0]}.{parts[1]}.{parts[2]}.0/24")
                 break
+    try:
+        from modules.subnet_guard import filter_safe_subnets
+        found = filter_safe_subnets(found)
+    except Exception:
+        pass
     return found or ["192.168.1.0/24"]
 
 def auto_subnet_apply(config=None) -> dict:
+    """Write detected local subnets into config (safe ranges only)."""
     c = config if config is not None else _cfg()
     nets = detect_local_subnets()
+    try:
+        from modules.subnet_guard import filter_safe_subnets
+        nets = filter_safe_subnets(nets)
+    except Exception:
+        pass
     c.setdefault("network", {})
     old = c["network"].get("scan_subnets") or []
     c["network"]["scan_subnets"] = nets
     c["network"]["auto_detected"] = True
     c["network"]["auto_detected_at"] = datetime.now().isoformat()
     _save_cfg(c)
-    return {"ok": True, "scan_subnets": nets, "previous": old}
+    return {"ok": True, "scan_subnets": nets, "previous": old, "note": "docker/veth skipped; max width /16"}
 
 HYGIENE_FILE = "alert_hygiene.json"
 DEFAULT_WINDOW_SEC = 900

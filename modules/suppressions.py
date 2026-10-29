@@ -51,7 +51,14 @@ def is_suppressed(event: dict, host: Optional[str] = None) -> bool:
         default_host = "host"
     host = (host or event.get("host") or default_host).lower()
     etype = str(event.get("type") or event.get("reason") or "").lower()
-    hay = " ".join(str(event.get(k) or "") for k in ("detail", "path", "command", "pattern", "username", "reason", "type")).lower()
+    parts = [str(event.get(k) or "") for k in ("detail", "path", "command", "pattern", "username", "reason", "type", "message")]
+    det = event.get("details")
+    if isinstance(det, dict):
+        parts.extend(str(det.get(k) or "") for k in ("path", "command", "pattern", "user", "pid", "ip", "cmd", "matched"))
+        parts.append(str(det))
+    elif det:
+        parts.append(str(det))
+    hay = " ".join(parts).lower()
     for r in rules:
         rh = (r.get("host") or "*").lower()
         if rh not in ("*", host):

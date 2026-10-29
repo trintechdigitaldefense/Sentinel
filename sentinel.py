@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.16.11"
+__version__ = "3.16.12"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -420,6 +420,19 @@ def send_alert(alert_type, details, logger=None):
             "REVERSE_SHELL", "BEHAVIORAL_REVERSE_SHELL", "CANARY_TRIGGERED",
             "CANARY_BEACON", "AGENT_REVERSE_SHELL", "NEW_SUID", "LD_PRELOAD_CREATED",
         }
+
+    if not _is_crit:
+        try:
+            from modules.suppressions import is_suppressed
+            _ev = {"type": str(alert_type), "details": details, "detail": str(details)}
+            if isinstance(details, dict):
+                _ev.update({k: details.get(k) for k in ("path", "command", "pattern", "user", "ip")})
+            if is_suppressed(_ev):
+                if logger:
+                    logger.info(f"{C.GRAY}suppressed by rule:{C.RESET} {alert_type}")
+                return
+        except Exception:
+            pass
 
     if not _is_crit:
         try:
@@ -2109,6 +2122,7 @@ def interactive_menu(config=None, logger=None):
         ("14", "Service status (always-on)", ("service-status",)),
         ("23", "Stop always-on service", ("service-stop",)),
         ("15", "Doctor (health check)", ("doctor",)),
+        ("24", "Auto-detect scan subnets", ("autosubnet",)),
         ("16", "Go-live readiness", ("go-live",)),
         ("17", "Pilot validation workflow", ("pilot",)),
         ("18", "Firewall tools →", ("__firewall__",)),

@@ -1,5 +1,11 @@
 ## [3.14.8] — 2026-10-27
 
+## 3.16.12 — autosubnet, suppressions in send_alert, pilot docs
+
+- autosubnet skips docker/veth, clamps width, uses subnet_guard
+- Learned suppressions applied in send_alert (non-critical)
+- README pilot deployment + docs/PILOT_DEPLOY.md
+
 ## 3.16.11 — CLI/menu polish
 
 - Fix `agent-key status` (subcommand was treated as agent id)
