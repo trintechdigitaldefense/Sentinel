@@ -1,5 +1,12 @@
 ## [3.14.8] — 2026-10-27
 
+## 3.16.10 — always-on, RBAC, agent enroll UX
+
+- Option 1 installs always-on hunt (systemd or background) so protection continues after menu exit
+- `service-stop` / richer `service-status` via modules.always_on
+- Dashboard control uses RBAC (`allow_control` + role=admin)
+- `agent-key` issues per-agent API keys with enroll hint
+
 ## 3.16.9 — reliability gap fixes
 
 - Doctor auto-sanitizes overly wide scan_subnets when possible

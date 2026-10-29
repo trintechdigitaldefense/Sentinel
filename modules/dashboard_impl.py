@@ -284,7 +284,14 @@ def collect_full() -> dict:
     except Exception as e:
         out["realtime"] = {"ok": False, "error": str(e), "level": "UNKNOWN", "threats": []}
 
-    out["control"] = bool((cfg.get("dashboard") or {}).get("allow_control", False))
+    try:
+        from modules.rbac import can_control, get_role
+        out["control"] = can_control(cfg)
+        out["role"] = get_role(cfg)
+    except Exception:
+        out["control"] = bool((cfg.get("dashboard") or {}).get("allow_control", False))
+        out["role"] = "viewer"
+
 
     try:
         from modules.dashboard_enrich import enrich
@@ -1248,6 +1255,10 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             # Allow turning OFF for safety, or confirming ON if already enabled
             dash["allow_control"] = want
+            if want:
+                dash["role"] = "admin"
+            elif dash.get("role") == "admin":
+                dash["role"] = "viewer"
             cfg["dashboard"] = dash
             _save_cfg(cfg)
             self.allow_control = want
@@ -1444,7 +1455,12 @@ def start_dashboard(port: int | None = None, bind: str | None = None):
         print("[!] Refusing public bind without dashboard.allow_public_bind=true — using 127.0.0.1")
         bind = "127.0.0.1"
     _Handler.token = token
-    _Handler.allow_control = bool(dash.get("allow_control", False))
+    try:
+        from modules.rbac import can_control
+        _Handler.allow_control = can_control({"dashboard": dash})
+    except Exception:
+        _Handler.allow_control = bool(dash.get("allow_control", False))
+
     try:
         from modules.rbac import must_change_password
         cfg = _cfg()

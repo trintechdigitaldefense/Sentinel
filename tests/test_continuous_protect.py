@@ -1,3 +1,4 @@
+
 from __future__ import annotations
 
 def test_continuous_protect_bootstrap_only():
@@ -18,3 +19,8 @@ def test_firewall_arm_runtime():
     rt = runtime_status()
     assert rt.get("running") is True
     assert rt.get("armed") is True
+
+def test_always_on_status():
+    from modules.always_on import status, stop
+    st = status()
+    assert "status" in st or "method" in st

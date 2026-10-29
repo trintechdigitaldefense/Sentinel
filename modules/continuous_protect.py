@@ -283,27 +283,57 @@ def run_continuous_protection(
         print(f"  {c.BOLD}{result['dashboard_url']}{c.RESET}")
     print(f"  {c.GREEN}{c.BOLD}{'─' * 50}{c.RESET}\n")
 
-    # 8) Hunt loop (blocking)
-    _step_print(c, 8, total, "Continuous hunt loop — Ctrl+C to return to menu")
+    # 8) Always-on service + optional attached hunt
+    _step_print(c, 8, total, "Always-on hunt service (keeps running after menu)")
+    always = {"ok": False}
+    try:
+        from modules.always_on import install as always_install, status as always_status
+        always = always_install()
+        result["steps"]["always_on"] = always
+        print(f"  {c.GREEN}[+]{c.RESET} Always-on: method={always.get('method')} status={always.get('status')} ok={always.get('ok')}")
+        if always.get("detail"):
+            print(f"  {c.GRAY}{always.get('detail')}{c.RESET}")
+        st = always_status()
+        result["steps"]["always_on_status"] = st
+        print(f"  {c.GREEN}[+]{c.RESET} Service check: {st.get('summary') or st}")
+    except Exception as e:
+        result["steps"]["always_on"] = {"ok": False, "error": str(e)}
+        print(f"  {c.YELLOW}[!]{c.RESET} Always-on install: {e}")
+
     result["steps"]["hunt"] = {"started": True}
     if skip_hunt:
         result["steps"]["hunt"]["skipped"] = True
         result["finished_at"] = datetime.now().isoformat()
+        print(f"\n  {c.GREEN}Bootstrap complete — always-on left running (no attached hunt).{c.RESET}\n")
         return result
 
-    # Interactive hunt — inherit stdout
+    # If always-on already running, avoid a second hunt process — show live tip
+    if always.get("ok"):
+        print(f"\n  {c.GREEN}{c.BOLD}Always-on hunt is running in the background.{c.RESET}")
+        print(f"  {c.GRAY}Dashboard stays up. Press Enter to return to the menu (protection continues).{c.RESET}")
+        print(f"  {c.GRAY}• Status: python3 sentinel.py service-status{c.RESET}")
+        print(f"  {c.GRAY}• Stop:   python3 sentinel.py service-stop{c.RESET}")
+        if result.get("dashboard_url"):
+            print(f"  {c.BOLD}{result['dashboard_url']}{c.RESET}")
+        try:
+            input(f"\n  {c.BOLD}Press Enter to return to menu…{c.RESET} ")
+        except (EOFError, KeyboardInterrupt):
+            print()
+        result["steps"]["hunt"]["mode"] = "always-on"
+        result["finished_at"] = datetime.now().isoformat()
+        return result
+
+    # Fallback: foreground hunt
+    print(f"\n  {c.YELLOW}Always-on not active — starting foreground hunt (Ctrl+C to stop){c.RESET}\n")
     try:
         rc = subprocess.call([sys.executable, str(_engine()), "hunt"])
         result["steps"]["hunt"]["code"] = rc
+        result["steps"]["hunt"]["mode"] = "foreground"
     except KeyboardInterrupt:
         result["steps"]["hunt"]["stopped"] = True
         print(f"\n  {c.YELLOW}Hunt stopped — dashboard/central may still be running.{c.RESET}")
     result["finished_at"] = datetime.now().isoformat()
-
-    # Final tip
-    print(f"\n  {c.CYAN}Still running in background (if started):{c.RESET}")
-    print(f"  {c.GRAY}• Dashboard  ·  python3 sentinel.py dashboard-url{c.RESET}")
-    print(f"  {c.GRAY}• Central    ·  curl -s http://127.0.0.1:{central_port}/health{c.RESET}")
-    print(f"  {c.GRAY}• Firewall   ·  visible on dashboard Defense / status hero{c.RESET}")
-    print(f"  {c.GRAY}• Resume     ·  menu option 1 or: python3 sentinel.py hunt{c.RESET}\n")
+    print(f"\n  {c.CYAN}Tips:{c.RESET}")
+    print(f"  {c.GRAY}• python3 sentinel.py service-install   # keep hunt after exit{c.RESET}")
+    print(f"  {c.GRAY}• python3 sentinel.py dashboard-url{c.RESET}\n")
     return result

@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.16.9"
+__version__ = "3.16.10"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2106,7 +2106,8 @@ def interactive_menu(config=None, logger=None):
         ("11", "Hardening audit", ("hardening",)),
         ("12", "Status + ops metrics", ("ops",)),
         ("13", "Always-on service (install)", ("service-install",)),
-        ("14", "Service status", ("service-status",)),
+        ("14", "Service status (always-on)", ("service-status",)),
+        ("14a", "Stop always-on service", ("service-stop",)),
         ("15", "Doctor (health check)", ("doctor",)),
         ("16", "Go-live readiness", ("go-live",)),
         ("17", "Pilot validation workflow", ("pilot",)),
@@ -2174,6 +2175,8 @@ def interactive_menu(config=None, logger=None):
         ("1", "Fleet scan (discover network devices)", ("fleet-scan",)),
         ("2", "List remote agents", ("agents-list",)),
         ("3", "Build agent install bundle", ("agent-bundle",)),
+        ("3a", "Issue agent API key", ("agent-key",)),
+        ("3b", "Enroll status", ("agent-key", "status")),
         ("4", "Plan remote canaries (bundle)", ("agent-canary", "fleet")),
         ("5", "Plant canaries on THIS host (agent)", ("agent-canary",)),
         ("6", "Pending operator review", ("review-list",)),
@@ -2699,21 +2702,26 @@ def main():
             print("[!] hygiene:", e)
 
 
+    elif command in ("service-stop", "stop-service"):
+        try:
+            from modules.always_on import stop
+            print(json.dumps(stop(), indent=2, default=str))
+        except Exception as e:
+            print("[!] service-stop:", e)
     elif command in ("service-install", "install-service"):
         try:
             from modules.phase5 import service_install
             print(service_install())
         except Exception as e:
             print("[!] service-install:", e)
-    elif command in ("service-status",):
+    elif command in ("service-status", "service-status-legacy"):
         try:
-            from modules.phase5 import service_status
-            print(service_status())
+            from modules.always_on import status as always_status
+            print(json.dumps(always_status(), indent=2, default=str))
         except Exception:
             try:
-                import subprocess
-                r = subprocess.run(["systemctl", "is-active", "sentinel-hunt"], capture_output=True, text=True)
-                print(r.stdout.strip() or r.stderr.strip() or "unknown")
+                from modules.phase5 import service_status
+                print(json.dumps(service_status(), indent=2, default=str))
             except Exception as e:
                 print("[!] service-status:", e)
     elif command in ("digest-cron", "schedule-digest"):
@@ -3481,6 +3489,18 @@ Examples:
             print("[!] realtime-monitor:", e)
 
 
+
+
+    elif command in ("agent-key", "issue-agent-key"):
+        try:
+            from modules.agent_enroll_ux import issue_local_agent_key, enroll_status
+            aid = args[1] if len(args) > 1 else ""
+            if aid in ("status", "--status"):
+                print(json.dumps(enroll_status(), indent=2, default=str))
+            else:
+                print(json.dumps(issue_local_agent_key(aid), indent=2, default=str))
+        except Exception as e:
+            print("[!] agent-key:", e)
 
     elif command in ("agent-bundle", "agent-install-bundle"):
         try:

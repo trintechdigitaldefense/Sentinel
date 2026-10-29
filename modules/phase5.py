@@ -416,7 +416,9 @@ def service_status() -> dict:
     import subprocess
 
     if shutil.which("systemctl") and Path("/run/systemd/system").exists():
-        st = subprocess.run(["systemctl", "is-active", "sentinel-hunt"], capture_output=True, text=True)
+        st = subprocess.run(["systemctl", "is-active", "sentinel-hunt.service"], capture_output=True, text=True)
+        if (st.stdout or "").strip() not in ("active", "activating"):
+            st = subprocess.run(["systemctl", "is-active", "sentinel-hunt"], capture_output=True, text=True)
         return {"ok": True, "method": "systemd", "status": (st.stdout or st.stderr or "").strip()}
 
     pidfile = _data() / "hunt.pid"
