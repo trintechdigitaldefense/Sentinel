@@ -2,6 +2,7 @@
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """Sentinel Phase 5 — hygiene, WhatsApp digest, heartbeat, dashboard, autosubnet."""
 from __future__ import annotations
+import logging
 import sys
 import hashlib, json, os, re, socket, subprocess, urllib.parse, urllib.request
 from datetime import datetime, timedelta
@@ -69,8 +70,9 @@ def detect_local_subnets() -> list:
     try:
         from modules.subnet_guard import filter_safe_subnets
         found = filter_safe_subnets(found)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return found or ["192.168.1.0/24"]
 
 def auto_subnet_apply(config=None) -> dict:
@@ -80,8 +82,9 @@ def auto_subnet_apply(config=None) -> dict:
     try:
         from modules.subnet_guard import filter_safe_subnets
         nets = filter_safe_subnets(nets)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     c.setdefault("network", {})
     old = c["network"].get("scan_subnets") or []
     c["network"]["scan_subnets"] = nets
@@ -178,7 +181,11 @@ def ensure_hygiene_defaults(config=None) -> dict:
 
 def heartbeat_write(extra: Optional[dict] = None) -> dict:
     path = _data() / "heartbeat.json"
-    payload = {"ts": datetime.now().isoformat(), "host": socket.gethostname(), "status": "alive", "version": "2.9.9", "phase": 5, "source": (extra or {}).get("source", "manual")}
+    try:
+        from sentinel import __version__ as _ver
+    except Exception:
+        _ver = "3.x"
+    payload = {"ts": datetime.now().isoformat(), "host": socket.gethostname(), "status": "alive", "version": str(_ver), "phase": 5, "source": (extra or {}).get("source", "manual"), "alive": True}
     if extra: payload.update(extra)
     path.write_text(json.dumps(payload, indent=2))
     return {"ok": True, "file": str(path), "ts": payload["ts"], "source": payload["source"]}
@@ -272,7 +279,7 @@ def status_json() -> dict:
     hb = heartbeat_status()
     digest = alert_digest(24)
     hy = hygiene_status()
-    return {"ok": True, "product": "SENTINEL", "version": "2.9.9", "host": socket.gethostname(), "ts": datetime.now().isoformat(), "scan_subnets": nets, "heartbeat_alive": hb.get("alive", False), "heartbeat_age_seconds": hb.get("age_seconds"), "heartbeat_source": (hb.get("data") or {}).get("source"), "behavioral_baseline": (_data() / "behavioral_baseline.json").exists(), "fim_baseline": (_data() / "integrity_baseline" / "integrity_baseline.json").exists(), "alerts_24h_approx": digest.get("recent_count", 0), "alert_buckets": digest.get("by_keyword", {}), "hygiene_suppressed": hy.get("suppressed_total", 0), "data_dir": str(_data())}
+    return {"ok": True, "product": "SENTINEL", "version": (lambda: (__import__("sentinel", fromlist=["__version__"]).__version__))(), "host": socket.gethostname(), "ts": datetime.now().isoformat(), "scan_subnets": nets, "heartbeat_alive": hb.get("alive", False), "heartbeat_age_seconds": hb.get("age_seconds"), "heartbeat_source": (hb.get("data") or {}).get("source"), "behavioral_baseline": (_data() / "behavioral_baseline.json").exists(), "fim_baseline": (_data() / "integrity_baseline" / "integrity_baseline.json").exists(), "alerts_24h_approx": digest.get("recent_count", 0), "alert_buckets": digest.get("by_keyword", {}), "hygiene_suppressed": hy.get("suppressed_total", 0), "data_dir": str(_data())}
 
 def _html_page() -> str:
     st = status_json()
@@ -380,8 +387,9 @@ def service_install() -> dict:
                 try:
                     from modules.phase5 import heartbeat_write
                     heartbeat_write({"source": "service-install"})
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
             return result
         except Exception as e:
             result["detail"] = f"systemd failed: {e}"
@@ -399,8 +407,9 @@ def service_install() -> dict:
         except Exception:
             try:
                 pidfile.unlink()
-            except Exception:
-                pass
+            except Exception as e:
+                logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     logfile = data / "hunt_bg.log"
 
     # stop previous bg hunt if any
@@ -408,8 +417,9 @@ def service_install() -> dict:
         try:
             old = int(pidfile.read_text().strip())
             os.kill(old, 15)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
     logf = open(logfile, "a")
     proc = subprocess.Popen(
@@ -422,13 +432,15 @@ def service_install() -> dict:
     pidfile.write_text(str(proc.pid))
     try:
         heartbeat_write({"source": "service-install-bg"})
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     try:
         from modules.deadman import emit_heartbeat
         emit_heartbeat(source="service-install")
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return {
         "ok": True,
         "method": "background",

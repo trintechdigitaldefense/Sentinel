@@ -267,6 +267,11 @@ def run_continuous_protection(
     try:
         from modules.deadman import emit_heartbeat
         emit_heartbeat(source="continuous-protect")
+        try:
+            from modules.phase5 import heartbeat_write
+            heartbeat_write({"source": "continuous-protect"})
+        except Exception as e:
+            logging.getLogger("sentinel").debug("hb write: %s", e)
     except Exception:
         try:
             hb = _data() / "heartbeat.json"

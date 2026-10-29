@@ -2,6 +2,7 @@
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """FEATURE 11 — Heartbeat dead-man's switch (sensor offline detection)."""
 from __future__ import annotations
+import logging
 import json
 import os
 import socket
@@ -25,8 +26,9 @@ def _cfg() -> dict:
     if p.exists():
         try:
             return json.loads(p.read_text())
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return {}
 
 def deadman_config() -> dict:
@@ -68,8 +70,9 @@ def emit_heartbeat(source: str = "hunt", extra: Optional[dict] = None) -> dict:
             "os": row.get("os", "linux"),
         })
         ap.write_text(json.dumps(row, indent=2))
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return payload
 
 def _parse_ts(ts: str):

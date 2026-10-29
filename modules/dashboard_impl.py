@@ -174,7 +174,6 @@ def collect_full() -> dict:
     # Align alert_total naming for client PDF
     out.setdefault("alerts_24h", out.get("alert_total") or len(out.get("recent_alerts") or []))
 
-
     mp = _data() / "hunt_metrics.json"
     if mp.exists():
         try:
@@ -192,6 +191,17 @@ def collect_full() -> dict:
             out["heartbeat"] = {"present": True}
     else:
         out["heartbeat"] = {"present": False}
+    try:
+        from modules.phase5 import heartbeat_status
+        hs = heartbeat_status()
+        if isinstance(hs, dict) and hs.get("ok"):
+            base = out.get("heartbeat") if isinstance(out.get("heartbeat"), dict) else {}
+            data = hs.get("data") if isinstance(hs.get("data"), dict) else {}
+            merged = {**base, **data, **{k: hs.get(k) for k in ("alive", "age_seconds", "ok")}}
+            out["heartbeat"] = merged
+            out["heartbeat_age_seconds"] = hs.get("age_seconds")
+    except Exception as e:
+        logging.getLogger("sentinel").debug("heartbeat_status: %s", e)
 
     ap = _data() / "alerts.log"
     recent = []

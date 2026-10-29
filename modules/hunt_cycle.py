@@ -5,6 +5,7 @@ Used by `sentinel hunt` and continuous protection so every loop does the same
 defensive work: heartbeat → host checks → visibility → optional intel hooks.
 """
 from __future__ import annotations
+import logging
 
 import json
 import os
@@ -33,8 +34,9 @@ def load_metrics() -> dict:
     if p.exists():
         try:
             return json.loads(p.read_text())
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return {
         "cycles": 0,
         "alerts_this_session": 0,
@@ -97,14 +99,16 @@ def run_cycle(
         try:
             from modules.phase5 import heartbeat_from_hunt
             heartbeat_from_hunt()
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
         try:
             from modules.deadman import emit_heartbeat, check_fleet
             emit_heartbeat("hunt")
             check_fleet()
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
         return True
     _run_check("heartbeat", _hb, errors, checks)
 
@@ -169,13 +173,15 @@ def run_cycle(
         try:
             from modules.brute_force import expire_blocks
             expire_blocks(logger=logger)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
         try:
             from modules.phase4 import offline_flush
             offline_flush()
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
         return True
     _run_check("maintenance", _maint, errors, checks)
 

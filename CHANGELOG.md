@@ -1,5 +1,11 @@
 ## [3.14.8] — 2026-10-27
 
+## 3.16.13 — heartbeat version + logging
+
+- Heartbeat payload uses live Sentinel version (no more stale 2.9.9)
+- heartbeat.alive set for dashboard hero accuracy
+- Debug-log silent exceptions in phase5, hunt_cycle, go_live, doctor, brute_force, persistence
+
 ## 3.16.12 — autosubnet, suppressions in send_alert, pilot docs
 
 - autosubnet skips docker/veth, clamps width, uses subnet_guard

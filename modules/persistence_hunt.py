@@ -5,6 +5,7 @@
 Detects footholds that survive reboot: new timers, key drops, preload hijacks.
 """
 from __future__ import annotations
+import logging
 
 import hashlib
 import json
@@ -185,8 +186,9 @@ def check(send_alert: Optional[Callable] = None, logger=None) -> dict:
             if send_alert:
                 try:
                     send_alert("NEW_PERSISTENCE", {"path": path, "kind": meta.get("type")})
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
             continue
         if old.get("absent") and not meta.get("absent") and meta.get("sha256"):
             ev = {"type": "LD_PRELOAD_CREATED", "path": path, "meta": meta}
@@ -196,8 +198,9 @@ def check(send_alert: Optional[Callable] = None, logger=None) -> dict:
             if send_alert:
                 try:
                     send_alert("LD_PRELOAD_CREATED", {"path": path})
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
             continue
         if old.get("sha256") and meta.get("sha256") and old["sha256"] != meta["sha256"]:
             kind = meta.get("type") or "file"
@@ -217,8 +220,9 @@ def check(send_alert: Optional[Callable] = None, logger=None) -> dict:
             if send_alert:
                 try:
                     send_alert(alert_type, {"path": path, "kind": kind})
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
             # authorized_keys key_count jump
             if kind == "authorized_keys":
                 old_n = old.get("key_count", -1)
@@ -227,8 +231,9 @@ def check(send_alert: Optional[Callable] = None, logger=None) -> dict:
                     if send_alert:
                         try:
                             send_alert("AUTHORIZED_KEYS_ADDED", {"path": path, "old_count": old_n, "new_count": new_n})
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
     for path, old in base.items():
         if path not in cur and not old.get("absent"):
@@ -239,8 +244,9 @@ def check(send_alert: Optional[Callable] = None, logger=None) -> dict:
             if send_alert:
                 try:
                     send_alert("REMOVED_PERSISTENCE", {"path": path, "kind": old.get("type")})
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
     return {"ok": True, "events": events, "count": len(events)}
 
@@ -252,6 +258,7 @@ def status() -> dict:
     if bp.exists():
         try:
             base_n = int((json.loads(bp.read_text()) or {}).get("count") or 0)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return {"ok": True, "baseline_exists": bp.exists(), "baseline_count": base_n, "live_count": live, "path": str(bp)}

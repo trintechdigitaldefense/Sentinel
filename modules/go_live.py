@@ -9,6 +9,7 @@ Usage (from CLI):
 Does not replace pilot validation — run pilot/field-soak after go-live.
 """
 from __future__ import annotations
+import logging
 
 import json
 import os
@@ -36,8 +37,9 @@ def _load_cfg() -> dict:
     if p.exists():
         try:
             return json.loads(p.read_text())
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return {}
 
 
@@ -47,8 +49,9 @@ def _save_cfg(cfg: dict) -> None:
     p.write_text(json.dumps(cfg, indent=2, default=str))
     try:
         os.chmod(p, 0o600)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
 
 def _now() -> str:
@@ -133,8 +136,9 @@ def run_go_live(
         try:
             os.chmod(_home(), 0o700)
             os.chmod(_data(), 0o700)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
         _step(results, "directories", True, path=str(_home()))
     except Exception as e:
         _step(results, "directories", False, error=str(e))
@@ -222,7 +226,7 @@ def run_go_live(
                 service_install_fn()
                 _step(results, "service_install", True)
             else:
-                from modules.phase5 import service_install as _si
+                from modules.always_on import install as service_install as _si
                 r = _si()
                 _step(results, "service_install", bool(r.get("ok", True)), result=r)
         except Exception as e:

@@ -1,5 +1,6 @@
 
 from __future__ import annotations
+import logging
 
 def _check_dashboard_password(results):
     try:
@@ -187,10 +188,12 @@ def check_canaries() -> dict:
                     try:
                         if _P(path).exists():
                             alive += 1
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+                    except Exception as e:
+                        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     if tracked >= 6 and alive >= 3:
         return _ok("canaries", f"{alive}/{tracked} canaries alive on disk")
     if tracked >= 1:
@@ -231,8 +234,9 @@ def check_service() -> dict:
             return _ok("service", st.get("summary") or f"{st.get('method')}:{st.get('status')}")
         if status in ("running", "active"):
             return _ok("service", st.get("summary") or status)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
     for unit in ("sentinel-hunt.service", "sentinel.service", "sentinel-central.service"):
         code, out = _run(["systemctl", "is-active", unit])
@@ -252,8 +256,9 @@ def check_service() -> dict:
         except (ValueError, ProcessLookupError, PermissionError, OSError):
             try:
                 pidfile.unlink(missing_ok=True)
-            except Exception:
-                pass
+            except Exception as e:
+                logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
             return _warn("service", "stale hunt.pid removed — re-run: python3 sentinel.py service-install")
     return _warn("service", "not active — run: python3 sentinel.py service-install")
 

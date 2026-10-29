@@ -52,8 +52,9 @@ def _load_blocklist() -> dict:
     if p.exists():
         try:
             return json.loads(p.read_text())
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return {"blocked": {}, "whitelist": [], "updated": None}
 
 
@@ -86,8 +87,9 @@ def _collect_auth_text() -> str:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=12)
             if r.stdout:
                 chunks.append(r.stdout)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     for logp in ("/var/log/auth.log", "/var/log/secure"):
         try:
             p = Path(logp)
@@ -97,8 +99,9 @@ def _collect_auth_text() -> str:
                 if len(data) > 200_000:
                     data = data[-200_000:]
                 chunks.append(data.decode("utf-8", errors="ignore"))
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return "\n".join(chunks)
 
 
@@ -134,8 +137,9 @@ def _is_whitelisted(ip: str, ssh_cfg: dict, blocklist: dict) -> bool:
             return True
         if ip in detect_operator_ips():
             return True
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return False
 
 
@@ -161,8 +165,9 @@ def expire_blocks(logger=None) -> dict:
                         capture_output=True, timeout=5,
                     )
                 continue
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
         still[ip] = meta
     bl["blocked"] = still
     _save_blocklist(bl)
@@ -193,8 +198,9 @@ def apply_block(
             bt = datetime.fromisoformat(str(bl["blocked"][ip].get("block_until", "")).replace("Z", ""))
             if now < bt:
                 return {"ok": True, "already_blocked": True, "ip": ip, "until": bt.isoformat()}
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
     fw_result: dict[str, Any] = {}
     try:
@@ -202,8 +208,9 @@ def apply_block(
         # Ensure operator stay-alive before applying drops
         try:
             protect_operator(confirm=True)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
         fw_result = block_ip(ip, confirm=True, reason=reason, source=source)
     except Exception as e:
         fw_result = {"ok": False, "error": str(e)}
@@ -237,8 +244,9 @@ def apply_block(
                     "backend": fw_result.get("backend"),
                 },
             )
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     if logger:
         if applied:
             logger.warning("IP BLOCKED %s (%s) via firewall plane", ip, reason)
