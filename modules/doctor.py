@@ -260,6 +260,17 @@ def check_service() -> dict:
                 logging.getLogger('sentinel').debug('%s: %s', __name__, e)
 
             return _warn("service", "stale hunt.pid removed — re-run: python3 sentinel.py service-install")
+    try:
+        from modules.phase5 import heartbeat_status
+        hs = heartbeat_status()
+        if hs.get("alive"):
+            return _warn(
+                "service",
+                f"no service unit but heartbeat alive ({hs.get('age_seconds')}s) — "
+                "run service-install for reboot persistence",
+            )
+    except Exception:
+        pass
     return _warn("service", "not active — run: python3 sentinel.py service-install")
 
 

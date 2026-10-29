@@ -2,7 +2,7 @@
 
 **Product:** Sentinel continuous monitoring & early warning  
 **Vendor:** TrinTech Digital Defense (Trinidad & Tobago / Caribbean)  
-**Version:** 3.14.8+ (hardening/production-readiness branch)  
+**Version:** 3.16.13+ (hardening/production-readiness branch)  
 **Use:** Authorized defensive use only
 
 ---
@@ -59,7 +59,7 @@ python3 sentinel.py
 | `python3 sentinel.py integrity` | Build FIM baseline |
 | `python3 sentinel.py integrity --check` | Check against baseline |
 | `python3 sentinel.py go-live` | Guided readiness (canaries + baselines) |
-| `python3 sentinel.py doctor` | Health / CLIENT-READY checklist |
+| `python3 sentinel.py doctor` | Health / pilot health checklist |
 | `python3 sentinel.py service-install` | Always-on service (systemd or bg hunt) |
 | `python3 sentinel.py service-status` | Service state |
 | `python3 sentinel.py dashboard` | Local UI (leave running) |

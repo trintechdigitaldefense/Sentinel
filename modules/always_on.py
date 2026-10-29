@@ -15,20 +15,33 @@ def install() -> dict[str, Any]:
 
 def status() -> dict[str, Any]:
     from modules.phase5 import service_status
-    st = service_status()
-    # Enrich with heartbeat age
+    st = dict(service_status() or {})
+    hb = {}
     try:
-        from modules.dashboard_impl import collect_full
-        d = collect_full()
-        hb = d.get("heartbeat") or {}
-        st["heartbeat"] = hb
-        st["heartbeat_alive"] = bool(hb.get("alive"))
+        from modules.phase5 import heartbeat_status
+        hs = heartbeat_status()
+        if isinstance(hs, dict):
+            hb = {**(hs.get("data") or {}), **{k: hs.get(k) for k in ("alive", "age_seconds", "ok")}}
+            st["heartbeat"] = hb
+            st["heartbeat_alive"] = bool(hs.get("alive"))
     except Exception as e:
         log.debug("heartbeat enrich: %s", e)
         st["heartbeat_alive"] = None
+
+    # If service not installed but heartbeat is fresh, monitoring is still active
+    method = st.get("method") or "none"
+    status = str(st.get("status") or "")
+    alive = bool(st.get("heartbeat_alive"))
+    if (not st.get("ok") or method == "none" or "not installed" in status.lower() or status.lower() == "not running"):
+        if alive:
+            st["ok"] = True
+            st["method"] = st.get("method") if st.get("method") not in (None, "none") else "heartbeat"
+            st["status"] = "monitoring (heartbeat alive — install service for restart-on-boot)"
+            st["note"] = "run: python3 sentinel.py service-install for true always-on"
     st["summary"] = (
         f"{st.get('method')}:{st.get('status')}"
         + (f" pid={st['pid']}" if st.get("pid") else "")
+        + (f" hb={st.get('heartbeat_age_seconds') or hb.get('age_seconds')}s" if alive else "")
     )
     return st
 

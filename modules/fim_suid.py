@@ -7,6 +7,7 @@ Baselines the set of setuid/setgid binaries and alerts on:
   - mode/owner change on known SUID paths
 """
 from __future__ import annotations
+import logging
 
 import json
 import os
@@ -103,8 +104,9 @@ def check(send_alert: Optional[Callable] = None, logger=None) -> list:
             if send_alert:
                 try:
                     send_alert("NEW_SUID", {"file": fpath, "mode": meta.get("mode"), "uid": meta.get("uid"), "gid": meta.get("gid")})
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
         else:
             prev = old[fpath]
             if prev.get("mode_int") != meta.get("mode_int") or prev.get("uid") != meta.get("uid") or prev.get("gid") != meta.get("gid"):
@@ -115,8 +117,9 @@ def check(send_alert: Optional[Callable] = None, logger=None) -> list:
                 if send_alert:
                     try:
                         send_alert("SUID_META_CHANGE", {"file": fpath, "old": prev, "new": meta})
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
     # Removed expected SUID (may be legitimate package update — still signal)
     for fpath in old:
@@ -128,8 +131,9 @@ def check(send_alert: Optional[Callable] = None, logger=None) -> list:
             if send_alert:
                 try:
                     send_alert("REMOVED_SUID", {"file": fpath})
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
     return changes
 
@@ -141,8 +145,9 @@ def status() -> dict:
     if p.exists():
         try:
             base_count = int((json.loads(p.read_text()) or {}).get("count") or 0)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return {
         "ok": True,
         "baseline_exists": p.exists(),

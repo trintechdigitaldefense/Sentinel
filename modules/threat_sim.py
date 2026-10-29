@@ -17,6 +17,7 @@ Scenarios:
 Cleanup removes simulation artifacts under ~/.sentinel/data/sim/ and user timer.
 """
 from __future__ import annotations
+import logging
 
 import json
 import os
@@ -113,8 +114,9 @@ def scenario_canary(send_alert: Optional[Callable] = None, logger=None) -> dict:
     if send_alert and touched:
         try:
             send_alert("SIM_CANARY_TOUCH", {"files": touched[:8], "count": len(touched), "sim": True})
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     if logger:
         logger.info("sim canary touched %d files", len(touched))
 
@@ -173,8 +175,9 @@ def scenario_fim(send_alert: Optional[Callable] = None, logger=None, fim_check_f
             if send_alert:
                 try:
                     send_alert("FIM_MODIFIED", {"file": str(probe), "sim": True, "old_checksum": old_sum, "new_checksum": new_sum})
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
     return {
         "ok": True,
@@ -212,8 +215,9 @@ def scenario_persistence(send_alert: Optional[Callable] = None, logger=None) -> 
         if send_alert:
             try:
                 send_alert("NEW_PERSISTENCE", {"path": str(timer), "kind": "systemd_timer", "sim": True})
-            except Exception:
-                pass
+            except Exception as e:
+                logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
     return {
         "ok": True,
@@ -257,8 +261,9 @@ def scenario_reverse_shell(send_alert: Optional[Callable] = None, logger=None) -
                                         "sim": True,
                                     },
                                 )
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
                         break
     except Exception as e:
         matched.append(f"ps error: {e}")
@@ -278,8 +283,9 @@ def scenario_reverse_shell(send_alert: Optional[Callable] = None, logger=None) -
     # leave process to die (12s) — or terminate
     try:
         proc.terminate()
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
     return {
         "ok": True,
@@ -319,8 +325,9 @@ def cleanup() -> dict:
                 if f.is_file():
                     f.unlink()
                     removed.append(str(f))
-            except Exception:
-                pass
+            except Exception as e:
+                logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     udir = Path.home() / ".config/systemd/user"
     for name in (TIMER_NAME, SERVICE_NAME):
         p = udir / name
@@ -328,8 +335,9 @@ def cleanup() -> dict:
             try:
                 p.unlink()
                 removed.append(str(p))
-            except Exception:
-                pass
+            except Exception as e:
+                logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     # Strip sim entries from FIM baseline
     bpath = _data() / "integrity_baseline" / "integrity_baseline.json"
     if bpath.exists():
@@ -341,8 +349,9 @@ def cleanup() -> dict:
                     data.pop(k, None)
                     removed.append(f"baseline:{k}")
                 bpath.write_text(json.dumps(data, indent=2))
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return {"ok": True, "removed": removed}
 
 
@@ -395,8 +404,9 @@ def run(
     try:
         report_path.write_text(json.dumps(report, indent=2, default=str))
         report["report"] = str(report_path)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return report
 
 

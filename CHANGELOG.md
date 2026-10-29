@@ -1,5 +1,12 @@
 ## [3.14.8] — 2026-10-27
 
+## 3.16.14 — always-on status accuracy
+
+- service-status reports monitoring when heartbeat is alive even without systemd unit
+- Doctor soft-warns reboot persistence instead of implying total stop
+- More debug logging in realtime_threat, firewall, fim_suid
+- Docs overview version aligned
+
 ## 3.16.13 — heartbeat version + logging
 
 - Heartbeat payload uses live Sentinel version (no more stale 2.9.9)

@@ -7,6 +7,7 @@ NOT a perimeter/router appliance.
 Safety: dry-run unless confirm; audit log; max_blocks; refuse loopback.
 """
 from __future__ import annotations
+import logging
 
 import ipaddress
 import json
@@ -45,8 +46,9 @@ def _cfg() -> dict:
     if p.exists():
         try:
             return json.loads(p.read_text()).get("firewall") or {}
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return {}
 
 
@@ -157,8 +159,9 @@ def detect_operator_ips() -> list[str]:
             ip = ipaddress.ip_address(part)
             if not (ip.is_loopback or ip.is_unspecified):
                 found.add(str(ip))
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     # Active SSH peers via ss (best effort)
     try:
         r = _run(["ss", "-tn", "sport", "=", ":22"])
@@ -178,10 +181,12 @@ def detect_operator_ips() -> list[str]:
                 ip = ipaddress.ip_address(host)
                 if not (ip.is_loopback or ip.is_unspecified):
                     found.add(str(ip))
-            except Exception:
-                pass
-    except Exception:
-        pass
+            except Exception as e:
+                logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     # Persist last-seen operators so a later cron block still respects them
     try:
         p = _data() / "operator_ips.json"
@@ -192,8 +197,9 @@ def detect_operator_ips() -> list[str]:
         p.write_text(json.dumps({"ips": merged[-20:], "updated": _now()}, indent=2))
         for x in prev:
             found.add(x)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return sorted(found)
 
 
@@ -210,8 +216,9 @@ def is_operator_target(target: str) -> bool:
         for o in ops:
             if ip == ipaddress.ip_address(o):
                 return True
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return False
 
 
@@ -255,8 +262,9 @@ def _case_event(title: str, detail: dict) -> None:
         try:
             from modules.cases import open_case
             open_case(title, detail)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
 
 def ensure_backend_ready() -> dict:
@@ -813,8 +821,9 @@ def audit_tail(n: int = 30) -> dict:
     for line in lines:
         try:
             events.append(json.loads(line))
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return {"ok": True, "events": events}
 
 
@@ -1002,8 +1011,9 @@ def arm_for_continuous(apply_rules: bool = True) -> dict:
     out["note"] = "Host firewall plane armed and kept active for continuous protection."
     try:
         runtime_path().write_text(json.dumps(out, indent=2, default=str))
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     _audit("arm_for_continuous", {"backend": b, "mode": out.get("mode")}, ok=True)
     return out
 

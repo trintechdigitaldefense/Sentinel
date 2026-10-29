@@ -1,7 +1,7 @@
 # SENTINEL
 
 [![CI](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml)
-[![Version](https://img.shields.io/badge/version-3.16.13-blue)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-3.16.14-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-Authorized%20defensive%20use-red)](LICENSE)
 [![Status](https://img.shields.io/badge/status-pilot%20candidate-yellow)](docs/RELEASE_CHECKLIST.md)
 
@@ -9,7 +9,7 @@
 
 > **Authorized defensive use only.** Detect · Alert · Report. No offensive capability.
 
-**Status:** pilot candidate (v3.16.13) on main — **not** a certified production release until [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) gates are evidenced and owner-approved.
+**Status:** pilot candidate (v3.16.14) on main — **not** a certified production release until [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) gates are evidenced and owner-approved.
 
 
 ## Deployment model (SMB pilot)

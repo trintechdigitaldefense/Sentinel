@@ -14,6 +14,7 @@ Detects:
 Designed to finish in a few seconds for frequent polling.
 """
 from __future__ import annotations
+import logging
 
 import json
 import os
@@ -159,8 +160,9 @@ def scan_deleted_exe() -> list:
             cmdline = ""
             try:
                 cmdline = (p / "cmdline").read_bytes().replace(b"\x00", b" ").decode("utf-8", "replace")[:120]
-            except Exception:
-                pass
+            except Exception as e:
+                logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
             hits.append({
                 "type": "DELETED_EXE",
                 "severity": "HIGH",
@@ -273,16 +275,18 @@ def scan_canaries() -> list:
                 for k, v in cfg.items():
                     if isinstance(v, str) and (v.startswith("/") or v.startswith("~")):
                         paths.append(v)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     # Files physically under deception_artifacts (except tracker)
     if dec.exists():
         try:
             for f in dec.rglob("*"):
                 if f.is_file() and f.name != "config.json":
                     paths.append(str(f))
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     if not paths:
         return hits  # nothing deployed → no canary noise
     seen = set()
@@ -307,8 +311,9 @@ def scan_canaries() -> list:
                     "path": str(fp),
                     "detail": "tracked canary empty",
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return hits[:25]
 
 
@@ -398,26 +403,30 @@ def snapshot(
                     x in typ.upper() for x in ("SHELL", "CANARY", "REVERSE")
                 ):
                     record(typ or "REALTIME_CRITICAL", t, host=None)
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
         if send_alert:
             for t in threats:
                 typ = str(t.get("type") or "")
                 if "SHELL" in typ.upper() or typ == "REVERSE_SHELL_CMDLINE":
                     try:
                         send_alert("REVERSE_SHELL", t, logger)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
                 elif "CANARY" in typ.upper():
                     try:
                         send_alert("CANARY_TRIGGERED", t, logger)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
                 elif typ == "DELETED_EXE":
                     try:
                         send_alert("DELETED_EXE", t, logger)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
     out = {
         "ok": True,
@@ -436,8 +445,9 @@ def snapshot(
     }
     try:
         (_data() / "realtime_threat.json").write_text(json.dumps(out, indent=2, default=str))
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return out
 
 
@@ -446,6 +456,7 @@ def status() -> dict:
     if p.exists():
         try:
             return json.loads(p.read_text())
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return snapshot(emit_alerts=False)
