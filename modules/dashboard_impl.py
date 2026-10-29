@@ -334,6 +334,26 @@ def _html(token: str, data: dict) -> str:
 
     control = bool(data.get("control", True))
 
+    # Plain-language monitoring status for hero banner
+    _hb = data.get("heartbeat") or {}
+    _alive = bool(_hb.get("alive")) if isinstance(_hb, dict) else False
+    _crit_n = int((data.get("critical") or {}).get("open_count") or 0)
+    if _crit_n > 0:
+        hero_status = "Needs attention"
+        hero_class = "hero-bad"
+        hero_detail = f"{_crit_n} critical alert(s) still open. TrinTech should review."
+    elif _alive:
+        hero_status = "Monitoring is active"
+        hero_class = "hero-good"
+        hero_detail = "Continuous protection is running on this host."
+    else:
+        hero_status = "Monitoring may be paused"
+        hero_class = "hero-warn"
+        hero_detail = "Start hunt or service-install so protection stays on 24/7."
+    _fleet = data.get("fleet") or {}
+    _can = data.get("canaries") or {}
+
+
     fleet = data.get("fleet") or {}
     try:
         _prev = {
@@ -446,30 +466,52 @@ def _html(token: str, data: dict) -> str:
     if control:
         control_panel = f"""
   <div class="section card" id="control">
-    <h2>Quick actions (control mode)</h2>
-    <div class="actions">
-      <button class="btn" onclick="runAction('refresh')">Refresh status</button>
-      <a class="btn btn-pdf" id="btn-pdf-report" href="/api/report/pdf?token={esc(token)}" target="_blank" rel="noopener" title="Opens PDF report now">📄 Generate PDF report</a>
-      <a class="btn secondary" href="/api/report/client?token={esc(token)}" target="_blank" rel="noopener">Client PDF (plain language)</a>
-      <a class="btn secondary" href="/api/report/technical?token={esc(token)}" target="_blank" rel="noopener">Technical PDF</a>
-      <button class="btn secondary" onclick="runAction('doctor')">Run doctor</button>
-      <button class="btn secondary" onclick="runAction('ops')">Refresh ops</button>
-      <button class="btn secondary" onclick="runAction('go-live-status')">Show go-live report</button>
-      <button class="btn secondary" onclick="runAction('quiet-on')">Quiet ON</button>
-      <button class="btn secondary" onclick="runAction('quiet-off')">Quiet OFF</button>
-      <button class="btn secondary" onclick="runAction('field-soak')">Field-soak (no confirm)</button>
-      <button class="btn secondary" onclick="runAction('visibility')">Visibility scan</button>
-      <button class="btn secondary" onclick="runAction('service-status')">Service status</button>
-      <button class="btn btn-sm" onclick="ackAllCritical()">ACK all critical</button>
+    <h2>What you can do here</h2>
+    <p class="hint">These buttons are safe for day-to-day use. Full hunts and firewall changes stay on the command line.</p>
+
+    <div class="action-group">
+      <div class="action-label">Reports for the client</div>
+      <div class="actions">
+        <a class="btn btn-pdf" id="btn-pdf-report" href="/api/report/pdf?type=client&amp;token={esc(token)}" target="_blank" rel="noopener">📄 Client report (easy to read)</a>
+        <a class="btn secondary" href="/api/report/technical?token={esc(token)}" target="_blank" rel="noopener">🔧 Technical report (for IT)</a>
+      </div>
     </div>
-    <pre id="action-out" class="mono outbox">Ready.</pre>
-    <p class="muted">Destructive or long-running actions (full hunt, firewall apply, deception redeploy) stay on CLI for safety.</p>
+
+    <div class="action-group">
+      <div class="action-label">Check the system</div>
+      <div class="actions">
+        <button class="btn" onclick="runAction('refresh')">🔄 Refresh this page data</button>
+        <button class="btn secondary" onclick="runAction('doctor')">🩺 Health check (doctor)</button>
+        <button class="btn secondary" onclick="runAction('service-status')">⚙️ Service status</button>
+        <button class="btn secondary" onclick="runAction('go-live-status')">🚀 Go-live status</button>
+        <button class="btn secondary" onclick="runAction('visibility')">👁️ Scan visibility</button>
+      </div>
+    </div>
+
+    <div class="action-group">
+      <div class="action-label">Alerts &amp; quiet hours</div>
+      <div class="actions">
+        <button class="btn secondary" onclick="runAction('quiet-on')"> Quiet mode ON</button>
+        <button class="btn secondary" onclick="runAction('quiet-off')"> Quiet mode OFF</button>
+        <button class="btn secondary" onclick="ackAllCritical()">✅ Clear all critical alerts</button>
+        <button class="btn secondary" onclick="runAction('ops')">📊 Refresh ops numbers</button>
+      </div>
+    </div>
+
+    <div class="action-group">
+      <div class="action-label">Field tools</div>
+      <div class="actions">
+        <button class="btn secondary" onclick="runAction('field-soak')">Field-soak check</button>
+      </div>
+    </div>
+
+    <div id="action-out" class="outbox" role="status">Ready — results show here.</div>
   </div>
 """
     else:
         control_panel = """
-  <div class="section card"><h2>Control</h2>
-    <p class="muted">View-only mode (<code>dashboard.allow_control: false</code>). Critical ACK and actions disabled.</p>
+  <div class="section card" id="control"><h2>View only</h2>
+    <p class="hint">This dashboard is in <b>view-only</b> mode. Ask TrinTech to enable controls if you need buttons here.</p>
   </div>
 """
 
@@ -486,13 +528,67 @@ def _html(token: str, data: dict) -> str:
   --accent:#3b82f6; --good:#22c55e; --warn:#f59e0b; --bad:#ef4444; --crit:#f43f5e;
 }}
 * {{ box-sizing:border-box; }}
-body {{
 .brand-row {{ display:flex; align-items:center; gap:.75rem; }}
-.brand-logo {{ width:48px; height:48px; border-radius:50%; background:#0b1f3a; object-fit:cover; border:2px solid #0e7c7b; }}
-
+.brand-logo {{ width:48px; height:48px; border-radius:50%; background:#0b1f3a; object-fit:cover; border:2px solid #0e7c7b; flex-shrink:0; }}
+body {{
   margin:0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   background: radial-gradient(1200px 600px at 10% -10%, #1a2744 0%, var(--bg) 55%);
   color:var(--text); min-height:100vh;
+  line-height:1.45;
+}}
+.hero {{
+  border-radius:16px; padding:1.15rem 1.25rem; margin-bottom:1rem;
+  border:1px solid var(--border); background:var(--panel);
+}}
+.hero-good {{ border-color:rgba(34,197,94,.45); box-shadow:0 0 0 1px rgba(34,197,94,.12); }}
+.hero-warn {{ border-color:rgba(245,158,11,.45); box-shadow:0 0 0 1px rgba(245,158,11,.12); }}
+.hero-bad {{ border-color:rgba(244,63,94,.5); box-shadow:0 0 0 1px rgba(244,63,94,.15); }}
+.hero-title {{ font-size:1.35rem; font-weight:700; margin:0 0 .35rem; }}
+.hero-good .hero-title {{ color:var(--good); }}
+.hero-warn .hero-title {{ color:var(--warn); }}
+.hero-bad .hero-title {{ color:var(--crit); }}
+.hero-detail {{ color:var(--muted); margin:0 0 .75rem; font-size:.95rem; }}
+.hero-chips {{ display:flex; flex-wrap:wrap; gap:.4rem; }}
+.chip {{
+  font-size:.75rem; color:var(--text); background:rgba(148,163,184,.12);
+  border:1px solid var(--border); border-radius:999px; padding:.25rem .65rem;
+}}
+.hint {{ color:var(--muted); font-size:.88rem; margin:.15rem 0 .75rem; }}
+.action-group {{ margin:1rem 0 1.15rem; }}
+.action-label {{
+  font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; color:var(--muted);
+  margin:0 0 .45rem;
+}}
+.actions {{ display:flex; flex-wrap:wrap; gap:.5rem; }}
+.btn {{
+  display:inline-flex; align-items:center; justify-content:center; gap:.35rem;
+  min-height:42px; padding:.55rem 1rem; border-radius:10px; border:1px solid transparent;
+  background:var(--accent); color:#fff; font-weight:600; font-size:.9rem;
+  cursor:pointer; text-decoration:none; line-height:1.2;
+}}
+.btn:hover {{ filter:brightness(1.08); }}
+.btn.secondary {{
+  background:rgba(148,163,184,.12); color:var(--text); border-color:var(--border);
+}}
+.btn.btn-pdf {{ background:#0e7c7b; }}
+.outbox {{
+  margin-top:.85rem; padding:.85rem 1rem; border-radius:10px;
+  background:#0a101c; border:1px solid var(--border); color:#cbd5e1;
+  font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size:.8rem; white-space:pre-wrap; word-break:break-word; min-height:2.5rem;
+}}
+.topnav a {{
+  display:inline-block; padding:.35rem .55rem; margin:0 .15rem .25rem 0;
+  border-radius:8px; background:rgba(59,130,246,.08);
+}}
+.topnav a:hover {{ background:rgba(59,130,246,.18); }}
+@media (max-width:640px) {{
+  header {{ padding:.85rem 1rem; }}
+  .wrap {{ padding:.85rem; }}
+  .btn {{ width:100%; }}
+  .actions {{ flex-direction:column; }}
+  .metric {{ font-size:1.25rem; }}
+  .hero-title {{ font-size:1.15rem; }}
 }}
 header {{
   display:flex; justify-content:space-between; align-items:center; gap:1rem; flex-wrap:wrap;
@@ -564,16 +660,16 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
   <div class="brand-row">
     <img class="brand-logo" src="/api/assets/logo?token={esc(token)}" alt="TrinTech" width="48" height="48"/>
     <div>
-    <h1>SENTINEL · Full dashboard</h1>
+    <h1>SENTINEL protection dashboard</h1>
     <div class="meta">{esc(data.get('host'))} · {esc(data.get('local_ip'))} · v{esc(data.get('version'))} · {esc(str(data.get('ts') or '')[:19])}Z</div>
-    <nav>
-      <a href="#overview">Overview</a>
+    <nav class="topnav">
+      <a href="#status-hero">Status</a>
+      <a href="#overview">At a glance</a>
       <a href="#critical">Critical</a>
       <a href="#alerts">Alerts</a>
-      <a href="#visibility">Visibility</a>
-      <a href="#defense">Defense</a>
-      <a href="#cases">Cases</a>
-      <a href="#control">Control</a>
+      <a href="#fleet">Network</a>
+      <a href="#control">Actions</a>
+      <a href="#reports">Reports</a>
     </nav>
     </div>
   </div>
@@ -590,8 +686,22 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
   </div>
 </header>
 <div class="wrap">
-  <div class="card section" id="realtime" style="margin-top:0">
-    <h2>Real-time threat detection <span id="rt-live" class="badge on">LIVE</span></h2>
+  <div class="hero {hero_class}" id="status-hero">
+    <div class="hero-title">{esc(hero_status)}</div>
+    <div class="hero-detail">{esc(hero_detail)}</div>
+    <div class="hero-chips">
+      <span class="chip">Host: {esc(data.get('host'))}</span>
+      <span class="chip">IP: {esc(data.get('local_ip'))}</span>
+      <span class="chip">v{esc(data.get('version'))}</span>
+      <span class="chip">Devices: {esc((_fleet.get('count') if _fleet else None) or (data.get('visibility') or {}).get('devices') or 0)}</span>
+      <span class="chip">Canaries: {esc((_can.get('alive') if isinstance(_can, dict) else 0))}/{esc((_can.get('total') if isinstance(_can, dict) else 0))}</span>
+      <span class="chip">{"Controls on" if control else "View only"}</span>
+    </div>
+  </div>
+
+  <div class="card section" id="realtime">
+    <h2>Live threats <span id="rt-live" class="badge on">LIVE</span></h2>
+    <p class="hint">What Sentinel sees right now on this machine.</p>
     <p>
       <span class="badge {rt_badge}">{esc(rt_level)}</span>
       · score <b>{esc(rt.get("score", 0))}</b>
@@ -608,17 +718,17 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
     </div>
   </div>
   <div class="grid" id="overview">
-    <div class="card"><h2>Hunt cycles</h2><div class="metric">{esc(hunt.get('cycles', 0))}</div>
+    <div class="card"><h2>Protection cycles</h2><div class="metric">{esc(hunt.get('cycles', 0))}</div>
       <div class="muted">last {esc(hunt.get('last_cycle_sec', '—'))}s · ok={esc(hunt.get('last_ok'))}</div></div>
-    <div class="card"><h2>Critical open</h2><div class="metric" style="color:var(--crit)">{esc(crit.get('open_count', 0))}</div>
-      <div class="muted">persist until ACK</div></div>
-    <div class="card"><h2>Alerts total</h2><div class="metric">{esc(data.get('alert_total', 0))}</div>
+    <div class="card"><h2>Critical alerts</h2><div class="metric" style="color:var(--crit)">{esc(crit.get('open_count', 0))}</div>
+      <div class="muted">need a human to clear</div></div>
+    <div class="card"><h2>All alerts</h2><div class="metric">{esc(data.get('alert_total', 0))}</div>
       <div class="muted">offline q {esc(ops.get('offline_queue', 0))}</div></div>
-    <div class="card"><h2>Devices (fleet)</h2><div class="metric">{esc((data.get('fleet') or {}).get('count') or vis.get('devices', 0))}</div>
+    <div class="card"><h2>Devices on network</h2><div class="metric">{esc((data.get('fleet') or {}).get('count') or vis.get('devices', 0))}</div>
     <div class="meta">scan={esc((data.get('fleet') or {}).get('scan_method'))} · canaries local/pending={esc((data.get('fleet') or {}).get('canary_planted'))}/{esc((data.get('fleet') or {}).get('canary_pending_agent'))}</div>
     <div class="meta">pending operator review: {esc((data.get('fleet') or {}).get('pending_review') or 0)}</div>
       <div class="muted">ARP live {esc(vis.get('live_arp', 0))}</div></div>
-    <div class="card"><h2>Processes</h2><div class="metric">{esc(vis.get('processes', 0))}</div>
+    <div class="card"><h2>Running processes</h2><div class="metric">{esc(vis.get('processes', 0))}</div>
       <div class="muted">FIM {(vis.get('fim') or {}).get('files', '—')}</div></div>
     <div class="card"><h2>SIEM ship</h2><div class="metric">{esc(siem.get('ship_file_lines', 0))}</div>
       <div class="muted">syslog={esc(siem.get('syslog'))} hec={esc(siem.get('splunk_hec'))}</div></div>
