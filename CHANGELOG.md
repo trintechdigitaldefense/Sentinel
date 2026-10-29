@@ -1,5 +1,13 @@
 ## [3.14.8] — 2026-10-27
 
+## 3.16.16 — stronger SSH brute-force engine
+
+- Broader auth failure markers + rhost/from IP extraction
+- Configurable log window; last-scan snapshot for dashboard
+- Alert SSH_BRUTE_CANDIDATE when auto_block is off
+- Progressive bans, history, whitelist CIDR/prefix, unblock CLI
+- auto_block remains off by default
+
 ## 3.16.15 — progressive SSH ban wired into check
 
 - auto_block uses progressive_duration (2× each repeat, cap 24h)

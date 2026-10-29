@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.16.15"
+__version__ = "3.16.16"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -225,7 +225,10 @@ def init_config(logger):
             "max_block_duration": 86400,
             "repeat_multiplier": 2.0,
             "alert_on_block": True,
+            "alert_on_candidate": True,
             "auto_block": False,
+            "log_hours": 2,
+            "log_lines": 1200,
             "whitelist_ips": [],
         },
         "outbound_monitor": {
@@ -3666,20 +3669,26 @@ Examples:
 
     elif command in ("ssh-blocks", "bruteforce", "brute-force"):
         try:
-            from modules.brute_force import check as bf_check, status as bf_status, expire_blocks, whitelist_add
-            if args and args[0] == "status":
+            from modules.brute_force import (
+                check as bf_check, status as bf_status, expire_blocks,
+                whitelist_add, unblock as bf_unblock,
+            )
+            sub = args[0] if args else "status"
+            if sub == "status":
                 print(json.dumps(bf_status(), indent=2, default=str))
-            elif args and args[0] == "expire":
-                print(json.dumps(expire_blocks(logger=logger), indent=2))
-            elif args and args[0] == "whitelist" and len(args) > 1:
-                print(json.dumps(whitelist_add(args[1]), indent=2))
-            elif args and args[0] == "check":
+            elif sub == "expire":
+                print(json.dumps(expire_blocks(logger=logger), indent=2, default=str))
+            elif sub == "whitelist" and len(args) > 1:
+                print(json.dumps(whitelist_add(args[1]), indent=2, default=str))
+            elif sub == "unblock" and len(args) > 1:
+                print(json.dumps(bf_unblock(args[1]), indent=2, default=str))
+            elif sub == "check":
                 def _sa(t, d, *a, **k):
                     send_alert(t, d, logger)
                 print(json.dumps(bf_check(config=config, send_alert=_sa, logger=logger), indent=2, default=str))
             else:
                 print(json.dumps(bf_status(), indent=2, default=str))
-                print("Usage: ssh-blocks status|check|expire|whitelist <ip>")
+                print("Usage: ssh-blocks status|check|expire|whitelist <ip>|unblock <ip>")
         except Exception as e:
             print("[!] ssh-blocks:", e)
 
