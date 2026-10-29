@@ -222,7 +222,18 @@ def check_heartbeat() -> dict:
         return _fail("heartbeat", str(e))
 
 def check_service() -> dict:
-    # systemd unit names used by Sentinel over time
+    """Always-on hunt: systemd or background pid (Termux)."""
+    try:
+        from modules.always_on import status as always_status
+        st = always_status()
+        status = str(st.get("status") or "").lower()
+        if st.get("ok") and status in ("active", "running"):
+            return _ok("service", st.get("summary") or f"{st.get('method')}:{st.get('status')}")
+        if status in ("running", "active"):
+            return _ok("service", st.get("summary") or status)
+    except Exception:
+        pass
+
     for unit in ("sentinel-hunt.service", "sentinel.service", "sentinel-central.service"):
         code, out = _run(["systemctl", "is-active", unit])
         if code == 0 and "active" in (out or ""):
@@ -230,13 +241,13 @@ def check_service() -> dict:
         code2, out2 = _run(["systemctl", "--user", "is-active", unit])
         if code2 == 0 and "active" in (out2 or ""):
             return _ok("service", f"user systemd {unit} active")
-    # Background / Termux fallback (service-install without systemd)
+
     import os
     pidfile = _data() / "hunt.pid"
     if pidfile.exists():
         try:
             pid = int(pidfile.read_text().strip())
-            os.kill(pid, 0)  # raises if not running
+            os.kill(pid, 0)
             return _ok("service", f"background hunt running (pid {pid})")
         except (ValueError, ProcessLookupError, PermissionError, OSError):
             try:

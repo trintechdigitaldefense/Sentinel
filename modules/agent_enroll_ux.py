@@ -52,9 +52,15 @@ def enroll_status() -> dict[str, Any]:
         return {"ok": False, "error": str(e)}
     central = cfg.get("central") or {}
     agent = cfg.get("agent") or {}
+    enrolled = bool(
+        central.get("enabled")
+        and (central.get("api_key") or agent.get("shared_token") or agent.get("api_key"))
+    )
     return {
         "ok": True,
-        "enrolled": bool(central.get("enabled") and (central.get("api_key") or agent.get("shared_token"))),
+        "enrolled": enrolled,
         "server_url": central.get("server_url") or agent.get("central_url"),
         "agent_id": agent.get("agent_id"),
+        "has_master_key": bool(agent.get("master_key")),
+        "hint": None if enrolled else "Issue a key (agent-key) then: enroll --server URL --key KEY",
     }

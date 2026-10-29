@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.16.10"
+__version__ = "3.16.11"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2107,7 +2107,7 @@ def interactive_menu(config=None, logger=None):
         ("12", "Status + ops metrics", ("ops",)),
         ("13", "Always-on service (install)", ("service-install",)),
         ("14", "Service status (always-on)", ("service-status",)),
-        ("14a", "Stop always-on service", ("service-stop",)),
+        ("23", "Stop always-on service", ("service-stop",)),
         ("15", "Doctor (health check)", ("doctor",)),
         ("16", "Go-live readiness", ("go-live",)),
         ("17", "Pilot validation workflow", ("pilot",)),
@@ -2175,15 +2175,17 @@ def interactive_menu(config=None, logger=None):
         ("1", "Fleet scan (discover network devices)", ("fleet-scan",)),
         ("2", "List remote agents", ("agents-list",)),
         ("3", "Build agent install bundle", ("agent-bundle",)),
-        ("3a", "Issue agent API key", ("agent-key",)),
-        ("3b", "Enroll status", ("agent-key", "status")),
-        ("4", "Plan remote canaries (bundle)", ("agent-canary", "fleet")),
-        ("5", "Plant canaries on THIS host (agent)", ("agent-canary",)),
-        ("6", "Pending operator review", ("review-list",)),
-        ("7", "Start central listener", ("central",)),
-        ("8", "Central summary", ("central-summary",)),
-        ("9", "Stale agents (15 min)", ("agent-stale", "15")),
-        ("10", "Go-live readiness", ("go-live",)),
+        ("4", "Issue agent API key", ("agent-key",)),
+        ("5", "Enroll status", ("agent-key", "status")),
+        ("6", "Plan remote canaries (bundle)", ("agent-canary", "fleet")),
+        ("7", "Plant canaries on THIS host (agent)", ("agent-canary",)),
+        ("8", "Pending operator review", ("review-list",)),
+        ("9", "Start central listener", ("central",)),
+        ("10", "Central summary", ("central-summary",)),
+        ("11", "Stale agents (15 min)", ("agent-stale", "15")),
+        ("12", "Go-live readiness", ("go-live",)),
+        ("13", "Always-on service install", ("service-install",)),
+        ("14", "Always-on service status", ("service-status",)),
         ("0", "Back to main menu", ("__back__",)),
     ]
 
@@ -3494,11 +3496,18 @@ Examples:
     elif command in ("agent-key", "issue-agent-key"):
         try:
             from modules.agent_enroll_ux import issue_local_agent_key, enroll_status
-            aid = args[1] if len(args) > 1 else ""
-            if aid in ("status", "--status"):
+            # args are sys.argv[2:] — first token is subcommand or agent id
+            sub = args[0] if args else ""
+            if sub in ("status", "--status", "enroll-status"):
                 print(json.dumps(enroll_status(), indent=2, default=str))
+            elif sub in ("help", "-h", "--help"):
+                print("Usage:")
+                print("  python3 sentinel.py agent-key                 # issue key (auto id)")
+                print("  python3 sentinel.py agent-key <agent-id>      # issue named key")
+                print("  python3 sentinel.py agent-key status          # enroll status")
+                print("  python3 sentinel.py enroll --server URL --key KEY")
             else:
-                print(json.dumps(issue_local_agent_key(aid), indent=2, default=str))
+                print(json.dumps(issue_local_agent_key(sub), indent=2, default=str))
         except Exception as e:
             print("[!] agent-key:", e)
 

@@ -1,5 +1,12 @@
 ## [3.14.8] — 2026-10-27
 
+## 3.16.11 — CLI/menu polish
+
+- Fix `agent-key status` (subcommand was treated as agent id)
+- Fleet menu uses pure numbers (no 3a/3b)
+- Doctor service check uses always_on status
+- Clearer enroll_status when not enrolled
+
 ## 3.16.10 — always-on, RBAC, agent enroll UX
 
 - Option 1 installs always-on hunt (systemd or background) so protection continues after menu exit
