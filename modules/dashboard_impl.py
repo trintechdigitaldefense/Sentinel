@@ -204,7 +204,7 @@ def collect_full() -> dict:
     out["recent_alerts"] = list(reversed(recent))
     out["alert_total"] = total
 
-    out["firewall"] = _safe(lambda: __import__("modules.firewall", fromlist=["status"]).status(), {})
+    out["firewall"] = _safe(lambda: __import__("modules.firewall", fromlist=["runtime_status"]).runtime_status(), {})
 
     try:
         from modules.brute_force import status as bf_status
@@ -695,6 +695,7 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
       <span class="chip">v{esc(data.get('version'))}</span>
       <span class="chip">Devices: {esc((_fleet.get('count') if _fleet else None) or (data.get('visibility') or {}).get('devices') or 0)}</span>
       <span class="chip">Canaries: {esc((_can.get('alive') if isinstance(_can, dict) else 0))}/{esc((_can.get('total') if isinstance(_can, dict) else 0))}</span>
+      <span class="chip">Firewall: {esc("ON" if (data.get("firewall") or {}).get("running") or (data.get("firewall") or {}).get("armed") else "OFF")}</span>
       <span class="chip">{"Controls on" if control else "View only"}</span>
     </div>
   </div>
@@ -722,6 +723,8 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
       <div class="muted">last {esc(hunt.get('last_cycle_sec', '—'))}s · ok={esc(hunt.get('last_ok'))}</div></div>
     <div class="card"><h2>Critical alerts</h2><div class="metric" style="color:var(--crit)">{esc(crit.get('open_count', 0))}</div>
       <div class="muted">need a human to clear</div></div>
+    <div class="card" id="fw-metric"><h2>Firewall plane</h2><div class="metric" style="color:{('var(--good)' if (data.get('firewall') or {}).get('running') or (data.get('firewall') or {}).get('armed') else 'var(--warn)')}">{esc("RUNNING" if (data.get("firewall") or {}).get("running") or (data.get("firewall") or {}).get("armed") else "OFF")}</div>
+      <div class="muted">{esc((data.get("firewall") or {}).get("mode") or (data.get("firewall") or {}).get("backend") or "—")} · blocks {esc((data.get("firewall") or {}).get("managed_ips") or 0)}</div></div>
     <div class="card"><h2>All alerts</h2><div class="metric">{esc(data.get('alert_total', 0))}</div>
       <div class="muted">offline q {esc(ops.get('offline_queue', 0))}</div></div>
     <div class="card"><h2>Devices on network</h2><div class="metric">{esc((data.get('fleet') or {}).get('count') or vis.get('devices', 0))}</div>
@@ -763,7 +766,10 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
 
   <div class="section card" id="defense">
     <h2>Defense plane</h2>
-    <p class="muted">Firewall backend=<span class="mono">{esc(fw_backend)}</span>
+    <p class="hint">Host firewall control plane — status stays live while continuous protection is armed.</p>
+    <p class="muted">State: <b>{esc("RUNNING" if (fw.get("running") or fw.get("armed")) else "OFF")}</b>
+      · mode=<span class="mono">{esc(fw.get("mode"))}</span>
+      · backend=<span class="mono">{esc(fw_backend)}</span>
        lockout=<span class="mono">{esc(fw.get('lockout_guard'))}</span>
        deception=<span class="mono">{esc(flags.get('deception'))}</span>
        ssh_blocking=<span class="mono">{esc(flags.get('ssh_blocking'))}</span></p>

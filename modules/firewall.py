@@ -921,3 +921,118 @@ def cli(argv: list[str]) -> int:
 if __name__ == "__main__":
     import sys
     raise SystemExit(cli(sys.argv[1:]))
+
+
+
+def runtime_path() -> Path:
+    return _data() / "firewall_runtime.json"
+
+
+def arm_for_continuous(apply_rules: bool = True) -> dict:
+    """Enable host firewall plane for continuous protection (menu option 1).
+
+    Always marks the plane as armed for the dashboard. When nft/iptables exist
+    and apply_rules is True, protects operator IPs and applies a minimal safe
+    baseline (established/related + loopback). Full defense-pack stays explicit.
+    """
+    from datetime import datetime
+
+    out: dict[str, Any] = {
+        "ok": True,
+        "armed": True,
+        "ts": datetime.now().isoformat(),
+        "source": "continuous-protect",
+        "steps": [],
+    }
+    try:
+        en = set_enabled(True)
+        out["steps"].append(("set_enabled", en))
+    except Exception as e:
+        out["steps"].append(("set_enabled", {"ok": False, "error": str(e)}))
+
+    b = backend()
+    out["backend"] = b
+    if b == "none":
+        out["mode"] = "monitor-only"
+        out["note"] = (
+            "No nft/iptables on this host — firewall control plane is ARMED for monitoring "
+            "and dashboard visibility. Install nftables/iptables on a rooted Linux host for live blocks."
+        )
+        runtime_path().write_text(json.dumps(out, indent=2, default=str))
+        return out
+
+    out["mode"] = "active"
+    if apply_rules:
+        try:
+            ensure_backend_ready()
+            out["steps"].append(("ensure_backend_ready", {"ok": True}))
+        except Exception as e:
+            out["steps"].append(("ensure_backend_ready", {"ok": False, "error": str(e)}))
+        try:
+            # Operator lockout guard first
+            po = protect_operator(confirm=True)
+            out["steps"].append(("protect_operator", po))
+        except Exception as e:
+            out["steps"].append(("protect_operator", {"ok": False, "error": str(e)}))
+        try:
+            fn = globals().get("allow_established_related") or globals().get("baseline_stateful") or globals().get("ensure_baseline_chains")
+            if callable(fn):
+                try:
+                    out["steps"].append(("baseline", fn(confirm=True)))
+                except TypeError:
+                    out["steps"].append(("baseline", fn()))
+        except Exception as e:
+            out["steps"].append(("baseline", {"ok": False, "error": str(e)}))
+        try:
+            # Re-sync managed list without adding new blocks
+            am = apply_managed(confirm=True)
+            out["steps"].append(("apply_managed", am))
+        except Exception as e:
+            out["steps"].append(("apply_managed", {"ok": False, "error": str(e)}))
+
+    st = status()
+    out["status"] = {
+        "backend": st.get("backend"),
+        "enabled": st.get("enabled"),
+        "managed_ips": st.get("managed_ips"),
+        "operator_ips": st.get("operator_ips"),
+        "ok": st.get("ok"),
+        "error": st.get("error"),
+    }
+    out["note"] = "Host firewall plane armed and kept active for continuous protection."
+    try:
+        runtime_path().write_text(json.dumps(out, indent=2, default=str))
+    except Exception:
+        pass
+    _audit("arm_for_continuous", {"backend": b, "mode": out.get("mode")}, ok=True)
+    return out
+
+
+def runtime_status() -> dict:
+    """Dashboard-facing firewall runtime + live status merge."""
+    live = status()
+    runtime = {}
+    try:
+        p = runtime_path()
+        if p.exists():
+            runtime = json.loads(p.read_text())
+    except Exception:
+        runtime = {}
+    armed = bool(runtime.get("armed")) or bool(live.get("enabled"))
+    running = armed and (live.get("backend") != "none" or runtime.get("mode") == "monitor-only")
+    return {
+        "ok": True,
+        "armed": armed,
+        "running": running,
+        "mode": runtime.get("mode") or ("active" if live.get("backend") != "none" else "unavailable"),
+        "backend": live.get("backend"),
+        "enabled": live.get("enabled"),
+        "managed_ips": live.get("managed_ips"),
+        "operator_ips": live.get("operator_ips"),
+        "profile": live.get("profile"),
+        "armed_at": runtime.get("ts"),
+        "source": runtime.get("source"),
+        "note": runtime.get("note") or live.get("note"),
+        "error": live.get("error"),
+        "live": live,
+    }

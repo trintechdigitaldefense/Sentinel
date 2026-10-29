@@ -2,7 +2,7 @@
 """Enhanced continuous protection stack (menu option 1).
 
 Orchestrates: health snapshot → fleet discovery → baselines/canaries →
-host start → firewall status → dashboard (+ optional central) → hunt loop.
+host start → firewall ARMED (kept running) → dashboard (+ central) → hunt loop.
 """
 from __future__ import annotations
 
@@ -148,15 +148,26 @@ def run_continuous_protection(
     result["steps"]["start"] = {"ok": r.get("ok"), "code": r.get("code")}
     print(f"  {c.GREEN}[+]{c.RESET} Start finished (code={r.get('code')})")
 
-    # 5) Firewall status (read-only)
-    _step_print(c, 5, total, "Firewall status (read-only — no apply)")
-    r = _run_cli(["firewall", "status"], timeout=60)
-    result["steps"]["firewall"] = {"ok": r.get("ok"), "code": r.get("code")}
-    # print last lines of status
-    for line in (r.get("stdout") or "").splitlines()[-8:]:
-        print(f"  {c.GRAY}{line}{c.RESET}")
-    if not (r.get("stdout") or "").strip():
-        print(f"  {c.GREEN}[+]{c.RESET} Firewall status checked")
+    # 5) Firewall — arm plane, keep running, visible on dashboard
+    _step_print(c, 5, total, "Host firewall plane — arm & keep running")
+    try:
+        from modules.firewall import arm_for_continuous, runtime_status
+        arm = arm_for_continuous(apply_rules=True)
+        rt = runtime_status()
+        result["steps"]["firewall"] = {"arm": arm, "runtime": rt}
+        mode = arm.get("mode") or rt.get("mode")
+        print(f"  {c.GREEN}[+]{c.RESET} Firewall armed={rt.get('armed')}  running={rt.get('running')}  mode={mode}  backend={rt.get('backend')}")
+        if arm.get("note"):
+            print(f"  {c.GRAY}{arm.get('note')}{c.RESET}")
+        if rt.get("error") and rt.get("backend") == "none":
+            print(f"  {c.YELLOW}[!]{c.RESET} No nft/iptables here — plane is still ON for dashboard monitoring")
+        else:
+            print(f"  {c.GREEN}[+]{c.RESET} Operator lockout guard + managed rules applied when backend allows")
+    except Exception as e:
+        result["steps"]["firewall"] = {"ok": False, "error": str(e)}
+        print(f"  {c.YELLOW}[!]{c.RESET} Firewall arm: {e}")
+        r = _run_cli(["firewall", "status"], timeout=60)
+        result["steps"]["firewall"]["status_cli"] = r.get("code")
 
     # 6) Dashboard background
     _step_print(c, 6, total, "Client dashboard")
@@ -276,5 +287,6 @@ def run_continuous_protection(
     print(f"\n  {c.CYAN}Still running in background (if started):{c.RESET}")
     print(f"  {c.GRAY}• Dashboard  ·  python3 sentinel.py dashboard-url{c.RESET}")
     print(f"  {c.GRAY}• Central    ·  curl -s http://127.0.0.1:{central_port}/health{c.RESET}")
+    print(f"  {c.GRAY}• Firewall   ·  visible on dashboard Defense / status hero{c.RESET}")
     print(f"  {c.GRAY}• Resume     ·  menu option 1 or: python3 sentinel.py hunt{c.RESET}\n")
     return result

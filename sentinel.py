@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.16.6"
+__version__ = "3.16.7"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2033,7 +2033,7 @@ def interactive_menu(config=None, logger=None):
         print(f"\n  {C.CYAN}{C.BOLD}╔══════════════════════════════════════════════════╗{C.RESET}")
         print(f"  {C.CYAN}{C.BOLD}║  OPTION 1 · CONTINUOUS PROTECTION (FULL STACK)  ║{C.RESET}")
         print(f"  {C.CYAN}{C.BOLD}╚══════════════════════════════════════════════════╝{C.RESET}")
-        print(f"  {C.GRAY}Doctor → fleet → FIM → start → firewall → dashboard → central → hunt{C.RESET}")
+        print(f"  {C.GRAY}Doctor → fleet → FIM → start → FIREWALL ON → dashboard → central → hunt{C.RESET}")
         try:
             from modules.continuous_protect import run_continuous_protection
             run_continuous_protection(color=C, start_central=True, ensure_integrity=True)
@@ -2067,7 +2067,7 @@ def interactive_menu(config=None, logger=None):
             run("hunt")
 
     main_items = [
-        ("1",  "START continuous protection (doctor + fleet + FIM + hunt + dashboard + central)", ("__continuous__",)),
+        ("1",  "START continuous protection (doctor + fleet + FIM + firewall + hunt + dashboard + central)", ("__continuous__",)),
         ("2",  "Quick network scan (one-shot)", ("scan",)),
         ("3",  "Hunt only (continuous) — Ctrl+C to stop", ("hunt",)),
         ("4",  "Deploy deception / canary traps", ("deception",)),
@@ -3518,6 +3518,15 @@ Examples:
             print(json.dumps(list_remote_agents(), indent=2, default=str))
         except Exception as e:
             print("[!] agents-list:", e)
+
+
+    elif command in ("firewall-arm", "fw-arm"):
+        try:
+            from modules.firewall import arm_for_continuous, runtime_status
+            print(json.dumps(arm_for_continuous(apply_rules="--no-apply" not in args), indent=2, default=str))
+            print(json.dumps(runtime_status(), indent=2, default=str))
+        except Exception as e:
+            print("[!] firewall-arm:", e)
 
     elif command in ("fleet-scan", "fleet", "devices-scan"):
         try:

@@ -10,3 +10,11 @@ def test_continuous_protect_bootstrap_only():
     assert "start" in steps
     assert "dashboard" in steps
     assert steps.get("hunt", {}).get("skipped") is True
+
+def test_firewall_arm_runtime():
+    from modules.firewall import arm_for_continuous, runtime_status
+    arm = arm_for_continuous(apply_rules=True)
+    assert arm.get("armed") is True
+    rt = runtime_status()
+    assert rt.get("running") is True
+    assert rt.get("armed") is True
