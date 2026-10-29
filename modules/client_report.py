@@ -45,10 +45,14 @@ def _logo_path(*, header: bool = False) -> Optional[Path]:
 
 def _load_status() -> dict:
     try:
-        from modules.dashboard import collect_full
+        from modules.dashboard_impl import collect_full
         return collect_full()
-    except Exception as e:
-        return {"error": str(e)}
+    except Exception:
+        try:
+            from modules.dashboard import collect_full
+            return collect_full()
+        except Exception as e:
+            return {"error": str(e), "heartbeat": {"alive": False}, "canaries": {"total": 0, "alive": 0}}
 
 
 def _canary_counts(status: dict) -> tuple[int, int]:

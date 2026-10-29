@@ -79,8 +79,13 @@ def collect_full() -> dict:
         "ts": datetime.now(timezone.utc).isoformat(),
         "host": socket.gethostname(),
         "product": "SENTINEL",
-        "version": "3.14.0",
+        "version": "unknown",
     }
+    try:
+        from sentinel import __version__ as _ver
+        out["version"] = str(_ver)
+    except Exception:
+        pass
     try:
         out["local_ip"] = socket.gethostbyname(socket.gethostname())
     except Exception:
@@ -106,6 +111,63 @@ def collect_full() -> dict:
         from modules.network_fleet import fleet_status
         return fleet_status()
     out["fleet"] = _safe(_fleet, {"count": 0, "devices": {}})
+
+    # Canary tracker (accurate counts for dashboard + client PDF)
+    try:
+        cpath = _data() / "deception_artifacts" / "config.json"
+        total = alive = 0
+        if cpath.exists():
+            import os
+            trk = json.loads(cpath.read_text())
+            if isinstance(trk, dict):
+                total = len(trk)
+                for fpath, meta in trk.items():
+                    try:
+                        if Path(str(fpath)).exists() or Path(str((meta or {}).get("path") or "")).exists():
+                            alive += 1
+                        elif isinstance(meta, dict) and meta.get("status") != "missing":
+                            # path is the key
+                            if Path(fpath).exists():
+                                alive += 1
+                    except Exception:
+                        pass
+                # if keys are paths
+                if alive == 0 and total:
+                    for fpath in trk:
+                        try:
+                            if Path(fpath).is_file():
+                                alive += 1
+                        except Exception:
+                            pass
+        out["canaries"] = {"total": total, "alive": alive}
+        out["canaries_alive"] = alive
+    except Exception as e:
+        out["canaries"] = {"total": 0, "alive": 0, "error": str(e)}
+
+    # Heartbeat age for accurate "monitoring paused" verdict
+    try:
+        hb = out.get("heartbeat") or {}
+        if isinstance(hb, dict) and hb.get("ts"):
+            from datetime import datetime as _dt
+            try:
+                when = _dt.fromisoformat(str(hb["ts"]).replace("Z", ""))
+                age = (_dt.now() - when).total_seconds()
+                hb = dict(hb)
+                hb["age_seconds"] = age
+                hb["alive"] = age < 300
+                out["heartbeat"] = hb
+                out["heartbeat_age_seconds"] = age
+            except Exception:
+                if hb.get("present"):
+                    out["heartbeat"] = {**hb, "alive": False}
+        elif isinstance(hb, dict) and hb.get("present") is False:
+            out["heartbeat"] = {**hb, "alive": False}
+    except Exception:
+        pass
+
+    # Align alert_total naming for client PDF
+    out.setdefault("alerts_24h", out.get("alert_total") or len(out.get("recent_alerts") or []))
+
 
     mp = _data() / "hunt_metrics.json"
     if mp.exists():
@@ -913,15 +975,29 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, body, ctype, extra_headers={"Cache-Control": "public, max-age=3600"})
             return
 
-        if path in ("/api/report/pdf", "/api/report/client", "/api/report/generate"):
+        if path in ("/api/report/pdf", "/api/report/client", "/api/report/generate", "/api/report/tech", "/api/report/technical"):
             try:
-                from modules.client_report import generate_client_pdf
+                from urllib.parse import parse_qs
+                qs = parse_qs(urlparse(self.path).query)
+                kind = (qs.get("type") or qs.get("kind") or ["client"])[0].lower()
+                if path.endswith("/tech") or path.endswith("/technical") or kind in ("tech", "technical", "operator"):
+                    kind = "technical"
+                else:
+                    kind = "client"
                 reports = _reports_dir()
+                reports.mkdir(parents=True, exist_ok=True)
                 ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                out_path = reports / f"Client_Report_{ts}.pdf"
-                result = generate_client_pdf(out_path=out_path, client_name=(_cfg().get('dashboard') or {}).get('client_name') or _cfg().get('client_name'))
+                if kind == "technical":
+                    from modules.technical_report import generate_technical_pdf
+                    out_path = reports / f"Sentinel_Technical_{ts}.pdf"
+                    result = generate_technical_pdf(out_path=out_path)
+                else:
+                    from modules.client_report import generate_client_pdf
+                    out_path = reports / f"Client_Report_{ts}.pdf"
+                    cname = (_cfg().get("dashboard") or {}).get("client_name") or _cfg().get("client_name")
+                    result = generate_client_pdf(out_path=out_path, client_name=cname)
                 if not result.get("ok"):
-                    self._send(500, json.dumps({"ok": False, "error": result.get("error")}).encode(), "application/json")
+                    self._send(500, json.dumps({"ok": False, "error": result.get("error") or "generate failed"}).encode(), "application/json")
                     return
                 path_out = Path(str(result.get("path") or out_path))
                 if not path_out.is_file():
@@ -932,12 +1008,14 @@ class _Handler(BaseHTTPRequestHandler):
                     "Content-Disposition": f'inline; filename="{path_out.name}"',
                     "Cache-Control": "no-store",
                     "X-Sentinel-Report": path_out.name,
+                    "X-Sentinel-Report-Type": kind,
                 }
                 self._send(200, body, "application/pdf", extra_headers=extra)
             except Exception as e:
                 logging.getLogger("sentinel").exception("GET report pdf")
                 self._send(500, json.dumps({"ok": False, "error": str(e)}).encode(), "application/json")
             return
+
 
         if path in ("/api/report/technical", "/api/report/tech"):
             try:
@@ -1141,37 +1219,37 @@ def _reports_dir() -> Path:
     return d
 
 
+
 def _generate_dashboard_pdfs(action: str = "pdf-report") -> dict:
-    """Generate client and/or technical PDF reports for dashboard one-push."""
+    """Generate client and/or technical PDFs with live data; always land under reports/."""
     import logging
     log = logging.getLogger("sentinel")
     reports = _reports_dir()
+    reports.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     out: dict = {"ok": True, "action": action, "generated": [], "downloads": []}
-    client_path = reports / f"Client_Report_{ts}.pdf"
-    tech_path = reports / f"Sentinel_Technical_{ts}.pdf"
+    cfg = _cfg()
+    cname = (cfg.get("dashboard") or {}).get("client_name") or cfg.get("client_name")
+
+    def _rel(path: Path) -> str:
+        return f"/api/report/download?name={path.name}"
 
     if action in ("pdf-report", "client-report"):
         try:
             from modules.client_report import generate_client_pdf
-            cfg = _cfg()
-            cname = (cfg.get("dashboard") or {}).get("client_name") or cfg.get("client_name")
+            client_path = reports / f"Client_Report_{ts}.pdf"
             r = generate_client_pdf(out_path=client_path, client_name=cname)
             if r.get("ok"):
                 path = Path(str(r.get("path") or client_path))
-                dest = reports / path.name
-                try:
-                    if path.is_file() and path.resolve() != dest.resolve():
-                        dest.write_bytes(path.read_bytes())
-                        path = dest
-                    elif path.is_file():
-                        dest = path
-                except Exception:
-                    dest = path if path.is_file() else client_path
-                out["generated"].append({"type": "client", "path": str(dest)})
-                out["path"] = str(dest)
-                out["download"] = f"/api/report/download?name={dest.name}"
+                if path.is_file() and path.parent.resolve() != reports.resolve():
+                    dest = reports / path.name
+                    dest.write_bytes(path.read_bytes())
+                    path = dest
+                out["generated"].append({"type": "client", "path": str(path)})
+                out["path"] = str(path)
+                out["download"] = _rel(path)
                 out["downloads"].append(out["download"])
+                out["client"] = {"ok": True, "path": str(path), "headline": r.get("headline"), "level": r.get("level")}
             else:
                 out["client_error"] = r.get("error") or "client PDF failed"
                 if action == "client-report":
@@ -1188,63 +1266,46 @@ def _generate_dashboard_pdfs(action: str = "pdf-report") -> dict:
 
     if action in ("pdf-report", "tech-report"):
         try:
-            cli = run_cli("pdf")
-            out["tech_cli"] = {"ok": cli.get("ok"), "code": cli.get("code")}
-            candidates = []
-            for base in (reports, _data(), Path.home(), _engine().parent):
-                try:
-                    for f in Path(base).glob("*.pdf"):
-                        if f.stat().st_mtime > (datetime.now().timestamp() - 180):
-                            candidates.append(f)
-                except Exception:
-                    pass
-            tech_done = None
-            for c in sorted(candidates, key=lambda x: x.stat().st_mtime, reverse=True):
-                if c.name.startswith("Client_Report"):
-                    continue
-                dest = reports / c.name
-                try:
-                    if c.resolve() != dest.resolve():
-                        dest.write_bytes(c.read_bytes())
-                    tech_done = dest
-                except Exception:
-                    tech_done = c
-                break
-            if tech_done and Path(tech_done).is_file():
-                out["generated"].append({"type": "technical", "path": str(tech_done)})
-                dl = f"/api/report/download?name={Path(tech_done).name}"
+            from modules.technical_report import generate_technical_pdf
+            tech_path = reports / f"Sentinel_Technical_{ts}.pdf"
+            r = generate_technical_pdf(out_path=tech_path)
+            if r.get("ok"):
+                path = Path(str(r.get("path") or tech_path))
+                if path.is_file() and path.parent.resolve() != reports.resolve():
+                    dest = reports / path.name
+                    dest.write_bytes(path.read_bytes())
+                    path = dest
+                out["generated"].append({"type": "technical", "path": str(path)})
+                dl = _rel(path)
                 if dl not in out["downloads"]:
                     out["downloads"].append(dl)
-                if not out.get("download"):
+                if action == "tech-report" or not out.get("download"):
                     out["download"] = dl
-                    out["path"] = str(tech_done)
-            elif action == "tech-report":
-                from modules.client_report import generate_client_pdf
-                r2 = generate_client_pdf(out_path=tech_path)
-                if r2.get("ok"):
-                    out["generated"].append({"type": "technical_fallback", "path": str(tech_path)})
-                    dl = f"/api/report/download?name={tech_path.name}"
-                    out["downloads"].append(dl)
-                    out["download"] = dl
-                    out["path"] = str(tech_path)
-                else:
+                    out["path"] = str(path)
+                out["technical"] = {"ok": True, "path": str(path), "alerts": r.get("alerts"), "fleet": r.get("fleet")}
+            else:
+                out["tech_error"] = r.get("error") or "technical PDF failed"
+                if action == "tech-report":
                     out["ok"] = False
-                    out["error"] = r2.get("error") or "technical PDF failed"
+                    out["error"] = out["tech_error"]
+                    return out
         except Exception as e:
-            log.exception("tech PDF")
+            log.exception("technical PDF")
             out["tech_error"] = str(e)
-            if action == "tech-report" and not out.get("downloads"):
+            if action == "tech-report":
                 out["ok"] = False
                 out["error"] = str(e)
+                return out
 
-    if not out.get("downloads") and out.get("ok"):
+    if not out["generated"]:
         out["ok"] = False
         out["error"] = out.get("client_error") or out.get("tech_error") or "no PDF produced"
     out["message"] = (
-        "PDF report generated. Use the download link(s). "
-        "Client report is plain-language for stakeholders; technical includes operator detail when available."
+        "PDF ready. Client report is plain-language for owners; "
+        "technical report is operator detail from live host data."
     )
     return out
+
 
 
 

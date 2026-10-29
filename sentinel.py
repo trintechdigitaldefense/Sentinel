@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.16.3"
+__version__ = "3.16.4"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2511,7 +2511,23 @@ def main():
         except Exception as e:
             print("[!] client-report:", e)
     elif command in ("pdf", "report-pdf"):
-        generate_pdf_report(config, logger)
+        if "--tech" in args or "--technical" in args:
+            try:
+                from modules.technical_report import generate_technical_pdf
+                print(generate_technical_pdf())
+            except Exception as e:
+                logger.error(f"technical pdf: {e}")
+                generate_pdf_report(config, logger)
+        else:
+            try:
+                from modules.client_report import generate_client_pdf
+                r = generate_client_pdf()
+                print(r)
+                if not r.get("ok"):
+                    generate_pdf_report(config, logger)
+            except Exception as e:
+                logger.error(f"client pdf: {e}")
+                generate_pdf_report(config, logger)
     elif command == "agent":
         url = args[0] if args else None
         run_agent_mode(config, logger, central_url=url)
