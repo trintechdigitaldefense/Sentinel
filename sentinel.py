@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.16.5"
+__version__ = "3.16.6"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2029,39 +2029,45 @@ def interactive_menu(config=None, logger=None):
             return 1
 
     def run_continuous_defense():
-        print(f"\n  {C.CYAN}{C.BOLD}[*] CONTINUOUS PROTECTION — full stack{C.RESET}\n")
+        """Menu option 1 — full continuous protection stack."""
+        print(f"\n  {C.CYAN}{C.BOLD}╔══════════════════════════════════════════════════╗{C.RESET}")
+        print(f"  {C.CYAN}{C.BOLD}║  OPTION 1 · CONTINUOUS PROTECTION (FULL STACK)  ║{C.RESET}")
+        print(f"  {C.CYAN}{C.BOLD}╚══════════════════════════════════════════════════╝{C.RESET}")
+        print(f"  {C.GRAY}Doctor → fleet → FIM → start → firewall → dashboard → central → hunt{C.RESET}")
         try:
-            from modules.network_fleet import continuous_protect_bootstrap, fleet_status
-            boot = continuous_protect_bootstrap(logger=None)
-            fleet = boot.get("steps", {}).get("fleet") or fleet_status()
-            print(f"  {C.GREEN}[+]{C.RESET} Devices: {fleet.get('count', 0)}  method={fleet.get('scan_method')}")
-            pending = (boot.get("steps", {}).get("remote_plan") or {}).get("pending_agent_canaries") or []
-            if pending:
-                print(f"  {C.YELLOW}[!]{C.RESET} Remote hosts needing agent canaries: {len(pending)}")
+            from modules.continuous_protect import run_continuous_protection
+            run_continuous_protection(color=C, start_central=True, ensure_integrity=True)
         except Exception as e:
-            print(f"  {C.YELLOW}[!]{C.RESET} Fleet bootstrap: {e}")
-        run("start")
-        try:
-            run("firewall", "status")
-        except Exception:
-            pass
-        try:
-            _logp = _Path.home() / ".sentinel" / "data"
-            _logp.mkdir(parents=True, exist_ok=True)
-            subprocess.Popen(
-                [_sys.executable, str(eng), "dashboard"],
-                stdout=open(str(_logp / "dashboard_bg.log"), "a"),
-                stderr=subprocess.STDOUT,
-                start_new_session=True,
-            )
-            print(f"  {C.GREEN}[+]{C.RESET} Dashboard background started")
-        except Exception as e:
-            print(f"  {C.YELLOW}[!]{C.RESET} Dashboard bg: {e}")
-        print(f"\n  {C.GREEN}{C.BOLD}[*] Hunt loop — Ctrl+C to return to menu{C.RESET}\n")
-        run("hunt")
+            print(f"  {C.YELLOW}[!]{C.RESET} Enhanced stack failed ({e}) — using fallback path")
+            try:
+                from modules.network_fleet import continuous_protect_bootstrap, fleet_status
+                boot = continuous_protect_bootstrap(logger=None)
+                fleet = boot.get("steps", {}).get("fleet") or fleet_status()
+                print(f"  {C.GREEN}[+]{C.RESET} Devices: {fleet.get('count', 0)}")
+            except Exception as e2:
+                print(f"  {C.YELLOW}[!]{C.RESET} Fleet: {e2}")
+            run("start")
+            try:
+                run("firewall", "status")
+            except Exception:
+                pass
+            try:
+                _logp = _Path.home() / ".sentinel" / "data"
+                _logp.mkdir(parents=True, exist_ok=True)
+                subprocess.Popen(
+                    [_sys.executable, str(eng), "dashboard"],
+                    stdout=open(str(_logp / "dashboard_bg.log"), "a"),
+                    stderr=subprocess.STDOUT,
+                    start_new_session=True,
+                )
+                print(f"  {C.GREEN}[+]{C.RESET} Dashboard background started")
+            except Exception as e3:
+                print(f"  {C.YELLOW}[!]{C.RESET} Dashboard: {e3}")
+            print(f"\n  {C.GREEN}{C.BOLD}[*] Hunt loop — Ctrl+C to return to menu{C.RESET}\n")
+            run("hunt")
 
     main_items = [
-        ("1",  "START continuous protection (fleet + scan + hunt + dashboard)", ("__continuous__",)),
+        ("1",  "START continuous protection (doctor + fleet + FIM + hunt + dashboard + central)", ("__continuous__",)),
         ("2",  "Quick network scan (one-shot)", ("scan",)),
         ("3",  "Hunt only (continuous) — Ctrl+C to stop", ("hunt",)),
         ("4",  "Deploy deception / canary traps", ("deception",)),
@@ -3541,10 +3547,19 @@ Examples:
             print("[!] review-reject:", e)
     elif command in ("continuous-protect", "protect-all"):
         try:
-            from modules.network_fleet import continuous_protect_bootstrap
-            print(json.dumps(continuous_protect_bootstrap(logger=logger), indent=2, default=str))
+            from modules.continuous_protect import run_continuous_protection
+            skip = "--bootstrap-only" in args or "--no-hunt" in args
+            print(json.dumps(
+                run_continuous_protection(color=C, start_central=True, ensure_integrity=True, skip_hunt=skip),
+                indent=2, default=str,
+            ))
         except Exception as e:
             print("[!] continuous-protect:", e)
+            try:
+                from modules.network_fleet import continuous_protect_bootstrap
+                print(json.dumps(continuous_protect_bootstrap(logger=logger), indent=2, default=str))
+            except Exception as e2:
+                print("[!] fallback:", e2)
 
     elif command in ("dashboard", "dash", "ui"):
         try:
