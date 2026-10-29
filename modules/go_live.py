@@ -226,7 +226,7 @@ def run_go_live(
                 service_install_fn()
                 _step(results, "service_install", True)
             else:
-                from modules.always_on import install as service_install as _si
+                from modules.always_on import install as _si
                 r = _si()
                 _step(results, "service_install", bool(r.get("ok", True)), result=r)
         except Exception as e:
