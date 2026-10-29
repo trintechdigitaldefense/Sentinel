@@ -16,7 +16,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
 ENGINE = ROOT / "sentinel.py"
-VERSION = "3.14.7"
+VERSION = "3.16.8"
 HOME = Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel"))
 CONFIG = HOME / "config.json"
 DATA = HOME / "data"
@@ -188,7 +188,7 @@ def default_config() -> dict:
             "bind": "127.0.0.1",
             "username": "admin",
             "password": "",
-            "allow_control": True,
+            "allow_control": False,
         },
         "central": {
             "enabled": False,

@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.16.7"
+__version__ = "3.16.8"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -161,7 +161,7 @@ def init_config(logger):
         "network": {
             "scan_interval": 30,
             "scan_ports": "22,80,443,8080,3306,5432,27017,6379,8443,9200",
-            "scan_subnets": ["192.168.1.0/24", "10.0.0.0/8", "172.16.0.0/12"],
+            "scan_subnets": ["192.168.1.0/24"],  # office /24 only — never default to /8 or /12
         },
         "deception": {
             "active": True,
@@ -257,6 +257,17 @@ def init_config(logger):
             "shared_token": "",
             "central_url": "",
             "report_interval": 60,
+            "tls_cert": "",
+            "tls_key": "",
+            "prefer_agent_keys": True,
+        },
+        "dashboard": {
+            "enabled": True,
+            "port": 8792,
+            "bind": "127.0.0.1",
+            "allow_control": False,
+            "allow_public_bind": False,
+            "client_name": "",
         },
     }
 
@@ -271,6 +282,21 @@ def init_config(logger):
                 for subkey, subval in default_config[key].items():
                     if subkey not in config[key]:
                         config[key][subkey] = subval
+        # Gap fix: never keep wide scan ranges
+        try:
+            from modules.subnet_guard import filter_safe_subnets
+            nets = (config.get("network") or {}).get("scan_subnets") or []
+            safe = filter_safe_subnets(list(nets))
+            if safe != list(nets):
+                config.setdefault("network", {})["scan_subnets"] = safe
+                logger.warning(f"{C.YELLOW}!{C.RESET} Restricted scan_subnets to {safe}")
+        except Exception:
+            pass
+        # Dashboard controls stay opt-in
+        config.setdefault("dashboard", {})
+        if "allow_control" not in config["dashboard"]:
+            config["dashboard"]["allow_control"] = False
+
         write_config_secure(config)
         logger.info(f"{C.GREEN}✓{C.RESET} Config loaded from {C.BOLD}{CONFIG_FILE}{C.RESET}")
     else:
@@ -3527,6 +3553,14 @@ Examples:
             print(json.dumps(runtime_status(), indent=2, default=str))
         except Exception as e:
             print("[!] firewall-arm:", e)
+
+
+    elif command in ("sanitize-subnets", "subnet-guard"):
+        try:
+            from modules.subnet_guard import sanitize_config_subnets
+            print(json.dumps(sanitize_config_subnets(), indent=2, default=str))
+        except Exception as e:
+            print("[!] sanitize-subnets:", e)
 
     elif command in ("fleet-scan", "fleet", "devices-scan"):
         try:

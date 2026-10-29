@@ -93,7 +93,7 @@ class DashboardCfg:
     bind: str = "127.0.0.1"
     username: str = "admin"
     password: str = ""
-    allow_control: bool = True
+    allow_control: bool = False
     token: str = ""
 
 

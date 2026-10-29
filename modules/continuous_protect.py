@@ -88,6 +88,18 @@ def run_continuous_protection(
     def note(msg: str, level: str = "info") -> None:
         result["messages"].append({"level": level, "msg": msg})
 
+    # 0) Safe subnets (never scan /8 by default)
+    try:
+        from modules.subnet_guard import sanitize_config_subnets
+        sg = sanitize_config_subnets()
+        result["steps"]["subnet_guard"] = sg
+        if sg.get("changed"):
+            print(f"  {c.YELLOW}[!]{c.RESET} Restricted scan_subnets to safe ranges: {sg.get('subnets')}")
+        else:
+            print(f"  {c.GREEN}[+]{c.RESET} Scan subnets OK: {sg.get('subnets')}")
+    except Exception as e:
+        result["steps"]["subnet_guard"] = {"ok": False, "error": str(e)}
+
     # 1) Health snapshot
     _step_print(c, 1, total, "Health snapshot (doctor)")
     try:

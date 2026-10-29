@@ -1,5 +1,15 @@
 ## [3.14.8] — 2026-10-27
 
+## 3.16.8 — gap fixes (defaults, central auth, docs)
+
+- Safe default scan subnet: office `/24` only (no `/8` or `/12`)
+- Dashboard `allow_control` defaults to **false** (opt-in controls)
+- Continuous protect runs subnet guard before discovery
+- Central accepts shared token **or** per-agent API keys (`agent_keys`)
+- Optional central TLS via `agent.tls_cert` / `agent.tls_key`
+- README / release checklist version aligned to 3.16.8
+
+
 ### Reports & dashboard
 - Enhanced client PDF (logo, verdict badge, protection table, TrinTech contact)
 - Dashboard logo + `/api/assets/logo` + one-click GET PDF

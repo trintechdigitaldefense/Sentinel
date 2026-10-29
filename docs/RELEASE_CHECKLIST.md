@@ -1,7 +1,7 @@
 # Release checklist (gates)
 
 **Branch under review:** `hardening/production-readiness`  
-**Candidate version label:** **v3.14.6-rc1** (not tagged on `main` until owner approval)  
+**Candidate version label:** **v3.16.8** (not tagged on `main` until owner approval)  
 **Last acceptance run (this environment):** 2026-10-26  
 
 Legend: **PASS** = evidenced here · **PARTIAL** = automated only / incomplete · **OPEN** = not done · **N/A** = not applicable

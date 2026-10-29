@@ -164,17 +164,32 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
         return self.client_address[0] if self.client_address else "0.0.0.0"
 
     def _token_ok(self) -> bool:
+        """Accept shared token OR a valid per-agent API key (MSP mode)."""
         expected = expected_token()
-        if not expected:
-            return False
-        received = self.headers.get("X-Sentinel-Token") or ""
+        received = (self.headers.get("X-Sentinel-Token") or "").strip()
         auth = self.headers.get("Authorization") or ""
         if auth.lower().startswith("bearer "):
             received = received or auth[7:].strip()
-        try:
-            return secrets.compare_digest(str(received), str(expected))
-        except Exception:
+        agent_key = (self.headers.get("X-Agent-Key") or "").strip()
+        key = received or agent_key
+        if not key:
             return False
+        if expected and secrets.compare_digest(str(key), str(expected)):
+            return True
+        try:
+            from modules.agent_keys import resolve_agent_id, verify_key
+            aid = resolve_agent_id(key)
+            if aid:
+                self._agent_id_resolved = aid  # type: ignore[attr-defined]
+                return True
+            hdr_id = (self.headers.get("X-Agent-Id") or "").strip()
+            if hdr_id and verify_key(hdr_id, key):
+                self._agent_id_resolved = hdr_id  # type: ignore[attr-defined]
+                return True
+        except Exception:
+            log.exception("agent key verify")
+        return False
+
 
     def _json(self, code: int, obj: dict) -> None:
         body = json.dumps(obj, default=str).encode()
@@ -354,6 +369,23 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
 class _ThreadedCentralServer(ThreadingHTTPServer):
     allow_reuse_address = True
     daemon_threads = True
+
+
+def _maybe_ssl(httpd: ThreadingHTTPServer) -> ThreadingHTTPServer:
+    """Optional TLS if agent.tls_cert + agent.tls_key set in config."""
+    try:
+        cfg = _cfg().get("agent") or {}
+        cert = cfg.get("tls_cert") or ""
+        key = cfg.get("tls_key") or ""
+        if cert and key and Path(cert).is_file() and Path(key).is_file():
+            import ssl
+            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+            ctx.load_cert_chain(certfile=cert, keyfile=key)
+            httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+            log.info("Central TLS enabled")
+    except Exception:
+        log.exception("TLS setup failed — continuing plain HTTP")
+    return httpd
 
 
 def start_central(
