@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.16.18"
+__version__ = "3.16.19"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2111,7 +2111,7 @@ def interactive_menu(config=None, logger=None):
             run("hunt")
 
     main_items = [
-        ("1",  "START continuous protection (doctor + fleet + FIM + firewall + hunt + dashboard + central)", ("__continuous__",)),
+        ("1",  "START continuous protection (full stack)", ("__continuous__",)),
         ("2",  "Quick network scan (one-shot)", ("scan",)),
         ("3",  "Hunt only (continuous) — Ctrl+C to stop", ("hunt",)),
         ("4",  "Deploy deception / canary traps", ("deception",)),
@@ -2125,16 +2125,17 @@ def interactive_menu(config=None, logger=None):
         ("12", "Status + ops metrics", ("ops",)),
         ("13", "Always-on service (install)", ("service-install",)),
         ("14", "Service status (always-on)", ("service-status",)),
-        ("23", "Stop always-on service", ("service-stop",)),
-        ("15", "Doctor (health check)", ("doctor",)),
-        ("24", "Auto-detect scan subnets", ("autosubnet",)),
-        ("16", "Go-live readiness", ("go-live",)),
-        ("17", "Pilot validation workflow", ("pilot",)),
-        ("18", "Firewall tools →", ("__firewall__",)),
-        ("19", "Ops (PDF, dashboard, cases) →", ("__ops__",)),
-        ("20", "Fleet + agents (multi-host) →", ("__fleet__",)),
-        ("21", "Phase 4 advanced tools →", ("__phase4__",)),
-        ("22", "Schedule WhatsApp digest", ("digest-cron",)),
+        ("15", "Stop always-on service", ("service-stop",)),
+        ("16", "Doctor (health check)", ("doctor",)),
+        ("17", "Auto-detect scan subnets", ("autosubnet",)),
+        ("18", "Go-live readiness", ("go-live",)),
+        ("19", "Pilot validation workflow", ("pilot",)),
+        ("20", "Firewall / nftables tools →", ("__firewall__",)),
+        ("21", "SSH brute-force tools →", ("__ssh__",)),
+        ("22", "Ops (PDF, dashboard, cases) →", ("__ops__",)),
+        ("23", "Fleet + agents (multi-host) →", ("__fleet__",)),
+        ("24", "Phase 4 advanced tools →", ("__phase4__",)),
+        ("25", "Schedule WhatsApp digest", ("digest-cron",)),
         ("0",  "Exit", ("__exit__",)),
     ]
 
@@ -2144,32 +2145,35 @@ def interactive_menu(config=None, logger=None):
         ("3", "Persistence check (drift)", ("persistence",)),
         ("4", "Behavioral reverse-shell scan", ("behavioral",)),
         ("5", "Realtime FIM watch (inotify)", ("watch",)),
-        ("6", "Canary check", ("canary",)),
-        ("7", "Full visibility inventory", ("visibility",)),
-        ("8", "Device inventory (ARP)", ("visibility", "devices")),
-        ("9", "Threat-actor simulation (list)", ("sim", "--list")),
-        ("10", "Threat-actor simulation (all, needs confirm)", ("__sim_all__",)),
+        ("6", "Canary status / check", ("canary",)),
+        ("7", "Threat simulation (safe, listed)", ("sim", "--list")),
+        ("8", "Visibility scan", ("visibility",)),
+        ("9", "DNS watch", ("dns-watch",)),
         ("0", "Back to main menu", ("__back__",)),
     ]
 
     firewall_items = [
-        ("1", "Firewall status", ("firewall", "status")),
-        ("2", "Doctor (firewall plane)", ("firewall", "doctor")),
-        ("3", "Show operator IPs (lockout guard)", ("firewall", "operator-ips")),
-        ("4", "Protect operator (dry-run)", ("firewall", "protect-operator")),
-        ("5", "Protect operator APPLY", ("__fw_protect__",)),
-        ("6", "List profiles", ("firewall", "profiles")),
-        ("7", "Block IP dry-run example", ("firewall", "block", "203.0.113.50")),
-        ("8", "Audit tail", ("firewall", "audit")),
-        ("9", "SSH brute-force status", ("ssh-blocks", "status")),
-        ("10", "SSH brute-force check now", ("ssh-blocks", "check")),
-        ("11", "Expire old SSH blocks", ("ssh-blocks", "expire")),
-        ("12", "Harden SSH port (dry-run)", ("firewall", "harden-ssh")),
-        ("13", "Defense pack (caribbean_smb, dry-run)", ("firewall", "defense-pack")),
-        ("14", "Defense pack APPLY caribbean_smb", ("__fw_defend__",)),
-        ("15", "Deny high-risk ports (dry-run)", ("firewall", "high-risk")),
-        ("16", "SSH rate-limit (dry-run)", ("firewall", "rate-limit-ssh")),
-        ("17", "Firewall intelligence (alert scores)", ("firewall-intel",)),
+        ("1", "Firewall status / capabilities", ("firewall", "status")),
+        ("2", "Prepare backend (nft/iptables)", ("firewall-prepare",)),
+        ("3", "Preview nftables base ruleset", ("nft-apply",)),
+        ("4", "APPLY nftables base ruleset (needs sudo)", ("nft-apply", "--confirm")),
+        ("5", "List nftables sentinel table", ("nft-list",)),
+        ("6", "Protect operator IPs (dry-run)", ("firewall", "protect-operator")),
+        ("7", "Protect operator IPs APPLY", ("__fw_protect__",)),
+        ("8", "Defense pack caribbean_smb (dry-run)", ("firewall", "defense-pack")),
+        ("9", "Defense pack APPLY caribbean_smb", ("__fw_defend__",)),
+        ("10", "Deny high-risk ports (dry-run)", ("firewall", "high-risk")),
+        ("11", "SSH rate-limit (dry-run)", ("firewall", "rate-limit-ssh")),
+        ("12", "Firewall intelligence scores", ("firewall-intel",)),
+        ("13", "Arm firewall plane", ("firewall-arm",)),
+        ("0", "Back to main menu", ("__back__",)),
+    ]
+
+    ssh_items = [
+        ("1", "SSH brute-force status", ("ssh-blocks", "status")),
+        ("2", "Run SSH brute-force check now", ("ssh-blocks", "check")),
+        ("3", "Expire timed-out blocks", ("ssh-blocks", "expire")),
+        ("4", "List / help", ("ssh-blocks",)),
         ("0", "Back to main menu", ("__back__",)),
     ]
 
@@ -2187,6 +2191,8 @@ def interactive_menu(config=None, logger=None):
         ("11", "Critical alerts (open)", ("critical", "status")),
         ("12", "SIEM status", ("siem", "status")),
         ("13", "Central summary", ("central-summary",)),
+        ("14", "List suppressions", ("suppress",)),
+        ("15", "Sanitize scan subnets", ("sanitize-subnets",)),
         ("0", "Back to main menu", ("__back__",)),
     ]
 
@@ -2221,10 +2227,11 @@ def interactive_menu(config=None, logger=None):
 
     def show(items, title):
         print(f"\n{C.CYAN}{C.BOLD}  {title}{C.RESET}")
-        print("  " + "-" * 54)
+        print("  " + "-" * 56)
         for num, label, _ in items:
             print(f"  {C.BOLD}{num:>2}{C.RESET}  {label}")
-        print("  " + "-" * 54)
+        print("  " + "-" * 56)
+        print(f"  {C.GRAY}Enter a number and press Enter{C.RESET}")
 
     def loop(items, title):
         while True:
@@ -2243,7 +2250,8 @@ def interactive_menu(config=None, logger=None):
                 return "exit"
             mapping = {n: args for n, _, args in items}
             if pick not in mapping:
-                print(f"  {C.RED}Invalid choice — try again{C.RESET}")
+                valid = ", ".join(n for n, _, _ in items)
+                print(f"  {C.RED}Invalid choice '{pick}' — enter one of: {valid}{C.RESET}")
                 continue
             args = mapping[pick]
             if args[0] == "__exit__":
@@ -2269,6 +2277,10 @@ def interactive_menu(config=None, logger=None):
                 continue
             if args[0] == "__fleet__":
                 if loop(fleet_items, "FLEET + AGENTS") == "exit":
+                    return "exit"
+                continue
+            if args[0] == "__ssh__":
+                if loop(ssh_items, "SSH BRUTE-FORCE") == "exit":
                     return "exit"
                 continue
             if args[0] == "__continuous__":

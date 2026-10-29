@@ -1,5 +1,12 @@
 ## [3.14.8] — 2026-10-27
 
+## 3.16.19 — menu renumber + SSH submenu
+
+- Main menu sequential 1–25 (no gaps 23/24 out of order)
+- New SSH brute-force submenu; nftables options under Firewall
+- Suppressions + sanitize-subnets under Ops
+- Invalid choice lists valid numbers; menu wiring tests
+
 ## 3.16.18 — nftables base ruleset + bad_hosts sets
 
 - modules/nftables_rules.py: established/related, lo, ICMP limit, operator accept,
