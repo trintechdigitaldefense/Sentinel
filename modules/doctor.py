@@ -224,6 +224,21 @@ def check_heartbeat() -> dict:
     except Exception as e:
         return _fail("heartbeat", str(e))
 
+
+def check_firewall_drop() -> dict:
+    try:
+        from modules.firewall import drop_capabilities
+        c = drop_capabilities()
+        if c.get("real_drop"):
+            return _ok("firewall_drop", f"root+{c.get('backend')} ready for real DROP")
+        if c.get("backend") == "none":
+            return _warn("firewall_drop", "no nft/iptables — " + "; ".join(c.get("hints") or []))
+        if not c.get("root"):
+            return _warn("firewall_drop", "tools present but not root — sudo for real DROP")
+        return _warn("firewall_drop", str(c.get("hints") or c))
+    except Exception as e:
+        return _warn("firewall_drop", str(e))
+
 def check_service() -> dict:
     """Always-on hunt: systemd or background pid (Termux)."""
     try:
@@ -399,6 +414,7 @@ def run_doctor(verbose: bool = True) -> dict:
         check_canaries(),
         check_heartbeat(),
         check_service(),
+        check_firewall_drop(),
         check_whatsapp(),
         check_persistence(),
         check_suid(),

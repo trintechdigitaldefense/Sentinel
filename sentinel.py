@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.16.16"
+__version__ = "3.16.17"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -3703,6 +3703,16 @@ Examples:
         except Exception as e:
             print("[!] firewall-intel:", e)
 
+    elif command in ("firewall-prepare", "fw-prepare", "drop-ready"):
+        try:
+            from modules.firewall import ensure_backend_ready, drop_capabilities, status as fw_status
+            print(json.dumps({
+                "capabilities": drop_capabilities(),
+                "prepare": ensure_backend_ready(),
+                "status": fw_status(),
+            }, indent=2, default=str))
+        except Exception as e:
+            print("[!] firewall-prepare:", e)
     elif command in ("firewall", "fw"):
         try:
             from modules.firewall import cli as fw_cli

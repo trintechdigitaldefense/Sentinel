@@ -300,13 +300,28 @@ def apply_block(
     fw_result: dict[str, Any] = {}
     applied = False
     try:
-        from modules.firewall import block_ip, protect_operator
-        try:
-            protect_operator(confirm=True)
-        except Exception as e:
-            log.debug("protect_operator: %s", e)
-        fw_result = block_ip(ip, confirm=True, reason=reason, source=source)
-        applied = bool(fw_result.get("ok")) and not fw_result.get("dry_run")
+        from modules.firewall import block_ip, protect_operator, ensure_backend_ready, drop_capabilities
+        caps = drop_capabilities()
+        if not caps.get("real_drop"):
+            fw_result = {
+                "ok": False,
+                "error": "real DROP unavailable",
+                "capabilities": caps,
+                "hints": caps.get("hints"),
+            }
+            applied = False
+        else:
+            prep = ensure_backend_ready()
+            if not prep.get("ok"):
+                fw_result = {"ok": False, "error": "backend prepare failed", "prepare": prep}
+                applied = False
+            else:
+                try:
+                    protect_operator(confirm=True)
+                except Exception as e:
+                    log.debug("protect_operator: %s", e)
+                fw_result = block_ip(ip, confirm=True, reason=reason, source=source)
+                applied = bool(fw_result.get("ok")) and bool(fw_result.get("applied") or fw_result.get("real_drop") or fw_result.get("verified")) and not fw_result.get("dry_run")
     except Exception as e:
         fw_result = {"ok": False, "error": str(e)}
 

@@ -1,5 +1,13 @@
 ## [3.14.8] — 2026-10-27
 
+## 3.16.17 — real DROP via root + nft/iptables
+
+- drop_capabilities() / is_root() report whether live DROP is possible
+- ensure_backend_ready() creates nft inet sentinel input chain or probes iptables
+- block_ip requires root, prepares backend, verifies rule when possible
+- SSH auto_block uses prepare path; clear errors when DROP unavailable
+- CLI: firewall-prepare / drop-ready; doctor check_firewall_drop
+
 ## 3.16.16 — stronger SSH brute-force engine
 
 - Broader auth failure markers + rhost/from IP extraction

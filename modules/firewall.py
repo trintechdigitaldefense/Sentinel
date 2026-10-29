@@ -74,6 +74,40 @@ def _run(cmd: list[str], timeout: int = 20) -> dict:
         return {"ok": False, "code": -1, "stdout": "", "stderr": str(e), "cmd": cmd}
 
 
+def is_root() -> bool:
+    try:
+        return os.geteuid() == 0
+    except Exception:
+        return False
+
+
+def drop_capabilities() -> dict:
+    """Report whether real DROP is possible on this host."""
+    b = backend()
+    root = is_root()
+    tools = {
+        "nft": bool(shutil.which("nft")),
+        "iptables": bool(shutil.which("iptables")),
+        "ip6tables": bool(shutil.which("ip6tables")),
+    }
+    ready = root and b in ("nft", "iptables")
+    hints = []
+    if not root:
+        hints.append("Run as root (sudo) for real DROP rules")
+    if b == "none":
+        hints.append("Install: apt install nftables   OR   apt install iptables")
+        hints.append("Termux/Android: host firewall DROP usually unavailable — detect/record only")
+    return {
+        "ok": ready,
+        "root": root,
+        "backend": b,
+        "tools": tools,
+        "real_drop": ready,
+        "hints": hints,
+        "note": "Host INPUT drops only — not a perimeter firewall",
+    }
+
+
 def backend() -> str:
     prefer = (_cfg().get("backend") or "auto").lower()
     if prefer == "nft" and shutil.which("nft"):
@@ -268,21 +302,75 @@ def _case_event(title: str, detail: dict) -> None:
 
 
 def ensure_backend_ready() -> dict:
-    b = backend()
+    """Create nft table/chain or verify iptables is usable. Requires root for real effect."""
+    caps = drop_capabilities()
+    b = caps["backend"]
     if b == "none":
-        return {"ok": False, "error": "neither nft nor iptables found"}
+        return {
+            "ok": False,
+            "error": "neither nft nor iptables found",
+            "hints": caps.get("hints"),
+            "real_drop": False,
+        }
+    if not caps["root"]:
+        return {
+            "ok": False,
+            "error": "root required for real DROP (run with sudo)",
+            "backend": b,
+            "real_drop": False,
+            "hints": caps.get("hints"),
+        }
+
     if b == "nft":
-        _run(["nft", "add", "table", "inet", "sentinel"])
-        r = _run(
-            [
+        steps = []
+        r1 = _run(["nft", "add", "table", "inet", "sentinel"])
+        steps.append(r1)
+        # Single-arg brace form is portable across nft versions
+        r2 = _run([
+            "nft", "add", "chain", "inet", "sentinel", "input",
+            "{ type filter hook input priority -5 ; policy accept ; }",
+        ])
+        steps.append(r2)
+        # Fallback older split syntax
+        if not r2.get("ok") and "exist" not in (r2.get("stderr") or "").lower():
+            r2b = _run([
                 "nft", "add", "chain", "inet", "sentinel", "input",
                 "{", "type", "filter", "hook", "input", "priority", "-5", ";",
                 "policy", "accept", ";", "}",
-            ]
+            ])
+            steps.append(r2b)
+            r2 = r2b
+        ok = (
+            r1.get("ok")
+            or "exist" in (r1.get("stderr") or "").lower()
+            or r1.get("code") in (0, 1)
+        ) and (
+            r2.get("ok")
+            or "exist" in (r2.get("stderr") or "").lower()
+            or r2.get("code") in (0, 1)
         )
-        ok = r["ok"] or "exists" in (r.get("stderr") or "").lower() or r["code"] in (0, 1)
-        return {"ok": ok, "backend": b, "detail": r}
-    return {"ok": True, "backend": b}
+        # Verify chain visible
+        verify = _run(["nft", "list", "chain", "inet", "sentinel", "input"])
+        steps.append(verify)
+        return {
+            "ok": bool(ok or verify.get("ok")),
+            "backend": b,
+            "real_drop": True,
+            "root": True,
+            "detail": steps,
+            "chain_ok": bool(verify.get("ok")),
+        }
+
+    # iptables path
+    probe = _run(["iptables", "-L", "INPUT", "-n"])
+    return {
+        "ok": bool(probe.get("ok")),
+        "backend": b,
+        "real_drop": bool(probe.get("ok")),
+        "root": True,
+        "detail": probe,
+        "error": None if probe.get("ok") else (probe.get("stderr") or "iptables INPUT list failed"),
+    }
 
 
 def status() -> dict:
@@ -304,6 +392,9 @@ def status() -> dict:
         "operator_ips": detect_operator_ips(),
         "lockout_guard": True,
         "ipv6": True,
+        "capabilities": drop_capabilities(),
+        "root": is_root(),
+        "real_drop": drop_capabilities().get("real_drop"),
     }
     if b == "none":
         out["ok"] = False
@@ -337,10 +428,38 @@ def block_ip(target: str, confirm: bool = False, reason: str = "", source: str =
             "would": f"block {norm} on INPUT",
             "kind": kind,
             "backend": b,
-            "hint": "pass --confirm to apply",
+            "hint": "pass --confirm to apply (requires root + nft/iptables)",
+            "capabilities": drop_capabilities(),
         }
-    if b == "none":
-        return {"ok": False, "error": "no firewall backend"}
+    # Real DROP path
+    caps = drop_capabilities()
+    if not caps.get("root"):
+        return {
+            "ok": False,
+            "error": "root required for real DROP — re-run with sudo",
+            "target": norm,
+            "capabilities": caps,
+            "applied": False,
+        }
+    if b == "none" or not caps.get("real_drop"):
+        return {
+            "ok": False,
+            "error": "no firewall backend — install nftables or iptables",
+            "target": norm,
+            "capabilities": caps,
+            "applied": False,
+            "hints": caps.get("hints"),
+        }
+    ready = ensure_backend_ready()
+    if not ready.get("ok"):
+        return {
+            "ok": False,
+            "error": ready.get("error") or "firewall backend not ready",
+            "target": norm,
+            "prepare": ready,
+            "applied": False,
+        }
+    b = ready.get("backend") or b
 
     data = _load_blocks()
     if not data.get("enabled", True):
@@ -383,9 +502,37 @@ def block_ip(target: str, confirm: bool = False, reason: str = "", source: str =
         if norm not in data["ips"]:
             data["ips"].append(norm)
     _save_blocks(data)
-    _audit("block", {"target": norm, "kind": kind, "reason": reason, "backend": b, "source": source, "result": r}, ok=r.get("ok", False))
-    _case_event("FIREWALL_BLOCK", {"target": norm, "reason": reason, "source": source, "ok": r.get("ok")})
-    return {"ok": r.get("ok", False), "target": norm, "kind": kind, "backend": b, "applied": True, "detail": r, "source": source}
+    verified = False
+    try:
+        if b == "nft":
+            vr = _run(["nft", "list", "chain", "inet", "sentinel", "input"])
+            verified = norm in (vr.get("stdout") or "") and r.get("ok", False)
+        else:
+            tool = "ip6tables" if ":" in norm.split("/")[0] else "iptables"
+            vr = _run([tool, "-L", "INPUT", "-n"])
+            verified = norm in (vr.get("stdout") or "") and r.get("ok", False)
+    except Exception as e:
+        logging.getLogger("sentinel").debug("verify block: %s", e)
+
+    applied = bool(r.get("ok")) and not r.get("dry_run")
+    _audit(
+        "block",
+        {"target": norm, "kind": kind, "reason": reason, "backend": b, "source": source, "result": r, "verified": verified},
+        ok=bool(r.get("ok")),
+    )
+    _case_event("FIREWALL_BLOCK", {"target": norm, "reason": reason, "source": source, "ok": r.get("ok"), "verified": verified})
+    return {
+        "ok": bool(r.get("ok")),
+        "target": norm,
+        "kind": kind,
+        "backend": b,
+        "applied": applied,
+        "verified": verified,
+        "real_drop": applied and verified,
+        "detail": r,
+        "source": source,
+        "root": True,
+    }
 
 
 def unblock_ip(target: str, confirm: bool = False) -> dict:
