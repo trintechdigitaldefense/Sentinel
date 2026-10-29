@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.16.19"
+__version__ = "3.16.20"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -2211,6 +2211,10 @@ def interactive_menu(config=None, logger=None):
         ("12", "Go-live readiness", ("go-live",)),
         ("13", "Always-on service install", ("service-install",)),
         ("14", "Always-on service status", ("service-status",)),
+        ("15", "Multi-host agent status", ("multi-host", "status")),
+        ("16", "Prepare agent install bundle", ("multi-host", "prepare")),
+        ("17", "Build field evidence pack", ("field-evidence",)),
+        ("18", "Field evidence + soak (no sim)", ("field-evidence", "--soak")),
         ("0", "Back to main menu", ("__back__",)),
     ]
 
@@ -3621,6 +3625,41 @@ Examples:
             print(json.dumps(sanitize_config_subnets(), indent=2, default=str))
         except Exception as e:
             print("[!] sanitize-subnets:", e)
+
+    elif command in ("multi-host", "multihost", "mh"):
+        try:
+            from modules.multi_host import status as mh_status, prepare_fleet
+            sub = args[0] if args else "status"
+            if sub in ("status", "health"):
+                print(json.dumps(mh_status(), indent=2, default=str))
+            elif sub in ("prepare", "bundle"):
+                label = args[1] if len(args) > 1 else "pilot"
+                print(json.dumps(prepare_fleet(label=label), indent=2, default=str))
+            else:
+                print(json.dumps(mh_status(), indent=2, default=str))
+                print("Usage: multi-host status|prepare [label]")
+        except Exception as e:
+            print("[!] multi-host:", e)
+
+    elif command in ("field-evidence", "field-evidence-pack", "pilot-evidence"):
+        try:
+            from modules.field_evidence import collect
+            run_soak = "--soak" in args
+            conf = "--confirm" in args
+            hours = 24
+            for i, a in enumerate(args):
+                if a == "--hours" and i + 1 < len(args):
+                    try:
+                        hours = int(args[i + 1])
+                    except Exception:
+                        pass
+            r = collect(hours=hours, run_soak=run_soak, soak_confirm=conf)
+            print(json.dumps(r, indent=2, default=str))
+            if r.get("zip"):
+                print(f"\n[+] Field evidence zip: {r['zip']}")
+                print(f"[+] SHA-256: {r.get('sha256')}")
+        except Exception as e:
+            print("[!] field-evidence:", e)
 
     elif command in ("fleet-scan", "fleet", "devices-scan"):
         try:

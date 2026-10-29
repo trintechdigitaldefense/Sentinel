@@ -171,6 +171,23 @@ def run_field_soak(
 
     _step("critical_store", critical_store, results)
 
+    def multi_host():
+        try:
+            from modules.multi_host import status as mh_status
+            st = mh_status()
+            return {
+                "ok": True,
+                "multi_host_ready": st.get("multi_host_ready"),
+                "registry_agents": st.get("registry_agents"),
+                "online": len(st.get("online") or []),
+                "stale": len(st.get("stale") or []),
+                "hints": st.get("hints") or [],
+            }
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    _step("multi_host", multi_host, results)
+
     fails = [r for r in results if not r.get("ok")]
     # soft fails: skipped sim is ok
     hard = [r for r in fails if not r.get("skipped")]

@@ -1,5 +1,13 @@
 ## [3.14.8] — 2026-10-27
 
+## 3.16.20 — multi-host agents + field evidence packs
+
+- modules/multi_host.py: fleet status, prepare install bundle + optional keys
+- modules/field_evidence.py: hashed zip of local + agent reports + soak
+- field_soak includes multi_host step
+- CLI: multi-host status|prepare, field-evidence [--soak]
+- Fleet menu options 15–18
+
 ## 3.16.19 — menu renumber + SSH submenu
 
 - Main menu sequential 1–25 (no gaps 23/24 out of order)
