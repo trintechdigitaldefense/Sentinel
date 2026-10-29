@@ -1,5 +1,12 @@
 ## [3.14.8] — 2026-10-27
 
+## 3.16.18 — nftables base ruleset + bad_hosts sets
+
+- modules/nftables_rules.py: established/related, lo, ICMP limit, operator accept,
+  high-risk port drops, SSH rate-limit, @bad_hosts timeout sets
+- ensure_backend_ready / block_ip prefer set-based DROP
+- CLI: nft-apply [--confirm], nft-list
+
 ## 3.16.17 — real DROP via root + nft/iptables
 
 - drop_capabilities() / is_root() report whether live DROP is possible

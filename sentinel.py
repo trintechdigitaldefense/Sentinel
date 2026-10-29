@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.16.17"
+__version__ = "3.16.18"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -3703,7 +3703,29 @@ Examples:
         except Exception as e:
             print("[!] firewall-intel:", e)
 
+    elif command in ("nft-apply", "nftables-apply"):
+        try:
+            from modules.nftables_rules import apply_base_ruleset, list_ruleset
+            conf = "--confirm" in args or "-y" in args
+            ops = []
+            try:
+                from modules.firewall import detect_operator_ips
+                ops = detect_operator_ips()
+            except Exception:
+                pass
+            print(json.dumps(apply_base_ruleset(confirm=conf, operator_ips=ops), indent=2, default=str))
+            if conf:
+                print(json.dumps(list_ruleset(), indent=2, default=str)[:2000])
+        except Exception as e:
+            print("[!] nft-apply:", e)
+    elif command in ("nft-list", "nftables-list"):
+        try:
+            from modules.nftables_rules import list_ruleset
+            print(json.dumps(list_ruleset(), indent=2, default=str))
+        except Exception as e:
+            print("[!] nft-list:", e)
     elif command in ("firewall-prepare", "fw-prepare", "drop-ready"):
+
         try:
             from modules.firewall import ensure_backend_ready, drop_capabilities, status as fw_status
             print(json.dumps({

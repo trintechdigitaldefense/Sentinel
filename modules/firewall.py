@@ -322,6 +322,24 @@ def ensure_backend_ready() -> dict:
         }
 
     if b == "nft":
+        # Prefer full managed ruleset (sets + base chain)
+        try:
+            from modules.nftables_rules import apply_base_ruleset
+            ops = detect_operator_ips()
+            full = apply_base_ruleset(confirm=True, operator_ips=ops)
+            if full.get("ok"):
+                return {
+                    "ok": True,
+                    "backend": "nft",
+                    "real_drop": True,
+                    "root": True,
+                    "ruleset": "nftables_rules.apply_base_ruleset",
+                    "detail": full,
+                    "chain_ok": bool(full.get("verify_ok")),
+                }
+        except Exception as e:
+            logging.getLogger("sentinel").debug("nft ruleset apply: %s", e)
+
         steps = []
         r1 = _run(["nft", "add", "table", "inet", "sentinel"])
         steps.append(r1)
@@ -486,8 +504,21 @@ def block_ip(target: str, confirm: bool = False, reason: str = "", source: str =
         }
 
     if b == "nft":
-        fam = "ip6" if ":" in norm.split("/")[0] else "ip"
-        r = _run(["nft", "insert", "rule", "inet", "sentinel", "input", fam, "saddr", norm, "drop", "comment", "sentinel"])
+        # Prefer set-based DROP with timeout (efficient + auto-expire)
+        try:
+            from modules.nftables_rules import add_to_bad_hosts
+            # duration from reason string is not passed — default 1h; caller records blocklist
+            set_r = add_to_bad_hosts(norm, timeout_sec=3600)
+            if set_r.get("ok"):
+                r = {"ok": True, "stdout": "", "stderr": "", "method": "nft_set", "detail": set_r}
+            else:
+                fam = "ip6" if ":" in norm.split("/")[0] else "ip"
+                r = _run(["nft", "insert", "rule", "inet", "sentinel", "input", fam, "saddr", norm, "drop", "comment", "sentinel"])
+                r["set_fallback"] = set_r
+        except Exception as e:
+            fam = "ip6" if ":" in norm.split("/")[0] else "ip"
+            r = _run(["nft", "insert", "rule", "inet", "sentinel", "input", fam, "saddr", norm, "drop", "comment", "sentinel"])
+            r["set_error"] = str(e)
     else:
         is_v6 = ":" in norm.split("/")[0]
         tool = "ip6tables" if is_v6 else "iptables"
@@ -560,7 +591,11 @@ def unblock_ip(target: str, confirm: bool = False) -> dict:
             if not r["ok"]:
                 break
     elif b == "nft":
-        results.append({"ok": True, "note": "removed from managed list"})
+        try:
+            from modules.nftables_rules import remove_from_bad_hosts
+            results.append(remove_from_bad_hosts(norm))
+        except Exception as e:
+            results.append({"ok": True, "note": "removed from managed list", "error": str(e)})
 
     data = _load_blocks()
     data["ips"] = [x for x in data.get("ips") or [] if x != norm]
