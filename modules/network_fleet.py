@@ -50,8 +50,9 @@ def _save_cfg(cfg: dict) -> None:
     p.write_text(json.dumps(cfg, indent=2))
     try:
         os.chmod(p, 0o600)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
 
 def devices_path() -> Path:
@@ -312,8 +313,9 @@ def merge_discovery(logger: Any = None) -> dict:
     if logger:
         try:
             logger.info("Fleet discovery: %s hosts via %s (new=%s)", len(by_ip), db["scan_method"], len(new_ips))
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return db
 
 

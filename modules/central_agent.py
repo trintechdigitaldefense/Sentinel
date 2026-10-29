@@ -337,8 +337,9 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
                         "path": fpath,
                         "canary_id": meta.get("canary_id"),
                     })
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
         for proc in data.get("processes") or []:
             if isinstance(proc, dict) and proc.get("reason") == "reverse_shell" and sa:
                 try:
@@ -347,8 +348,9 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
                         "ip": data.get("ip"),
                         "cmd": proc.get("cmd"),
                     })
-                except Exception:
-                    pass
+                except Exception as e:
+                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
         audit("agent_report", {
             "ip": ip,

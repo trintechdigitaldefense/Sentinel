@@ -1,6 +1,7 @@
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """Professional plain-language PDF security report for non-technical clients."""
 from __future__ import annotations
+import logging
 
 import json
 import socket
@@ -152,8 +153,9 @@ def _plain_verdict(status: dict) -> tuple[str, str, str]:
                     "Confirm whether these changes were authorized.",
                     "amber",
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     if ready in ("PARTIAL", "WARN"):
         return (
             "Protection partially ready",
@@ -337,8 +339,9 @@ def generate_client_pdf(out_path: Optional[Path] = None, client_name: Optional[s
         except Exception:
             try:
                 left_cell.append(Image(str(logo), width=20 * mm, height=20 * mm))
-            except Exception:
-                pass
+            except Exception as e:
+                logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     left_text = Table([
         [Paragraph("TRINTECH DIGITAL DEFENSE", styles["Brand"])],
         [Paragraph("Caribbean cybersecurity · Authorized defensive use only", styles["BrandSub"])],

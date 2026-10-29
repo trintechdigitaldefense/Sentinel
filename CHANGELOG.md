@@ -1,5 +1,11 @@
 ## [3.14.8] — 2026-10-27
 
+## 3.16.9 — reliability gap fixes
+
+- Doctor auto-sanitizes overly wide scan_subnets when possible
+- Critical modules: silent `except: pass` → debug logging (dashboard, central, fleet, reports, agents)
+- Version badges aligned to 3.16.9
+
 ## 3.16.8 — gap fixes (defaults, central auth, docs)
 
 - Safe default scan subnet: office `/24` only (no `/8` or `/12`)

@@ -53,8 +53,9 @@ def _save_cfg(cfg: dict) -> None:
     p.write_text(json.dumps(cfg, indent=2))
     try:
         os.chmod(p, 0o600)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
 
 def ensure_agent_token() -> str:
@@ -234,8 +235,9 @@ PY
     sh_path.write_text(script)
     try:
         os.chmod(sh_path, 0o755)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
     readme = textwrap.dedent(f"""\
     # Sentinel agent bundle - {label}

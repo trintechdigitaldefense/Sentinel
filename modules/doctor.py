@@ -113,11 +113,32 @@ def check_config() -> dict:
     return _ok("config", str(p))
 
 def check_subnet() -> dict:
+    """Validate scan_subnets; auto-sanitize overly wide ranges when possible."""
+    try:
+        from modules.subnet_guard import is_too_wide, sanitize_config_subnets
+    except Exception:
+        is_too_wide = None
+        sanitize_config_subnets = None
+
     c = _load_cfg()
     nets = (c.get("network") or {}).get("scan_subnets") or []
     if not nets:
         return _warn("subnet", "no scan_subnets set — run: python3 sentinel.py autosubnet")
-    bad = [s for s in nets if str(s).endswith(("/8", "/12", "/11", "/10", "/9"))]
+
+    if is_too_wide:
+        bad = [s for s in nets if is_too_wide(str(s))]
+    else:
+        bad = [s for s in nets if str(s).endswith(("/8", "/12", "/11", "/10", "/9", "/0"))]
+
+    if bad and sanitize_config_subnets:
+        fixed = sanitize_config_subnets()
+        if fixed.get("changed"):
+            nets = fixed.get("subnets") or []
+            return _warn(
+                "subnet",
+                f"auto-restricted from {bad} → {nets} (was too wide)",
+            )
+        return _fail("subnet", f"too wide: {bad} — run: python3 sentinel.py sanitize-subnets")
     if bad:
         return _fail("subnet", f"too wide: {bad} — restrict to office /24")
     return _ok("subnet", ", ".join(str(x) for x in nets))

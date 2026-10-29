@@ -32,8 +32,9 @@ def _cfg() -> dict:
     if p.exists():
         try:
             return json.loads(p.read_text())
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return {}
 
 
@@ -43,8 +44,9 @@ def _save_cfg(cfg: dict) -> None:
     p.write_text(json.dumps(cfg, indent=2, default=str))
     try:
         os.chmod(p, 0o600)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
 
 def ensure_token() -> tuple:
@@ -84,8 +86,9 @@ def collect_full() -> dict:
     try:
         from sentinel import __version__ as _ver
         out["version"] = str(_ver)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     try:
         out["local_ip"] = socket.gethostbyname(socket.gethostname())
     except Exception:
@@ -129,16 +132,18 @@ def collect_full() -> dict:
                             # path is the key
                             if Path(fpath).exists():
                                 alive += 1
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
                 # if keys are paths
                 if alive == 0 and total:
                     for fpath in trk:
                         try:
                             if Path(fpath).is_file():
                                 alive += 1
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
         out["canaries"] = {"total": total, "alive": alive}
         out["canaries_alive"] = alive
     except Exception as e:
@@ -162,8 +167,9 @@ def collect_full() -> dict:
                     out["heartbeat"] = {**hb, "alive": False}
         elif isinstance(hb, dict) and hb.get("present") is False:
             out["heartbeat"] = {**hb, "alive": False}
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
     # Align alert_total naming for client PDF
     out.setdefault("alerts_24h", out.get("alert_total") or len(out.get("recent_alerts") or []))
@@ -197,10 +203,12 @@ def collect_full() -> dict:
             for ln in lines[-30:]:
                 try:
                     recent.append(json.loads(ln))
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as e:
+                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     out["recent_alerts"] = list(reversed(recent))
     out["alert_total"] = total
 
@@ -249,8 +257,9 @@ def collect_full() -> dict:
     if bl_path.exists():
         try:
             blocked = (json.loads(bl_path.read_text()) or {}).get("blocked") or {}
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     out["blocklist"] = {"count": len(blocked), "ips": list(blocked.keys())[:20]}
 
     cfg = _cfg()
@@ -258,8 +267,9 @@ def collect_full() -> dict:
     try:
         q = (cfg.get("alerting") or {}).get("quiet_hours") or cfg.get("quiet") or {}
         quiet = bool(q.get("enabled") or cfg.get("quiet_mode"))
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     out["quiet"] = quiet
     out["config_flags"] = {
         "siem_enabled": bool(((cfg.get("alerting") or {}).get("siem") or {}).get("enabled")),
@@ -279,8 +289,9 @@ def collect_full() -> dict:
     try:
         from modules.dashboard_enrich import enrich
         enrich(out)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     return out
 
 

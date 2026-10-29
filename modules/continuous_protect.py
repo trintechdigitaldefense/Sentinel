@@ -5,6 +5,7 @@ Orchestrates: health snapshot → fleet discovery → baselines/canaries →
 host start → firewall ARMED (kept running) → dashboard (+ central) → hunt loop.
 """
 from __future__ import annotations
+import logging
 
 import json
 import os
@@ -190,8 +191,9 @@ def run_continuous_protection(
         if cp.exists():
             cfg = json.loads(cp.read_text())
         dash_port = int((cfg.get("dashboard") or {}).get("port") or 8792)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
     logp = _data() / "dashboard_bg.log"
     if _port_open(dash_port):
@@ -226,8 +228,9 @@ def run_continuous_protection(
             print(f"  {c.BOLD}{url_line}{c.RESET}")
         else:
             print(f"  {c.GRAY}Open: python3 sentinel.py dashboard-url{c.RESET}")
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
     # 7) Central listener (optional, non-fatal)
     _step_print(c, 7, total, "Central agent listener (multi-host)")
@@ -235,8 +238,9 @@ def run_continuous_protection(
     try:
         cfg = json.loads((_home() / "config.json").read_text()) if (_home() / "config.json").exists() else {}
         central_port = int((cfg.get("agent") or {}).get("port") or 8743)
-    except Exception:
-        pass
+    except Exception as e:
+        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     if not start_central:
         result["steps"]["central"] = {"skipped": True}
         print(f"  {c.GRAY}Skipped{c.RESET}")
@@ -267,8 +271,9 @@ def run_continuous_protection(
         try:
             hb = _data() / "heartbeat.json"
             hb.write_text(json.dumps({"ts": datetime.now().isoformat(), "source": "continuous-protect", "alive": True}))
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
 
     # Summary before hunt
     print(f"\n  {c.GREEN}{c.BOLD}{'─' * 50}{c.RESET}")

@@ -1,6 +1,7 @@
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 """Technical operator PDF — accurate status for Sentinel dashboard."""
 from __future__ import annotations
+import logging
 
 import json
 import os
@@ -51,10 +52,12 @@ def _gather() -> dict[str, Any]:
             for line in ap.read_text(errors="ignore").splitlines()[-50:]:
                 try:
                     alerts.append(json.loads(line))
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as e:
+                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     out["alerts"] = list(reversed(alerts))
     out["alert_count"] = len(alerts)
 
@@ -102,8 +105,9 @@ def _gather() -> dict[str, Any]:
         if p.exists():
             try:
                 canary = max(canary, len(json.loads(p.read_text())))
-            except Exception:
-                pass
+            except Exception as e:
+                logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     out["canary_files"] = canary
 
     # service
@@ -156,8 +160,9 @@ def generate_technical_pdf(out_path: Optional[Path] = None) -> dict:
     if logo:
         try:
             story.append(Image(str(logo), width=0.7 * inch, height=0.7 * inch))
-        except Exception:
-            pass
+        except Exception as e:
+            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+
     story.append(Paragraph("SENTINEL TECHNICAL REPORT", styles["T"]))
     story.append(Paragraph(
         f"TrinTech Digital Defense · v{data.get('version')} · Operator detail · Authorized defensive use only",
