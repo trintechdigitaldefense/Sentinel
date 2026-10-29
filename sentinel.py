@@ -11,7 +11,7 @@ maintains persistent behavioral monitoring,
 and provides comprehensive system integrity, process, network, and user monitoring.
 """
 
-__version__ = "3.16.14"
+__version__ = "3.16.15"
 __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — Phase 1 Wired Line of Defense Engine"
 __license__ = "For authorized security testing only"
 
@@ -222,6 +222,8 @@ def init_config(logger):
             "max_failures": 5,
             "time_window": 600,
             "block_duration": 1800,
+            "max_block_duration": 86400,
+            "repeat_multiplier": 2.0,
             "alert_on_block": True,
             "auto_block": False,
             "whitelist_ips": [],

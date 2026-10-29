@@ -323,11 +323,13 @@ def check(
         candidates.append({"ip": ip, "failures": count})
         if not auto:
             continue
+        # Progressive ban: longer each time this IP is blocked
+        ban_for = progressive_duration(ip, duration, ssh)
         r = apply_block(
             ip,
-            reason=f"SSH brute force: {count} failures",
+            reason=f"SSH brute force: {count} failures (ban {ban_for}s)",
             failures=count,
-            duration=duration,
+            duration=ban_for,
             send_alert=send_alert if ssh.get("alert_on_block", True) else None,
             logger=logger,
         )

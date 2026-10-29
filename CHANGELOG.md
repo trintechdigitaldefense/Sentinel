@@ -1,5 +1,11 @@
 ## [3.14.8] — 2026-10-27
 
+## 3.16.15 — progressive SSH ban wired into check
+
+- auto_block uses progressive_duration (2× each repeat, cap 24h)
+- Default config documents max_block_duration + repeat_multiplier
+- auto_block remains **off** by default (supervised)
+
 ## 3.16.14 — always-on status accuracy
 
 - service-status reports monitoring when heartbeat is alive even without systemd unit
