@@ -2,7 +2,7 @@
 
 **Product:** Sentinel continuous monitoring & early warning  
 **Vendor:** TrinTech Digital Defense (Trinidad & Tobago / Caribbean)  
-**Version:** 3.16.13+ (hardening/production-readiness branch)  
+**Version:** 3.16.21+ (hardening/production-readiness branch)  
 **Use:** Authorized defensive use only
 
 ---
