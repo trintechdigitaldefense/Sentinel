@@ -500,8 +500,8 @@ def _html(token: str, data: dict) -> str:
     <div class="action-group">
       <div class="action-label">Reports for the client</div>
       <div class="actions">
-        <a class="btn btn-pdf" id="btn-pdf-report" href="/api/report/pdf?type=client&amp;token={esc(token)}" target="_blank" rel="noopener">📄 Client report (easy to read)</a>
-        <a class="btn secondary" href="/api/report/technical?token={esc(token)}" target="_blank" rel="noopener">🔧 Technical report (for IT)</a>
+        <a class="btn btn-pdf" id="btn-pdf-report" href="/api/report/pdf?type=client&amp;token={esc(token)}" target="_blank" rel="noopener" onclick="openPdf('client'); return true;">📄 Client report (easy to read)</a>
+        <a class="btn secondary" href="/api/report/technical?token={esc(token)}" target="_blank" rel="noopener" onclick="openPdf('technical'); return true;">🔧 Technical report (for IT)</a>
       </div>
     </div>
 
@@ -530,6 +530,10 @@ def _html(token: str, data: dict) -> str:
       <div class="action-label">Field tools</div>
       <div class="actions">
         <button class="btn secondary" onclick="runAction('field-soak')">Field-soak check</button>
+        <button class="btn secondary" onclick="runAction('multi-host')">Multi-host status</button>
+        <button class="btn secondary" onclick="runAction('field-evidence')">Build field evidence</button>
+        <button class="btn secondary" onclick="runAction('fleet-scan')">Fleet scan</button>
+        <button class="btn secondary" onclick="runAction('ssh-status')">SSH block status</button>
       </div>
     </div>
 
@@ -817,8 +821,10 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
     <h2>📄 PDF reports</h2>
     <p class="muted">Tap a button to open the report immediately in this browser. You can download from the viewer.</p>
     <div class="actions">
-      <a class="btn btn-pdf" href="/api/report/pdf?token={esc(token)}" target="_blank" rel="noopener">Generate &amp; view client PDF</a>
-      <a class="btn secondary" href="/api/report/technical?token={esc(token)}" target="_blank" rel="noopener">Technical PDF</a>
+      <a class="btn btn-pdf" href="/api/report/pdf?type=client&amp;token={esc(token)}" target="_blank" rel="noopener" onclick="openPdf('client'); return true;">Generate &amp; view client PDF</a>
+      <a class="btn secondary" href="/api/report/technical?token={esc(token)}" target="_blank" rel="noopener" onclick="openPdf('technical'); return true;">Technical PDF</a>
+      <button class="btn secondary" type="button" onclick="openPdf('client')">📄 Open client PDF</button>
+      <button class="btn secondary" type="button" onclick="openPdf('technical')">🔧 Open technical PDF</button>
     </div>
   </div>
 
@@ -870,7 +876,19 @@ async function ackAllCritical() {{
   if (!r.ok || !j.ok) {{ alert("Failed: " + (j.error || r.status)); return; }}
   location.reload();
 }}
+function openPdf(kind) {{
+  const k = (kind || "client").toLowerCase();
+  const url = (k === "tech" || k === "technical")
+    ? ("/api/report/technical?token=" + encodeURIComponent(TOKEN))
+    : ("/api/report/pdf?type=client&token=" + encodeURIComponent(TOKEN));
+  const out = document.getElementById("action-out");
+  if (out) out.textContent = "Opening " + k + " PDF…";
+  try {{ window.open(url, "_blank"); }} catch (e) {{
+    if (out) out.textContent = "Pop-up blocked — use the PDF links in the Reports section.";
+  }}
+}}
 async function runAction(name) {{
+
   const out = document.getElementById("action-out");
   if (out) out.textContent = "Running " + name + "...";
   if (name === "refresh") {{ location.reload(); return; }}
@@ -1276,12 +1294,14 @@ class _Handler(BaseHTTPRequestHandler):
             self._send(200, json.dumps({"ok": True, "allow_control": want, "role": role}).encode(), "application/json")
             return
 
-        if not self.allow_control:
-            self._send(403, b'{"ok":false,"error":"view-only mode"}', "application/json")
-            return
+        # Control required only for mutating / privileged endpoints below.
+        # Safe reads + PDF generation work in view-only so client reports always load.
 
-        # Critical ACK
+        # Critical ACK (requires control)
         if "critical" in path and "ack" in path:
+            if not self.allow_control:
+                self._send(403, json.dumps({"ok": False, "error": "view-only mode - enable dashboard.allow_control to ACK"}).encode(), "application/json")
+                return
             try:
                 from modules.critical_alerts import ack, ack_all
                 if path.rstrip("/").endswith("ack-all"):
@@ -1300,20 +1320,58 @@ class _Handler(BaseHTTPRequestHandler):
         # Safe actions
         if path.rstrip("/").endswith("/api/action") or path.endswith("action"):
             action = str(body_in.get("action") or "").strip().lower()
+            # Read-only / report actions — work without allow_control
+            safe_actions = {
+                "refresh", "doctor", "ops", "go-live-status", "visibility",
+                "service-status", "realtime-scan", "pdf-report", "client-report",
+                "tech-report", "multi-host", "field-evidence", "fleet-scan",
+                "ssh-status", "alerts",
+            }
+            # Mutating — need allow_control
+            control_actions = {
+                "quiet-on", "quiet-off", "field-soak", "deception", "service-install",
+            }
             allowed = {
+                "refresh": ("ops",),
                 "doctor": ("doctor",),
                 "ops": ("ops",),
-                "go-live-status": ("ops",),  # report is file-backed; ops is safe
+                "go-live-status": ("go-live",),
                 "quiet-on": ("quiet", "on"),
                 "quiet-off": ("quiet", "off"),
                 "field-soak": ("field-soak",),
                 "visibility": ("visibility",),
                 "service-status": ("service-status",),
                 "realtime-scan": ("realtime",),
-                "pdf-report": None,       # handled below — client + technical
-                "client-report": None,   # plain-language client PDF
-                "tech-report": None,     # technical PDF via CLI
+                "multi-host": ("multi-host", "status"),
+                "field-evidence": ("field-evidence",),
+                "fleet-scan": ("fleet-scan",),
+                "ssh-status": ("ssh-blocks", "status"),
+                "alerts": ("alerts",),
+                "deception": ("deception",),
+                "service-install": ("service-install",),
+                "pdf-report": None,
+                "client-report": None,
+                "tech-report": None,
             }
+            if action in control_actions and not self.allow_control:
+                self._send(
+                    403,
+                    json.dumps({
+                        "ok": False,
+                        "error": "view-only mode",
+                        "hint": "Set dashboard.allow_control=true in ~/.sentinel/config.json (or use CLI)",
+                        "action": action,
+                    }).encode(),
+                    "application/json",
+                )
+                return
+            if action not in safe_actions and action not in control_actions and action not in allowed:
+                self._send(
+                    400,
+                    json.dumps({"ok": False, "error": f"unknown action: {action}", "allowed": sorted(allowed.keys())}).encode(),
+                    "application/json",
+                )
+                return
             # One-push / dedicated PDF report generation (non-destructive)
             if action in ("pdf-report", "client-report", "tech-report"):
                 try:

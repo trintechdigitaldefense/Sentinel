@@ -1,5 +1,12 @@
 ## [3.14.8] — 2026-10-27
 
+## 3.16.21 — dashboard reports + safe actions in view-only
+
+- PDF GET endpoints verified (client + technical stream as application/pdf)
+- Safe dashboard actions work without allow_control
+- Mutating actions still need allow_control
+- openPdf() helper; extra field-tool buttons
+
 ## 3.16.20 — multi-host agents + field evidence packs
 
 - modules/multi_host.py: fleet status, prepare install bundle + optional keys
