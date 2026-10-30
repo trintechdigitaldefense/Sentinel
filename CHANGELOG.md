@@ -1,5 +1,9 @@
 ## [3.14.8] — 2026-10-27
 
+## 3.16.21b — GitHub brand banner
+
+- docs/assets/sentinel-github-banner.png for README / social preview
+
 ## 3.16.21 — dashboard reports + safe actions in view-only
 
 - PDF GET endpoints verified (client + technical stream as application/pdf)

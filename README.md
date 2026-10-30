@@ -1,5 +1,9 @@
 # SENTINEL
 
+<p align="center">
+  <img src="docs/assets/sentinel-github-banner.png" alt="Sentinel — TrinTech Digital Defense" width="100%"/>
+</p>
+
 [![CI](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/trintechdigitaldefense/Sentinel/actions/workflows/ci.yml)
 [![Version](https://img.shields.io/badge/version-3.16.21-blue)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/license-Authorized%20defensive%20use-red)](LICENSE)
