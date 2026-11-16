@@ -218,6 +218,12 @@ def build_install_bundle(
         loopback = parsed_url.hostname.lower() == "localhost"
     if parsed_url.scheme != "https" and not (parsed_url.scheme == "http" and loopback):
         raise ValueError("Agent bundles require HTTPS for non-loopback central URLs")
+    central_cfg = _cfg()
+    central_agent_cfg = central_cfg.get("agent") or {}
+    configured_ca = central_agent_cfg.get("tls_ca") or central_agent_cfg.get("tls_cert")
+    source_ca = Path(str(configured_ca)).expanduser() if configured_ca else None
+    if source_ca and not source_ca.is_file():
+        raise RuntimeError(f"Configured central CA/certificate does not exist: {source_ca}")
     from modules.agent_keys import issue_key
     agent_id = re.sub(r"[^A-Za-z0-9_.-]", "_", label)[:80] or "agent"
     bootstrap_secret = secrets.token_urlsafe(32)
@@ -236,14 +242,8 @@ def build_install_bundle(
     os.chmod(token_path, 0o600)
 
     # Include a configured private CA/certificate for strict TLS verification.
-    central_cfg = _cfg()
-    central_agent_cfg = central_cfg.get("agent") or {}
-    configured_ca = central_agent_cfg.get("tls_ca") or central_agent_cfg.get("tls_cert")
     ca_path = None
-    if configured_ca:
-        source_ca = Path(str(configured_ca)).expanduser()
-        if not source_ca.is_file():
-            raise RuntimeError(f"Configured central CA/certificate does not exist: {source_ca}")
+    if source_ca:
         ca_path = bdir / "central-ca.crt"
         shutil.copyfile(source_ca, ca_path)
         os.chmod(ca_path, 0o644)
