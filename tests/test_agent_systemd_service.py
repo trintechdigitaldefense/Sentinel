@@ -5,6 +5,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -48,16 +49,17 @@ def _wait_for_checkin(registry, previous=None, timeout=45):
 @pytest.mark.skipif(not SYSTEMD_TEST, reason="requires disposable root VM/container booted with systemd as PID 1")
 def test_generated_agent_service_install_restart_stop_and_start(tmp_path, monkeypatch):
     repo_root = Path(__file__).resolve().parents[1]
-    central_home = tmp_path / "central-home"
-    central_keys = tmp_path / "central-keys"
-    agent_user_home = tmp_path / "agent-user"
+    test_root = Path(tempfile.mkdtemp(prefix="sentinel-systemd-", dir="/var/tmp"))
+    central_home = test_root / "central-home"
+    central_keys = test_root / "central-keys"
+    agent_user_home = test_root / "agent-user"
     agent_home = agent_user_home / "custom-sentinel-data"
-    install_dir = tmp_path / "installed-sentinel"
+    install_dir = test_root / "installed-sentinel"
     for path in (central_home, central_keys, agent_user_home):
         path.mkdir(parents=True, exist_ok=True)
 
-    cert = tmp_path / "central.crt"
-    private_key = tmp_path / "central.key"
+    cert = test_root / "central.crt"
+    private_key = test_root / "central.key"
     subprocess.run(
         [
             shutil.which("openssl"), "req", "-x509", "-newkey", "rsa:2048",
@@ -85,7 +87,7 @@ def test_generated_agent_service_install_restart_stop_and_start(tmp_path, monkey
             central_url=f"https://127.0.0.1:{port}",
             label="systemd-installer-e2e",
         )
-        bare_repo = tmp_path / "sentinel-source.git"
+        bare_repo = test_root / "sentinel-source.git"
         subprocess.run(
             ["git", "clone", "--bare", str(repo_root), str(bare_repo)],
             check=True, capture_output=True, text=True,
@@ -162,3 +164,4 @@ def test_generated_agent_service_install_restart_stop_and_start(tmp_path, monkey
         _systemctl("daemon-reload", check=False)
         server.shutdown()
         server.server_close()
+        shutil.rmtree(test_root, ignore_errors=True)
