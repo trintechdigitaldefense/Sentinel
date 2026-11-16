@@ -371,6 +371,12 @@ PY
     UMask=0077
     NoNewPrivileges=true
     PrivateTmp=true
+    ProtectSystem=full
+    ProtectKernelTunables=true
+    ProtectKernelModules=true
+    ProtectControlGroups=true
+    LockPersonality=true
+    RestrictSUIDSGID=true
 
     [Install]
     WantedBy=multi-user.target
