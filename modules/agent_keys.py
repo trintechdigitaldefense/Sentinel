@@ -156,14 +156,25 @@ def list_agents() -> list:
     data = _load()
     out = []
     for aid, r in (data.get("agents") or {}).items():
+        expires_at = r.get("expires_at")
+        expiry_valid = False
+        if expires_at:
+            try:
+                datetime.fromisoformat(str(expires_at))
+                expiry_valid = True
+            except (TypeError, ValueError):
+                expiry_valid = False
+        revoked = bool(r.get("revoked"))
+        expired = not _not_expired(r)
         out.append({
             "agent_id": aid,
             "created": r.get("created"),
-            "expires_at": r.get("expires_at"),
-            "expired": not _not_expired(r),
-            "legacy": not bool(r.get("expires_at")),
-            "migration_required": not bool(r.get("expires_at")) and not bool(r.get("revoked")),
-            "revoked": bool(r.get("revoked")),
+            "expires_at": expires_at,
+            "expired": expired,
+            "legacy": not bool(expires_at),
+            "invalid_expiry": bool(expires_at) and not expiry_valid,
+            "migration_required": not revoked and (not expiry_valid or expired),
+            "revoked": revoked,
             "revoked_at": r.get("revoked_at"),
         })
     return out
