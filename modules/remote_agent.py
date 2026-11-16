@@ -64,7 +64,7 @@ def _save_cfg(cfg: dict) -> None:
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(cfg, stream, indent=2)
-            stream.write("\\n")
+            stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(tmp, p)
@@ -140,7 +140,7 @@ def save_agents(db: dict) -> None:
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(db, stream, indent=2, default=str)
-            stream.write("\\n")
+            stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(tmp, p)
