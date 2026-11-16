@@ -2,8 +2,9 @@
 
 ## Supported versions
 
-Hardening work is tracked on branch `hardening/production-readiness` and releases tagged `v3.14.x`.  
-Only versions under active maintenance receive fixes.
+Published tagged releases are the support reference; the previously documented `v3.14.x` line remains the last explicitly identified release series. The repository installer currently reports source version `3.16.21`, but that value is development metadata and does not by itself mean a corresponding release has been published or security-certified.
+
+The current security remediation work is tracked separately on branch `remediation/production-security-hardening`. Do not treat that branch as a supported release until its pull request is reviewed, merged, tagged, and its release gates are completed.
 
 ## Reporting a vulnerability
 
