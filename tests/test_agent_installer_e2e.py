@@ -99,11 +99,13 @@ def test_generated_bundle_installs_and_checks_in_over_https(tmp_path, monkeypatc
             "PYTHON": sys.executable,
             "PYTHONUNBUFFERED": "1",
         })
+        install_log = tmp_path / "agent-install.log"
+        log_stream = install_log.open("w")
         process = subprocess.Popen(
             ["bash", str(script_path)],
             cwd=str(Path(bundle["bundle_dir"])),
             env=env,
-            stdout=subprocess.PIPE,
+            stdout=log_stream,
             stderr=subprocess.STDOUT,
             text=True,
         )
@@ -112,8 +114,8 @@ def test_generated_bundle_installs_and_checks_in_over_https(tmp_path, monkeypatc
         recorded = False
         while time.monotonic() < deadline:
             if process.poll() is not None:
-                output = process.stdout.read() if process.stdout else ""
-                pytest.fail(f"generated installer/agent exited early ({process.returncode}):\\n{output[-6000:]}")
+                log_stream.flush()
+                pytest.fail(f"generated installer/agent exited early ({process.returncode}):\\n{install_log.read_text()[-6000:]}")
             db_path = central_home / "data" / "remote_agents.json"
             if db_path.exists():
                 try:
@@ -140,5 +142,7 @@ def test_generated_bundle_installs_and_checks_in_over_https(tmp_path, monkeypatc
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=5)
+        if "log_stream" in locals():
+            log_stream.close()
         server.shutdown()
         server.server_close()
