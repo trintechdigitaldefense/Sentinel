@@ -23,6 +23,7 @@ import textwrap
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 log = logging.getLogger("sentinel.remote_agent")
 
@@ -81,7 +82,7 @@ def central_base_url() -> str:
         ip = socket.gethostbyname(socket.gethostname())
     except Exception:
         ip = "127.0.0.1"
-    return f"http://{ip}:{port}"
+    return f"https://{ip}:{port}"
 
 
 def bundles_dir() -> Path:
@@ -161,10 +162,26 @@ def build_install_bundle(
     label: str = "default",
 ) -> dict:
     """Write install_agent.sh + README for manual or SSH install on a remote host."""
-    token = ensure_agent_token()
     url = (central_url or central_base_url()).rstrip("/")
-    bdir = bundles_dir() / f"bundle_{label}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    bdir.mkdir(parents=True, exist_ok=True)
+    parsed_url = urlparse(url)
+    if parsed_url.scheme != "https" and parsed_url.hostname not in {"localhost", "127.0.0.1", "::1"}:
+        raise ValueError("Agent bundles require HTTPS for non-loopback central URLs")
+    from modules.agent_keys import issue_key
+    agent_id = re.sub(r"[^A-Za-z0-9_.-]", "_", label)[:80] or "agent"
+    bootstrap_secret = secrets.token_urlsafe(32)
+    issued = issue_key(agent_id, bootstrap_secret, bootstrap_secret, ttl_seconds=30 * 24 * 60 * 60)
+    if not issued.get("ok"):
+        raise RuntimeError("Could not issue per-agent credential")
+    token = issued["api_key"]
+    bdir = bundles_dir() / f"bundle_{agent_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    bdir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        os.chmod(bdir, 0o700)
+    except OSError:
+        pass
+    token_path = bdir / "agent.key"
+    token_path.write_text(token + "\n", encoding="utf-8")
+    os.chmod(token_path, 0o600)
 
     script = textwrap.dedent(f"""\
     #!/usr/bin/env bash
@@ -172,7 +189,13 @@ def build_install_bundle(
     # Authorized defensive use only. Run on the TARGET host.
     set -euo pipefail
     CENTRAL_URL="{url}"
-    SHARED_TOKEN="{token}"
+    SCRIPT_DIR="$(cd -- "$(dirname -- "${{BASH_SOURCE[0]}}")" && pwd)"
+    TOKEN_FILE="${{SCRIPT_DIR}}/agent.key"
+    if [[ ! -f "$TOKEN_FILE" ]]; then
+      echo "[!] Missing agent.key sidecar; keep it beside install_agent.sh"
+      exit 1
+    fi
+    SHARED_TOKEN="$(< "$TOKEN_FILE")"
     INSTALL_DIR="${{INSTALL_DIR:-$HOME/Sentinel}}"
     REPO_URL="${{REPO_URL:-https://github.com/trintechdigitaldefense/Sentinel.git}}"
     BRANCH="${{BRANCH:-hardening/production-readiness}}"
@@ -197,7 +220,7 @@ def build_install_bundle(
     python3 setup.py || true
 
     mkdir -p "$HOME/.sentinel"
-    python3 - <<PY
+    SENTINEL_AGENT_TOKEN="$SHARED_TOKEN" CENTRAL_URL="$CENTRAL_URL" python3 - <<'PY'
 import json, os
 from pathlib import Path
 p = Path.home() / ".sentinel" / "config.json"
@@ -205,14 +228,19 @@ cfg = {{}}
 if p.exists():
     try:
         cfg = json.loads(p.read_text())
-    except Exception:
-        cfg = {{}}
+        if not isinstance(cfg, dict):
+            raise ValueError("config root is not an object")
+    except Exception as exc:
+        raise SystemExit(f"Refusing to overwrite invalid config: {{exc}}")
 cfg.setdefault("agent", {{}})
-cfg["agent"]["shared_token"] = "{token}"
-cfg["agent"]["central_url"] = "{url}"
+cfg["agent"]["shared_token"] = os.environ["SENTINEL_AGENT_TOKEN"]
+cfg["agent"]["central_url"] = os.environ["CENTRAL_URL"]
 cfg["agent"]["enabled"] = True
 cfg["agent"]["role"] = "agent"
-p.write_text(json.dumps(cfg, indent=2))
+tmp = p.with_suffix(".json.tmp")
+tmp.write_text(json.dumps(cfg, indent=2))
+os.chmod(tmp, 0o600)
+os.replace(tmp, p)
 os.chmod(p, 0o600)
 print("[+] agent config written", p)
 PY
@@ -234,7 +262,7 @@ PY
     sh_path = bdir / "install_agent.sh"
     sh_path.write_text(script)
     try:
-        os.chmod(sh_path, 0o755)
+        os.chmod(sh_path, 0o700)
     except Exception as e:
         logging.getLogger('sentinel').debug('%s: %s', __name__, e)
 
@@ -243,7 +271,7 @@ PY
     # Sentinel agent bundle - {label}
 
     Central: `{url}`
-    Token is embedded in install_agent.sh (treat as secret).
+    Per-agent API key is stored in agent.key (0600); keep it beside the installer and treat both files as credentials.\n    The key expires after 30 days and must be reissued before expiry.
 
     ## Manual install on a remote Linux host
     1. Copy install_agent.sh to the host
@@ -264,6 +292,8 @@ PY
         "install_script": str(sh_path),
         "central_url": url,
         "token_set": True,
+        "credential_file": str(token_path),
+        "credential_expires_in_seconds": 30 * 24 * 60 * 60,
         "label": label,
     }
     (bdir / "meta.json").write_text(json.dumps(meta, indent=2))
@@ -312,16 +342,22 @@ def push_via_ssh(
     label = target.replace("@", "_").replace(".", "_")[:40]
     bundle = build_install_bundle(central_url=central_url, label=label)
     script = bundle["install_script"]
-    remote_script = f"/tmp/sentinel_install_agent_{secrets.token_hex(4)}.sh"
+    token_file = bundle["credential_file"]
+    remote_dir = f"/tmp/sentinel_agent_bundle_{secrets.token_hex(6)}"
+    remote_script = f"{remote_dir}/install_agent.sh"
 
     scp_cmd = ["scp", "-P", str(port), "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes"]
     ssh_cmd = ["ssh", "-p", str(port), "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes"]
     if identity:
         scp_cmd.extend(["-i", identity])
         ssh_cmd.extend(["-i", identity])
-    scp_cmd.extend([script, f"{target}:{remote_script}"])
 
     try:
+        mkdir_cmd = ssh_cmd + [target, f"umask 077 && mkdir -m 700 -p {remote_dir}"]
+        prepared = subprocess.run(mkdir_cmd, capture_output=True, text=True, timeout=30)
+        if prepared.returncode != 0:
+            return {"ok": False, "error": "could not prepare protected remote bundle directory", "stderr": (prepared.stderr or "")[:500], "bundle": bundle}
+        scp_cmd.extend([script, token_file, f"{target}:{remote_dir}/"])
         r1 = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=60)
         if r1.returncode != 0:
             return {
@@ -331,7 +367,7 @@ def push_via_ssh(
                 "hint": "Use an authorized key: ssh-copy-id user@host",
                 "bundle": bundle,
             }
-        remote = f"nohup bash {remote_script} >/tmp/sentinel-agent-install.log 2>&1 & echo STARTED:$!"
+        remote = f"chmod 700 {remote_script} && chmod 600 {remote_dir}/agent.key && nohup bash {remote_script} >/tmp/sentinel-agent-install.log 2>&1 & echo STARTED:$!"
         r2 = subprocess.run(ssh_cmd + [target, remote], capture_output=True, text=True, timeout=timeout)
         return {
             "ok": r2.returncode == 0,
