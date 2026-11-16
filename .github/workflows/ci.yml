@@ -85,3 +85,22 @@ jobs:
 
       - name: Installer script syntax
         run: bash -n install.sh
+
+
+  firewall-live-isolated:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply, verify and roll back nftables inside an isolated container
+        run: |
+          docker run --rm --cap-add=NET_ADMIN \
+            -e SENTINEL_ISOLATED_NFT_TEST=1 \
+            -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
+            ubuntu:24.04 bash -euxo pipefail -c '
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip nftables
+              python3 -m venv /tmp/sentinel-test-venv
+              /tmp/sentinel-test-venv/bin/pip install pytest
+              /tmp/sentinel-test-venv/bin/pytest -q tests/test_firewall_nft_integration.py
+            '
