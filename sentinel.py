@@ -16,6 +16,8 @@ __author__ = "Jason Junior Ramdharry — TrinTech Digital Defense | v2.2.0 — P
 __license__ = "For authorized security testing only"
 
 import sys
+import ipaddress
+import ssl
 import os
 import json
 import logging
@@ -1807,9 +1809,31 @@ def agent_collect_local():
 
 def agent_report_to_central(central_url, data, token=None):
     try:
+        cfg = load_config_safe()
+        agent_cfg = cfg.get("agent", {}) if isinstance(cfg, dict) else {}
+        if not isinstance(agent_cfg, dict):
+            agent_cfg = {}
         if token is None:
-            token = load_config_safe().get("agent", {}).get("shared_token", "")
-        # Always record check-in locally (central on same box benefits; agents keep a copy)
+            token = agent_cfg.get("shared_token", "")
+
+        parsed = urllib.parse.urlparse(str(central_url))
+        if not parsed.hostname or parsed.username or parsed.password or parsed.query or parsed.fragment:
+            return False
+        context = None
+        if parsed.scheme == "https":
+            ca_file = agent_cfg.get("tls_ca")
+            context = ssl.create_default_context(cafile=str(ca_file) if ca_file else None)
+        elif parsed.scheme == "http":
+            try:
+                is_loopback = ipaddress.ip_address(parsed.hostname).is_loopback
+            except ValueError:
+                is_loopback = parsed.hostname.lower() == "localhost"
+            if not is_loopback:
+                return False
+        else:
+            return False
+
+        # Always record check-in locally (central on same box benefits; agents keep a copy).
         try:
             from modules.remote_agent import register_agent_checkin
             register_agent_checkin(data if isinstance(data, dict) else {})
@@ -1831,7 +1855,10 @@ def agent_report_to_central(central_url, data, token=None):
             headers=headers,
             method="POST"
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        open_kwargs = {"timeout": 10}
+        if context is not None:
+            open_kwargs["context"] = context
+        with urllib.request.urlopen(req, **open_kwargs) as resp:
             return resp.status == 200
     except Exception:
         return False
