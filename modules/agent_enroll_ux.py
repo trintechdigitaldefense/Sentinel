@@ -104,7 +104,8 @@ def enroll_status() -> dict[str, Any]:
     try:
         from modules.agent_keys import list_agents
         registry = list_agents()
-        legacy_agents = [
+        legacy_agents = [row["agent_id"] for row in registry if row.get("legacy")]
+        migration_agents = [
             row["agent_id"] for row in registry if row.get("migration_required")
         ]
     except Exception as exc:
@@ -124,7 +125,7 @@ def enroll_status() -> dict[str, Any]:
         "hint": (
             "Reissue each legacy agent key and re-enroll the remote agent; "
             "legacy keys without expiry are rejected."
-            if legacy_agents else
+            if migration_agents else
             (None if enrolled else "Issue a key (agent-key) and enroll using an HTTPS central URL.")
         ),
     }
