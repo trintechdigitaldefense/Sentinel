@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 
 import ipaddress
+import hashlib
 import json
 import os
 import shutil
@@ -286,18 +287,26 @@ def protect_operator(confirm: bool = False) -> dict:
 
 
 def _case_event(title: str, detail: dict) -> None:
-    """Best-effort: attach firewall actions to the case system for evidence packs."""
+    """Record a firewall action in the case system for evidence packs."""
     try:
         from modules.cases import create_case, add_note
-        c = create_case(title=title, severity="INFO", source="firewall", details=detail)
-        if isinstance(c, dict) and c.get("id"):
-            add_note(c["id"], f"firewall: {title} {json.dumps(detail)[:300]}")
+
+        detail_json = json.dumps(detail, sort_keys=True, default=str)
+        result = create_case(
+            title=title,
+            severity="informational",
+            source="firewall",
+            source_event_id=f"firewall:{title}:{hashlib.sha256(detail_json.encode()).hexdigest()[:24]}",
+            summary=detail_json[:800],
+            actor="sentinel_firewall",
+        )
+        case = result.get("case") if isinstance(result, dict) else None
+        if result.get("ok") and isinstance(case, dict) and case.get("id"):
+            add_note(case["id"], f"firewall: {title} {detail_json[:300]}", author="sentinel_firewall")
+        else:
+            logging.getLogger("sentinel").warning("firewall case creation failed: %s", result)
     except Exception:
-        try:
-            from modules.cases import open_case
-            open_case(title, detail)
-        except Exception as e:
-            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+        logging.getLogger("sentinel").exception("firewall event could not be recorded as a case")
 
 
 
