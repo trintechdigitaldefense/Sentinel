@@ -417,8 +417,9 @@ def start_central(
     try:
         is_loopback = ipaddress.ip_address(host).is_loopback
     except ValueError:
-        is_loopback = False
+        is_loopback = host.lower() == "localhost"
 
+    server = None
     try:
         server = _ThreadedCentralServer((host, port), CentralAgentHandler)
         if not is_loopback:
@@ -430,10 +431,11 @@ def start_central(
             if tls_cert or tls_key:
                 server = _maybe_ssl(server, cfg)
     except Exception as e:
-        try:
-            server.server_close()
-        except Exception:
-            pass
+        if server is not None:
+            try:
+                server.server_close()
+            except Exception:
+                pass
         if logger:
             logger.error("Central listener refused to start safely: %s", e)
         raise
