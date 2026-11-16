@@ -51,7 +51,7 @@ def test_generated_agent_service_install_restart_stop_and_start(tmp_path, monkey
     central_home = tmp_path / "central-home"
     central_keys = tmp_path / "central-keys"
     agent_user_home = tmp_path / "agent-user"
-    agent_home = agent_user_home / ".sentinel"
+    agent_home = agent_user_home / "custom-sentinel-data"
     install_dir = tmp_path / "installed-sentinel"
     for path in (central_home, central_keys, agent_user_home):
         path.mkdir(parents=True, exist_ok=True)
