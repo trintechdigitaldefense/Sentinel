@@ -21,6 +21,7 @@ import shlex
 import shutil
 import socket
 import subprocess
+import tempfile
 import textwrap
 from datetime import datetime
 import ipaddress
@@ -46,19 +47,34 @@ def _cfg() -> dict:
     if not p.exists():
         return {}
     try:
-        return json.loads(p.read_text())
-    except Exception:
-        return {}
+        cfg = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(cfg, dict):
+            raise ValueError("configuration root must be a JSON object")
+        return cfg
+    except Exception as exc:
+        raise RuntimeError(f"Sentinel config is unreadable; refusing to replace it: {exc}") from exc
 
 
 def _save_cfg(cfg: dict) -> None:
     p = _home() / "config.json"
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(cfg, indent=2))
+    fd, name = tempfile.mkstemp(prefix=".config.", suffix=".tmp", dir=str(p.parent))
+    tmp = Path(name)
     try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(cfg, stream, indent=2)
+            stream.write("\\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, p)
         os.chmod(p, 0o600)
-    except Exception as e:
-        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+    except Exception:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
 
 
 
@@ -107,13 +123,34 @@ def load_agents() -> dict:
     if not p.exists():
         return {"agents": {}}
     try:
-        return json.loads(p.read_text())
-    except Exception:
-        return {"agents": {}}
+        db = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(db, dict) or not isinstance(db.get("agents", {}), dict):
+            raise ValueError("agent registry must contain an agents object")
+        return db
+    except Exception as exc:
+        raise RuntimeError(f"remote agent registry is unreadable; refusing to reset it: {exc}") from exc
 
 
 def save_agents(db: dict) -> None:
-    agents_registry_path().write_text(json.dumps(db, indent=2, default=str))
+    p = agents_registry_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=".remote_agents.", suffix=".tmp", dir=str(p.parent))
+    tmp = Path(name)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(db, stream, indent=2, default=str)
+            stream.write("\\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, p)
+        os.chmod(p, 0o600)
+    except Exception:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
 
 
 def register_agent_checkin(payload: dict) -> dict:
