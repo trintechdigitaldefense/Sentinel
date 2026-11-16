@@ -99,3 +99,61 @@ def test_atomic_json_writers_produce_parseable_files(tmp_path, monkeypatch):
     assert (agent_keys._keys_path().stat().st_mode & 0o777) == 0o600
     assert (remote_agent._home() / "config.json").stat().st_mode & 0o777 == 0o600
     assert remote_agent.agents_registry_path().stat().st_mode & 0o777 == 0o600
+
+
+
+def test_same_label_bundle_creation_uses_unique_directories_and_rotates_key(tmp_path, monkeypatch):
+    monkeypatch.setenv("SENTINEL_DIR", str(tmp_path / "agent-home"))
+    monkeypatch.setenv("SENTINEL_CENTRAL_DIR", str(tmp_path / "central-home"))
+    import importlib
+    import modules.agent_keys as agent_keys
+    import modules.remote_agent as remote_agent
+    importlib.reload(agent_keys)
+    importlib.reload(remote_agent)
+
+    first = remote_agent.build_install_bundle(
+        central_url="https://central.example.test:8443", label="repeat-agent"
+    )
+    first_key = Path(first["credential_file"]).read_text().strip()
+    second = remote_agent.build_install_bundle(
+        central_url="https://central.example.test:8443", label="repeat-agent"
+    )
+    second_key = Path(second["credential_file"]).read_text().strip()
+
+    assert first["bundle_dir"] != second["bundle_dir"]
+    assert first_key != second_key
+    assert agent_keys.verify_key("repeat-agent", first_key) is False
+    assert agent_keys.verify_key("repeat-agent", second_key) is True
+
+
+def test_ssh_push_transfers_private_ca_bundle_file(tmp_path, monkeypatch):
+    import subprocess
+    import modules.remote_agent as remote_agent
+
+    script = tmp_path / "install_agent.sh"
+    key = tmp_path / "agent.key"
+    ca = tmp_path / "central-ca.crt"
+    for path in (script, key, ca):
+        path.write_text("test")
+    bundle = {
+        "install_script": str(script),
+        "credential_file": str(key),
+        "ca_file": str(ca),
+        "bundle_dir": str(tmp_path),
+    }
+    monkeypatch.setattr(remote_agent, "build_install_bundle", lambda **kwargs: bundle)
+    monkeypatch.setattr(remote_agent.shutil, "which", lambda name: f"/usr/bin/{name}")
+    calls = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(remote_agent.subprocess, "run", fake_run)
+    result = remote_agent.push_via_ssh("operator@example.test")
+    assert result["ok"] is True
+    scp_call = next(command for command in calls if command[0] == "/usr/bin/scp")
+    assert str(ca) in scp_call
+    remote_command = calls[-1][-1]
+    assert "central-ca.crt" in remote_command
+    assert "chmod 644" in remote_command
