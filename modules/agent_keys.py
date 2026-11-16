@@ -50,7 +50,7 @@ def _save(data: dict) -> None:
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             json.dump(data, stream, indent=2)
-            stream.write("\\n")
+            stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(tmp, p)
