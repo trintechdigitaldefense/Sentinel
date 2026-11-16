@@ -13,6 +13,7 @@ Strengthened listener used by `sentinel central`:
 from __future__ import annotations
 
 import json
+import ipaddress
 import logging
 import os
 import re
@@ -373,20 +374,20 @@ class _ThreadedCentralServer(ThreadingHTTPServer):
     daemon_threads = True
 
 
-def _maybe_ssl(httpd: ThreadingHTTPServer) -> ThreadingHTTPServer:
-    """Optional TLS if agent.tls_cert + agent.tls_key set in config."""
-    try:
-        cfg = _cfg().get("agent") or {}
-        cert = cfg.get("tls_cert") or ""
-        key = cfg.get("tls_key") or ""
-        if cert and key and Path(cert).is_file() and Path(key).is_file():
-            import ssl
-            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            ctx.load_cert_chain(certfile=cert, keyfile=key)
-            httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
-            log.info("Central TLS enabled")
-    except Exception:
-        log.exception("TLS setup failed — continuing plain HTTP")
+def _maybe_ssl(httpd: ThreadingHTTPServer, cfg: dict) -> ThreadingHTTPServer:
+    """Enable TLS or fail closed; plaintext is permitted only on loopback."""
+    agent = cfg.get("agent") or {}
+    cert = str(agent.get("tls_cert") or "")
+    key = str(agent.get("tls_key") or "")
+    if bool(cert) != bool(key):
+        raise RuntimeError("Central TLS requires both agent.tls_cert and agent.tls_key")
+    if not cert or not key:
+        raise RuntimeError("TLS certificate and key are required for a network-facing central listener")
+    import ssl
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(certfile=cert, keyfile=key)
+    httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+    log.info("Central TLS enabled")
     return httpd
 
 
@@ -412,11 +413,29 @@ def start_central(
     CentralAgentHandler.send_alert_fn = send_alert_fn
     CentralAgentHandler.canary_beacon_fn = _beacon
 
+    host = str((cfg.get("agent") or {}).get("bind") or "0.0.0.0")
     try:
-        server = _ThreadedCentralServer(("0.0.0.0", port), CentralAgentHandler)
-    except OSError as e:
+        is_loopback = ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        is_loopback = False
+
+    try:
+        server = _ThreadedCentralServer((host, port), CentralAgentHandler)
+        if not is_loopback:
+            server = _maybe_ssl(server, cfg)
+        else:
+            # Loopback-only plaintext is retained for local development.
+            tls_cert = (cfg.get("agent") or {}).get("tls_cert")
+            tls_key = (cfg.get("agent") or {}).get("tls_key")
+            if tls_cert or tls_key:
+                server = _maybe_ssl(server, cfg)
+    except Exception as e:
+        try:
+            server.server_close()
+        except Exception:
+            pass
         if logger:
-            logger.error("Central bind failed on %s: %s", port, e)
+            logger.error("Central listener refused to start safely: %s", e)
         raise
 
     t = threading.Thread(target=server.serve_forever, daemon=True, name="sentinel-central")
