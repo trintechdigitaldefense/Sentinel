@@ -97,8 +97,6 @@ def build_ruleset(
     body = """# Sentinel host firewall — generated ruleset
 # Safe default policy: %s
 
-flush table inet sentinel
-
 table inet sentinel {
   set bad_hosts {
     type ipv4_addr
