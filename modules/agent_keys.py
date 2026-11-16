@@ -43,7 +43,11 @@ def _load() -> dict:
 
 def _save(data: dict) -> None:
     p = _keys_path()
-    p.parent.mkdir(parents=True, exist_ok=True)
+    p.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        os.chmod(p.parent, 0o700)
+    except OSError:
+        pass
     fd, name = tempfile.mkstemp(prefix=".agent_keys.", suffix=".tmp", dir=str(p.parent))
     tmp = Path(name)
     try:
@@ -64,6 +68,8 @@ def _save(data: dict) -> None:
 
 
 def _not_expired(record: dict) -> bool:
+    if not isinstance(record, dict):
+        return False
     value = record.get("expires_at")
     if not value:
         return False
@@ -77,6 +83,8 @@ def _not_expired(record: dict) -> bool:
 
 
 def issue_key(agent_id: str, master_key: str, provided_master: str, ttl_seconds: int = 2592000) -> dict:
+    if not isinstance(master_key, str) or not isinstance(provided_master, str):
+        return {"ok": False, "error": "invalid master key"}
     if not secrets.compare_digest(master_key, provided_master):
         return {"ok": False, "error": "invalid master key"}
     if not isinstance(ttl_seconds, int) or ttl_seconds < 60 or ttl_seconds > 31536000:
@@ -85,14 +93,21 @@ def issue_key(agent_id: str, master_key: str, provided_master: str, ttl_seconds:
     raw = secrets.token_urlsafe(32)
     expires_at = (datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)).isoformat()
     data = _load()
-    data.setdefault("agents", {})[agent_id] = {
+    previous = (data.setdefault("agents", {})).get(agent_id)
+    legacy_migration = isinstance(previous, dict) and not previous.get("expires_at")
+    rotated = isinstance(previous, dict)
+    data["agents"][agent_id] = {
         "key_hash": _hash(raw),
         "created": datetime.now(timezone.utc).isoformat(),
         "expires_at": expires_at,
         "revoked": False,
     }
     _save(data)
-    return {"ok": True, "agent_id": agent_id, "api_key": raw, "expires_at": expires_at}
+    return {
+        "ok": True, "agent_id": agent_id, "api_key": raw,
+        "expires_at": expires_at, "rotated": rotated,
+        "legacy_migration": legacy_migration,
+    }
 
 
 def verify_key(agent_id: str, api_key: str) -> bool:
@@ -144,6 +159,8 @@ def list_agents() -> list:
             "created": r.get("created"),
             "expires_at": r.get("expires_at"),
             "expired": not _not_expired(r),
+            "legacy": not bool(r.get("expires_at")),
+            "migration_required": not bool(r.get("expires_at")),
             "revoked": bool(r.get("revoked")),
             "revoked_at": r.get("revoked_at"),
         })
