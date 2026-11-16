@@ -47,6 +47,7 @@ def test_legacy_key_migration_is_reported_and_replacement_invalidates_old_key(tm
     status = enroll_status()
     assert status["ok"] is True
     assert status["legacy_agents"] == ["old-site"]
+    assert status["migration_required_agents"] == ["old-site"]
     assert status["migration_required_count"] == 1
 
     result = issue_local_agent_key("old-site")
