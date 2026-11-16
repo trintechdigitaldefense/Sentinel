@@ -370,7 +370,7 @@ PY
     KillSignal=SIGTERM
     UMask=0077
     NoNewPrivileges=true
-    PrivateTmp=true
+    # Keep the host /tmp and /var/tmp visible to endpoint monitoring.
     ProtectSystem=full
     ProtectKernelTunables=true
     ProtectKernelModules=true
