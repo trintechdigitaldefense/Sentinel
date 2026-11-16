@@ -57,3 +57,25 @@ def test_legacy_key_migration_is_reported_and_replacement_invalidates_old_key(tm
     assert verify_key("old-site", result["api_key"]) is True
     assert "http://" not in result["hint"]
     assert (config.stat().st_mode & 0o777) == 0o600
+
+
+
+def test_enroll_status_recognizes_installed_agent_https_configuration(tmp_path, monkeypatch):
+    home = tmp_path / "sentinel-home"
+    central = tmp_path / "central"
+    home.mkdir()
+    (home / "config.json").write_text(json.dumps({
+        "agent": {
+            "central_url": "https://central.example.test:8743",
+            "shared_token": "agent-api-key",
+        }
+    }))
+    monkeypatch.setenv("SENTINEL_DIR", str(home))
+    monkeypatch.setenv("SENTINEL_CENTRAL_DIR", str(central))
+
+    from modules.agent_enroll_ux import enroll_status
+
+    status = enroll_status()
+    assert status["ok"] is True
+    assert status["enrolled"] is True
+    assert status["server_url"] == "https://central.example.test:8743"
