@@ -127,7 +127,22 @@ def test_generated_agent_service_install_restart_stop_and_start(tmp_path, monkey
         registry = central_home / "data" / "remote_agents.json"
         first_seen = _wait_for_checkin(registry)
 
-        # Verify systemd restart policy path and fresh process startup/check-in.
+        # Kill the managed process to prove Restart=on-failure recovers it.
+        _systemctl("kill", "--signal=SIGKILL", service)
+        recovery_deadline = time.monotonic() + 30
+        recovered_pid = 0
+        while time.monotonic() < recovery_deadline:
+            active = _systemctl("is-active", service, check=False).stdout.strip()
+            pid_text = _systemctl("show", "-p", "MainPID", "--value", service, check=False).stdout.strip()
+            if active == "active" and pid_text.isdigit() and int(pid_text) > 0 and int(pid_text) != first_pid:
+                recovered_pid = int(pid_text)
+                break
+            time.sleep(0.5)
+        assert recovered_pid > 0, "systemd did not restart the agent after SIGKILL"
+        _wait_for_checkin(registry, previous=first_seen)
+        first_pid = recovered_pid
+
+        # Verify explicit systemd restart and fresh process startup/check-in.
         _systemctl("restart", service)
         _systemctl("is-active", "--quiet", service)
         second_pid = int(_systemctl("show", "-p", "MainPID", "--value", service).stdout.strip())
