@@ -87,17 +87,26 @@ def test_generated_agent_service_install_restart_stop_and_start(tmp_path, monkey
             central_url=f"https://127.0.0.1:{port}",
             label="systemd-installer-e2e",
         )
-        bare_repo = test_root / "sentinel-source.git"
-        clone_result = subprocess.run(
-            ["git", "-c", "safe.directory=*", "clone", "--bare", str(repo_root), str(bare_repo)],
-            check=False, capture_output=True, text=True,
+        source_tree = test_root / "sentinel-source"
+        shutil.copytree(
+            repo_root,
+            source_tree,
+            ignore=shutil.ignore_patterns(".git", "__pycache__", ".pytest_cache", ".venv"),
         )
-        assert clone_result.returncode == 0, (
-            f"could not create disposable bare Git source: {clone_result.stderr} {clone_result.stdout}"
+        subprocess.run(["git", "-C", str(source_tree), "init", "-q"], check=True)
+        subprocess.run(["git", "-C", str(source_tree), "config", "user.name", "Sentinel CI"], check=True)
+        subprocess.run(["git", "-C", str(source_tree), "config", "user.email", "sentinel-ci@example.invalid"], check=True)
+        subprocess.run(["git", "-C", str(source_tree), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(source_tree), "commit", "-qm", "Disposable systemd test source"], check=True)
+
+        bare_repo = test_root / "sentinel-source.git"
+        subprocess.run(
+            ["git", "clone", "--bare", str(source_tree), str(bare_repo)],
+            check=True, capture_output=True, text=True,
         )
         branch = "sentinel-systemd-e2e"
         head = subprocess.run(
-            ["git", "-c", f"safe.directory={repo_root}", "-C", str(repo_root), "rev-parse", "HEAD"],
+            ["git", "-C", str(source_tree), "rev-parse", "HEAD"],
             check=True, capture_output=True, text=True,
         ).stdout.strip()
         subprocess.run(
