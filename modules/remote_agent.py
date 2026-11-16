@@ -250,7 +250,7 @@ def build_install_bundle(
     # SENTINEL remote agent install - TrinTech Digital Defense
     # Authorized defensive use only. Run on the TARGET host.
     set -euo pipefail
-    PYTHON_BIN="${PYTHON:-python3}"
+    PYTHON_BIN="${{PYTHON:-python3}}"
     if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then echo "[!] Python executable not found: $PYTHON_BIN"; exit 1; fi
     PYTHON_BIN="$(command -v "$PYTHON_BIN")"
     CENTRAL_URL={shlex.quote(url)}
@@ -329,17 +329,61 @@ PY
 
     echo "[*] Starting agent (reports to central every 60s)."
 
-    # Prefer a dedicated systemd-managed agent service when the installer is
-    # run as root under systemd. Keep foreground mode available for containers,
-    # development and non-root/manual installs.
-    if [[ "${SENTINEL_FORCE_FOREGROUND:-0}" != "1" \
+    # Prefer a systemd-managed service when the installer runs as root under systemd.
+    # Containers, development and non-root installs retain foreground mode.
+    if [[ "${{SENTINEL_FORCE_FOREGROUND:-0}}" != "1" \
           && "$(id -u)" -eq 0 \
           && -d /run/systemd/system \
           && command -v systemctl >/dev/null 2>&1 ]]; then
       RUN_USER="$(id -un)"
       RUN_HOME="$HOME"
       UNIT_PATH="/etc/systemd/system/sentinel-agent.service"
-      if [[ "$INSTALL_DIR" == *    """)
+      if [[ "$INSTALL_DIR" == *" "* || "$RUN_HOME" == *" "* ]]; then
+        echo "[!] Spaces in install/home paths are unsupported for system service installation"
+        exit 1
+      fi
+      cat > "$UNIT_PATH" <<EOF
+    [Unit]
+    Description=Sentinel remote security agent
+    Wants=network-online.target
+    After=network-online.target
+
+    [Service]
+    Type=simple
+    User=$RUN_USER
+    Environment=HOME=$RUN_HOME
+    Environment=SENTINEL_DIR=$RUN_HOME/.sentinel
+    WorkingDirectory=$INSTALL_DIR
+    ExecStart=$PYTHON_BIN $INSTALL_DIR/sentinel.py agent
+    Restart=on-failure
+    RestartSec=5
+    TimeoutStopSec=30
+    KillSignal=SIGTERM
+    UMask=0077
+    NoNewPrivileges=true
+    PrivateTmp=true
+
+    [Install]
+    WantedBy=multi-user.target
+    EOF
+      chmod 0644 "$UNIT_PATH"
+      systemctl daemon-reload
+      systemctl enable sentinel-agent.service
+      systemctl restart sentinel-agent.service 2>/dev/null || systemctl start sentinel-agent.service
+      if ! systemctl is-active --quiet sentinel-agent.service; then
+        systemctl --no-pager --full status sentinel-agent.service || true
+        echo "[!] sentinel-agent.service failed to become active"
+        exit 1
+      fi
+      echo "[+] sentinel-agent.service enabled and active"
+      exit 0
+    fi
+
+    if [[ "${{SENTINEL_FORCE_FOREGROUND:-0}}" != "1" ]]; then
+      echo "[=] systemd unavailable or installer is non-root; running agent in foreground"
+    fi
+    exec "$PYTHON_BIN" sentinel.py agent "$CENTRAL_URL"
+    """)
     sh_path = bdir / "install_agent.sh"
     sh_path.write_text(script)
     try:
