@@ -1832,7 +1832,7 @@ def run_agent_mode(config, logger, central_url=None, interval=60):
     if not central_url:
         central_url = config.get("agent", {}).get("central_url", "")
     if not central_url:
-        logger.error(f"{C.RED}✗ No central URL. Use: sentinel agent http://CENTRAL_IP:8743{C.RESET}")
+        logger.error(f"{C.RED}✗ No central URL. Use: sentinel agent https://CENTRAL_HOST:8743{C.RESET}")
         return
     logger.info(f"{C.CYAN}[*]{C.RESET} Agent mode → {C.BOLD}{central_url}{C.RESET} (interval {interval}s)")
     # Plant canaries on this agent host at startup
