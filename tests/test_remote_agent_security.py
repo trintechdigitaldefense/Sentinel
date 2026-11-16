@@ -73,3 +73,29 @@ def test_corrupt_remote_config_and_registry_are_not_replaced(tmp_path, monkeypat
     with pytest.raises(RuntimeError, match="refusing to reset"):
         remote_agent.load_agents()
     assert registry.read_text() == "{broken"
+
+
+
+def test_atomic_json_writers_produce_parseable_files(tmp_path, monkeypatch):
+    monkeypatch.setenv("SENTINEL_DIR", str(tmp_path / "agent-home"))
+    monkeypatch.setenv("SENTINEL_CENTRAL_DIR", str(tmp_path / "central-home"))
+
+    import importlib
+    import json
+    import modules.agent_keys as agent_keys
+    import modules.remote_agent as remote_agent
+
+    importlib.reload(agent_keys)
+    importlib.reload(remote_agent)
+
+    agent_keys._save({"agents": {"a": {"revoked": False}}})
+    assert json.loads(agent_keys._keys_path().read_text())["agents"]["a"]["revoked"] is False
+
+    remote_agent._save_cfg({"agent": {"enabled": True}})
+    assert json.loads((remote_agent._home() / "config.json").read_text())["agent"]["enabled"] is True
+
+    remote_agent.save_agents({"agents": {"host-a": {"last_seen": "now"}}})
+    assert json.loads(remote_agent.agents_registry_path().read_text())["agents"]["host-a"]["last_seen"] == "now"
+    assert (agent_keys._keys_path().stat().st_mode & 0o777) == 0o600
+    assert (remote_agent._home() / "config.json").stat().st_mode & 0o777 == 0o600
+    assert remote_agent.agents_registry_path().stat().st_mode & 0o777 == 0o600
