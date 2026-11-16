@@ -33,7 +33,10 @@ def _load() -> dict:
     if not p.exists():
         return {"agents": {}}
     try:
-        return json.loads(p.read_text())
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or not isinstance(data.get("agents", {}), dict):
+            raise ValueError("registry must contain an agents object")
+        return data
     except Exception as exc:
         raise RuntimeError(f"agent key registry is unreadable; refusing to reset it: {exc}") from exc
 
