@@ -69,7 +69,7 @@ def test_agent_checkin_over_verified_https_and_rejects_untrusted_ca(
     central_url = f"https://127.0.0.1:{port}"
     payload = {
         "hostname": "https-agent",
-        "ip": "192.0.2.40",
+        "ip": "192.0.2.40",  # deliberately spoofed; server must replace with socket peer
         "processes": [],
         "canaries": {},
     }
@@ -78,7 +78,9 @@ def test_agent_checkin_over_verified_https_and_rejects_untrusted_ca(
 
         from modules.remote_agent import load_agents
         agents = load_agents()["agents"]
-        assert agents["192.0.2.40"]["hostname"] == "https-agent"
+        assert agents["https-agent"]["hostname"] == "https-agent"
+        assert agents["https-agent"]["agent_id"] == "https-agent"
+        assert agents["https-agent"]["ip"] == "127.0.0.1"
 
         # A different self-signed certificate must not be accepted as the server CA.
         untrusted_cert = tmp_path / "untrusted.crt"
