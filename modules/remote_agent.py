@@ -380,7 +380,7 @@ PY
 
     [Install]
     WantedBy=multi-user.target
-    EOF
+EOF
       chmod 0644 "$UNIT_PATH"
       systemctl daemon-reload
       systemctl enable sentinel-agent.service
