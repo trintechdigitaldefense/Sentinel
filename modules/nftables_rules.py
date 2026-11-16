@@ -164,25 +164,61 @@ def apply_base_ruleset(
     if not is_root():
         return {"ok": False, "error": "root required — run with sudo"}
 
-    with tempfile.NamedTemporaryFile("w", suffix=".nft", delete=False) as f:
-        f.write(rules)
-        path = f.name
-    try:
-        r = _run(["nft", "-f", path])
-        verify = _run(["nft", "list", "table", "inet", "sentinel"])
-        return {
-            "ok": bool(r.get("ok")),
-            "applied": bool(r.get("ok")),
-            "backend": "nft",
-            "detail": r,
-            "verify_ok": bool(verify.get("ok")),
-            "verify_snippet": (verify.get("stdout") or "")[:600],
-        }
-    finally:
+    previous = _run(["nft", "list", "table", "inet", "sentinel"])
+    had_previous = bool(previous.get("ok"))
+    transaction = ("delete table inet sentinel\n" if had_previous else "") + rules
+
+    def _apply_text(contents):
+        with tempfile.NamedTemporaryFile("w", suffix=".nft", delete=False) as f:
+            f.write(contents)
+            path = f.name
         try:
-            Path(path).unlink(missing_ok=True)
-        except Exception:
-            pass
+            return _run(["nft", "-f", path])
+        finally:
+            try:
+                Path(path).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    applied = _apply_text(transaction)
+    if not applied.get("ok"):
+        return {
+            "ok": False,
+            "applied": False,
+            "backend": "nft",
+            "detail": applied,
+            "previous_table_preserved": had_previous,
+            "rollback_ok": True if had_previous else None,
+        }
+
+    verify = _run(["nft", "list", "table", "inet", "sentinel"])
+    if verify.get("ok"):
+        return {
+            "ok": True,
+            "applied": True,
+            "backend": "nft",
+            "detail": applied,
+            "verify_ok": True,
+            "verify_snippet": (verify.get("stdout") or "")[:600],
+            "rollback_ok": None,
+        }
+
+    if had_previous:
+        rollback_text = "delete table inet sentinel\n" + (previous.get("stdout") or "") + "\n"
+        rollback = _apply_text(rollback_text)
+    else:
+        rollback = _run(["nft", "delete", "table", "inet", "sentinel"])
+    return {
+        "ok": False,
+        "applied": False,
+        "backend": "nft",
+        "detail": applied,
+        "verify_ok": False,
+        "verify_detail": verify,
+        "rollback_ok": bool(rollback.get("ok")),
+        "rollback_detail": rollback,
+        "previous_table_preserved": had_previous,
+    }
 
 
 def ensure_table():
