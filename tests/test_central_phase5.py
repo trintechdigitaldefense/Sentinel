@@ -172,3 +172,57 @@ def test_invalid_expiry_timestamp_fails_closed(central_env):
     registry.write_text(json.dumps(data))
     assert ak.verify_key("bad-expiry-site", issued["api_key"]) is False
     assert ak.resolve_agent_id(issued["api_key"]) is None
+
+
+
+def test_legacy_key_without_expiry_is_rejected_and_identified_for_migration(central_env):
+    tmp, ak, _ = central_env
+    legacy_key = "pre-expiry-agent-secret"
+    registry = ak._keys_path()
+    registry.write_text(json.dumps({
+        "agents": {
+            "legacy-site": {
+                "key_hash": ak._hash(legacy_key),
+                "created": "2025-01-01T00:00:00+00:00",
+                "revoked": False,
+            }
+        }
+    }))
+    assert ak.verify_key("legacy-site", legacy_key) is False
+    assert ak.resolve_agent_id(legacy_key) is None
+    status = {row["agent_id"]: row for row in ak.list_agents()}
+    assert status["legacy-site"]["legacy"] is True
+    assert status["legacy-site"]["migration_required"] is True
+    assert status["legacy-site"]["expired"] is True
+
+
+def test_reissuing_legacy_key_marks_migration_and_invalidates_old_key(central_env):
+    _, ak, _ = central_env
+    old_key = "legacy-key-to-replace"
+    registry = ak._keys_path()
+    registry.write_text(json.dumps({
+        "agents": {
+            "legacy-rotate": {
+                "key_hash": ak._hash(old_key),
+                "created": "2025-01-01T00:00:00+00:00",
+                "revoked": False,
+            }
+        }
+    }))
+    master = "migration-master"
+    replacement = ak.issue_key("legacy-rotate", master, master)
+    assert replacement["ok"] is True
+    assert replacement["rotated"] is True
+    assert replacement["legacy_migration"] is True
+    assert ak.verify_key("legacy-rotate", old_key) is False
+    assert ak.verify_key("legacy-rotate", replacement["api_key"]) is True
+    assert {row["agent_id"]: row for row in ak.list_agents()}["legacy-rotate"]["migration_required"] is False
+
+
+def test_agent_key_registry_rejects_non_object_legacy_records(central_env):
+    _, ak, _ = central_env
+    registry = ak._keys_path()
+    registry.write_text(json.dumps({"agents": {"broken-record": "not-an-object"}}))
+    with pytest.raises(RuntimeError, match="refusing to reset"):
+        ak.list_agents()
+    assert json.loads(registry.read_text())["agents"]["broken-record"] == "not-an-object"
