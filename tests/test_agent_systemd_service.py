@@ -139,6 +139,7 @@ def test_generated_agent_service_install_restart_stop_and_start(tmp_path, monkey
         assert _systemctl("show", "-p", "NoNewPrivileges", "--value", service).stdout.strip() == "yes"
         assert _systemctl("show", "-p", "ProtectSystem", "--value", service).stdout.strip() == "full"
         assert _systemctl("show", "-p", "PrivateTmp", "--value", service).stdout.strip() == "no"
+        assert f"PYTHON={sys.executable}" in _systemctl("show", "-p", "Environment", "--value", service).stdout
         first_pid = int(_systemctl("show", "-p", "MainPID", "--value", service).stdout.strip())
         assert first_pid > 0
         registry = central_home / "data" / "remote_agents.json"
