@@ -121,3 +121,42 @@ jobs:
       - name: Verify a real SSH session survives firewall apply, reapply and rollback
         run: |
           sudo env PATH="$PATH:$PWD/.venv/bin" SENTINEL_ISOLATED_SSH_TEST=1 .venv/bin/pytest -q tests/test_firewall_ssh_continuity.py
+  agent-systemd-live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Boot disposable Ubuntu container with systemd as PID 1
+        run: |
+          docker run -d --name sentinel-systemd --privileged --cgroupns=host \\
+            --tmpfs /run --tmpfs /run/lock \\
+            -v /sys/fs/cgroup:/sys/fs/cgroup:rw \\
+            -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \\
+            ubuntu:24.04 /sbin/init
+          for attempt in $(seq 1 30); do
+            if docker exec sentinel-systemd systemctl is-system-running >/dev/null 2>&1; then
+              break
+            fi
+            sleep 1
+          done
+          docker exec sentinel-systemd systemctl is-system-running || true
+
+      - name: Install test dependencies in the disposable systemd container
+        run: |
+          docker exec sentinel-systemd bash -euxo pipefail -c '
+            apt-get update
+            DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip git openssl
+            python3 -m venv /tmp/sentinel-test-venv
+            /tmp/sentinel-test-venv/bin/pip install --upgrade pip
+            /tmp/sentinel-test-venv/bin/pip install pytest
+            /tmp/sentinel-test-venv/bin/pip install -r /workspace/requirements.txt
+          '
+
+      - name: Install, restart, stop, start and verify the systemd-managed agent
+        run: |
+          docker exec -e SENTINEL_SYSTEMD_TEST=1 sentinel-systemd \\
+            /tmp/sentinel-test-venv/bin/pytest -q /workspace/tests/test_agent_systemd_service.py
+
+      - name: Remove disposable systemd container
+        if: always()
+        run: docker rm -f sentinel-systemd || true
