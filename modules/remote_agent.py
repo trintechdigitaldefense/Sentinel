@@ -223,7 +223,7 @@ def build_install_bundle(
     if not issued.get("ok"):
         raise RuntimeError("Could not issue per-agent credential")
     token = issued["api_key"]
-    bdir = bundles_dir() / f"bundle_{agent_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    bdir = bundles_dir() / f"bundle_{agent_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(4)}"
     bdir.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:
         os.chmod(bdir, 0o700)
@@ -341,7 +341,7 @@ PY
       RUN_HOME="$HOME"
       RUN_SENTINEL_DIR="$SENTINEL_HOME"
       UNIT_PATH="/etc/systemd/system/sentinel-agent.service"
-      if [[ "$INSTALL_DIR" == *" "* || "$RUN_HOME" == *" "* ]]; then
+      if [[ "$INSTALL_DIR" == *" "* || "$RUN_HOME" == *" "* || "$PYTHON_BIN" == *" "* ]]; then
         echo "[!] Spaces in install/home paths are unsupported for system service installation"
         exit 1
       fi
@@ -404,7 +404,7 @@ PY
     ## Manual install on a remote Linux host
     1. Copy install_agent.sh and agent.key together to the host
     2. Keep agent.key in the same protected directory, then run bash install_agent.sh
-    3. Leave agent running or use nohup
+    3. On a root-managed Linux host running systemd, the installer enables `sentinel-agent.service`; otherwise it runs the agent in the foreground
 
     ## SSH push from central (authorized key required)
     ```bash
