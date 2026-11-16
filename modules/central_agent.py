@@ -48,7 +48,11 @@ def _data() -> Path:
 
 def agents_dir() -> Path:
     d = _data() / "agents"
-    d.mkdir(parents=True, exist_ok=True)
+    d.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        os.chmod(d, 0o700)
+    except OSError:
+        pass
     return d
 
 
@@ -77,8 +81,11 @@ def expected_token() -> str:
 def audit(event: str, detail: dict) -> None:
     try:
         row = {"ts": datetime.now().isoformat(), "event": event, **detail}
-        with open(audit_path(), "a") as f:
+        path = audit_path()
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as f:
             f.write(json.dumps(row, default=str) + "\n")
+        os.chmod(path, 0o600)
     except Exception:
         log.exception("audit write")
 
@@ -292,6 +299,9 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length") or 0)
         except Exception:
             length = 0
+        if length < 0:
+            self._json(400, {"error": "invalid_content_length"})
+            return
         if length > MAX_BODY:
             self._json(413, {"error": "payload_too_large", "max": MAX_BODY})
             return
@@ -304,6 +314,11 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
         except Exception as e:
             self._json(400, {"error": f"invalid_json: {e}"})
             return
+
+        if not isinstance(data.get("canaries"), dict):
+            data["canaries"] = {}
+        if not isinstance(data.get("processes"), list):
+            data["processes"] = []
 
         # Bind network identity to the socket peer and the authenticated API key.
         # Never let a payload claim another host IP or agent registry identity.
@@ -323,6 +338,8 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
         try:
             fname.write_text(json.dumps(data, indent=2, default=str))
             latest.write_text(json.dumps(data, indent=2, default=str))
+            os.chmod(fname, 0o600)
+            os.chmod(latest, 0o600)
         except Exception:
             log.exception("save agent report")
 
@@ -333,6 +350,11 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
         except Exception as e:
             log.exception("register_agent_checkin")
             reg = {"ok": False, "error": str(e)}
+
+        if not reg.get("ok"):
+            audit("agent_report_store_failed", {"ip": ip, "agent_id": authenticated_agent_id})
+            self._json(500, {"error": "agent_report_registration_failed"})
+            return
 
         # Alert hooks
         sa = self.send_alert_fn
