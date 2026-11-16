@@ -158,8 +158,10 @@ def register_agent_checkin(payload: dict) -> dict:
     db = load_agents()
     host = payload.get("hostname") or payload.get("host") or "unknown"
     ip = payload.get("ip") or ""
-    key = ip or host
+    authenticated_agent_id = payload.get("agent_id")
+    key = str(authenticated_agent_id or ip or host)
     entry = {
+        "agent_id": authenticated_agent_id,
         "hostname": host,
         "ip": ip,
         "last_seen": datetime.now().isoformat(),
