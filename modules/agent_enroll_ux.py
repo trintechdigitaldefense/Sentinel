@@ -98,8 +98,8 @@ def enroll_status() -> dict[str, Any]:
     if not isinstance(central, dict) or not isinstance(agent, dict):
         return {"ok": False, "enrolled": False, "error": "central and agent config sections must be objects"}
     enrolled = bool(
-        central.get("enabled")
-        and (central.get("api_key") or agent.get("shared_token") or agent.get("api_key"))
+        (central.get("enabled") and central.get("api_key"))
+        or (agent.get("central_url") and (agent.get("shared_token") or agent.get("api_key")))
     )
     try:
         from modules.agent_keys import list_agents
