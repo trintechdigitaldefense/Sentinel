@@ -25,7 +25,7 @@ def test_generated_bundle_installs_and_checks_in_over_https(tmp_path, monkeypatc
     central_home = tmp_path / "central-home"
     central_keys = tmp_path / "central-keys"
     agent_user_home = tmp_path / "agent-user"
-    agent_home = agent_user_home / ".sentinel"
+    agent_home = agent_user_home / "custom-sentinel-data"
     install_dir = tmp_path / "installed-sentinel"
     bundle_home = central_home
     for path in (central_home, central_keys, agent_user_home):
