@@ -3,7 +3,7 @@
 **Branch under review:** `remediation/production-security-hardening`  
 **Source version label:** **v3.16.21** (from `setup.py`; not a published release or production approval)  
 **Last historical acceptance run:** 2026-10-26 (results apply only to the revision tested then)  
-**Current remediation verification:** pending CI and review on this branch  
+**Current remediation verification:** GitHub Actions passed on branch head `2f4f032ad8a4b16b8118baef059f27d7cfd40fb6` (2026-11-16); owner approval and pilot validation remain open  
 
 Legend: **PASS** = evidenced here · **PARTIAL** = automated only / incomplete · **OPEN** = not done · **N/A** = not applicable
 
@@ -11,11 +11,11 @@ Legend: **PASS** = evidenced here · **PARTIAL** = automated only / incomplete �
 |------|--------|----------|
 | No unresolved **Critical** in SECURITY_AUDIT | **PARTIAL** | C-01, C-02 remediated on branch; confirm after merge to main + CI green |
 | High-risk dashboard authz tests pass | **PASS** | `tests/test_dashboard_authz.py` in full suite |
-| Install/upgrade preserves user data by default | **PARTIAL** | Remediation now stops on invalid JSON and preserves a backup; current branch tests/CI pending |
-| Firewall dry-run default + recovery in disposable VM | **PARTIAL** | CI `firewall_smoke.py` dry-run only — **no live apply VM in this run** |
+| Install/upgrade preserves user data by default | **PASS** | Invalid JSON is preserved with a protected backup; disposable config tests and current CI passed |
+| Firewall dry-run default + recovery in disposable VM | **PASS** | Isolated live nftables CI: apply/reapply, IPv4/IPv6 rules, unrelated-table preservation and rollback (2 passed) |
 | High-severity alerts survive delivery failure + restart | **PARTIAL** | offline queue + critical store code/tests exist — **not** chaos-tested on live channels |
 | Doctor does not claim production-ready / CLIENT-READY | **PASS** | Verdict language updated (M2) |
-| Full CI suite passes | **OPEN** | Historical Actions results on `38f661c` do not validate this remediation branch; await current PR checks |
+| Full CI suite passes | **PASS** | Python 3.10 and 3.12: 239 passed, 4 skipped on branch head `2f4f032` |
 | Install/upgrade/rollback/uninstall docs verified | **PASS** (doc review) | INSTALL.md M5; uninstall command documented |
 | No real secrets committed | **PARTIAL** | New bundles use per-agent keys in 0600 sidecar files; review generated artifacts and CI secret scanning on this branch |
 | README claims match tested implementation | **PASS** (doc review) | M5 README truthful matrix |
@@ -38,10 +38,10 @@ This checklist does **not** by itself authorize a “production-ready” marketi
 
 | Gate | Status | Evidence required |
 |------|--------|-------------------|
-| Network central listeners refuse plaintext HTTP | **OPEN** | Current branch CI plus TLS integration test; certificate-backed deployment validation |
-| Agent credentials are unique, expiring, and protected in generated bundles | **OPEN** | Current branch CI; verify enrollment, expiry, revocation, and bundle transfer end-to-end |
-| Firewall events are written to case records | **OPEN** | Current branch CI and evidence-pack inspection |
-| Setup does not mutate application source or overwrite invalid client config | **OPEN** | Current branch CI and disposable upgrade test |
-| Live firewall apply/rollback/lockout test in isolated VM | **OPEN** | Disposable VM evidence; never infer from dry-run smoke test |
-| Generated agent systemd lifecycle (install/check-in/crash restart/stop/start) | **OPEN** | Dedicated systemd-PID-1 CI container must pass; service lifecycle is distinct from sentinel-hunt |
-| Legacy agent-key migration handling | **PARTIAL** | Legacy records fail closed and are reported; owner must migrate actual deployed agents one at a time using `docs/AGENT_KEY_MIGRATION.md` |
+| Network central listeners refuse plaintext HTTP | **PASS** | TLS integration tests and generated installer HTTPS check-in with CA verification; plaintext network listeners fail closed |
+| Agent credentials are unique, expiring, and protected in generated bundles | **PASS** | Expiry/revocation/rotation tests; bundle permissions and installer-to-central HTTPS check-in passed. SSH transfer itself is mocked in tests |
+| Firewall events are written to case records | **PASS** | Firewall-to-case integration test passed on current branch |
+| Setup does not mutate application source or overwrite invalid client config | **PASS** | Install-time source mutation removed; invalid config preservation and safe merge tests passed |
+| Live firewall apply/rollback/lockout test in isolated VM | **PASS** | GitHub-hosted disposable runner: live nft apply/rollback (2 passed) and a real SSH session remained interactive through apply/reapply/rollback (1 passed) |
+| Generated agent systemd lifecycle (install/check-in/crash restart/stop/start) | **PASS** | Dedicated Ubuntu systemd-PID-1 container: installer creates unit, HTTPS check-in, SIGKILL recovery, explicit restart, stop/start and sandbox assertions (1 passed) |
+| Legacy agent-key migration handling | **PARTIAL** | Missing, malformed and expired credentials fail closed and are reported; rotation and status tests passed. Actual deployed agents still require owner-led one-at-a-time migration using `docs/AGENT_KEY_MIGRATION.md` |
