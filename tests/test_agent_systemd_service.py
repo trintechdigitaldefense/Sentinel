@@ -139,7 +139,7 @@ def test_generated_agent_service_install_restart_stop_and_start(tmp_path, monkey
                 break
             time.sleep(0.5)
         assert recovered_pid > 0, "systemd did not restart the agent after SIGKILL"
-        _wait_for_checkin(registry, previous=first_seen)
+        first_seen = _wait_for_checkin(registry, previous=first_seen)
         first_pid = recovered_pid
 
         # Verify explicit systemd restart and fresh process startup/check-in.
@@ -147,13 +147,14 @@ def test_generated_agent_service_install_restart_stop_and_start(tmp_path, monkey
         _systemctl("is-active", "--quiet", service)
         second_pid = int(_systemctl("show", "-p", "MainPID", "--value", service).stdout.strip())
         assert second_pid > 0
-        _wait_for_checkin(registry, previous=first_seen)
+        second_seen = _wait_for_checkin(registry, previous=first_seen)
 
         _systemctl("stop", service)
         assert _systemctl("is-active", service, check=False).stdout.strip() == "inactive"
         _systemctl("start", service)
         _systemctl("is-active", "--quiet", service)
         assert int(_systemctl("show", "-p", "MainPID", "--value", service).stdout.strip()) > 0
+        _wait_for_checkin(registry, previous=second_seen)
     finally:
         _systemctl("disable", "--now", service, check=False)
         if unit_path.exists():
