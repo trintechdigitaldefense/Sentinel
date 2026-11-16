@@ -36,7 +36,7 @@ python3 sentinel.py agent-push user@HOST --identity ~/.ssh/id_ed25519
 
 Generated agent bundles use a distinct expiring per-agent API key. Keep `install_agent.sh` and its `agent.key` sidecar together during transfer; the key file is mode `0600` and expires after 30 days. Do not email, publish, or commit either file. Reissue the agent credential before expiry.
 
-On root-managed Linux hosts with systemd, the generated installer installs and starts `sentinel-agent.service`; use `systemctl status sentinel-agent.service`, `systemctl restart sentinel-agent.service`, and `systemctl stop sentinel-agent.service` for lifecycle operations. This unit is separate from the local persistence-hunt service. Verify a central check-in after start/restart; an active unit alone does not prove successful enrollment. See [AGENT_KEY_MIGRATION.md](AGENT_KEY_MIGRATION.md) for existing-key migration.
+On root-managed Linux hosts with systemd, the generated installer installs and starts `sentinel-agent.service` under the installer account (root for root-managed installs); use `systemctl status sentinel-agent.service`, `systemctl restart sentinel-agent.service`, and `systemctl stop sentinel-agent.service` for lifecycle operations. This unit is separate from the local persistence-hunt service. Verify a central check-in after start/restart; an active unit alone does not prove successful enrollment. See [AGENT_KEY_MIGRATION.md](AGENT_KEY_MIGRATION.md) for existing-key migration.
 
 ## Limits to tell the client
 - One sensor ≠ every laptop fully protected
