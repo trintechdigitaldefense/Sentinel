@@ -124,8 +124,8 @@ def enroll_status() -> dict[str, Any]:
         "migration_required_agents": migration_agents,
         "migration_required_count": len(migration_agents),
         "hint": (
-            "Reissue each legacy agent key and re-enroll the remote agent; "
-            "legacy keys without expiry are rejected."
+            "Reissue each credential marked for migration and re-enroll the remote agent; "
+            "legacy, malformed-expiry, and expired keys are rejected."
             if migration_agents else
             (None if enrolled else "Issue a key (agent-key) and enroll using an HTTPS central URL.")
         ),
