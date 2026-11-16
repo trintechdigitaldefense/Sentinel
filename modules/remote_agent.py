@@ -233,6 +233,18 @@ def build_install_bundle(
     token_path.write_text(token + "\n", encoding="utf-8")
     os.chmod(token_path, 0o600)
 
+    # Include a configured private CA/certificate for strict TLS verification.
+    central_cfg = _cfg()
+    central_agent_cfg = central_cfg.get("agent") or {}
+    configured_ca = central_agent_cfg.get("tls_ca") or central_agent_cfg.get("tls_cert")
+    ca_path = None
+    if configured_ca:
+        source_ca = Path(str(configured_ca)).expanduser()
+        if not source_ca.is_file():
+            raise RuntimeError(f"Configured central CA/certificate does not exist: {source_ca}")
+        ca_path = bdir / "central-ca.crt"
+        shutil.copyfile(source_ca, ca_path)
+        os.chmod(ca_path, 0o644)
     script = textwrap.dedent(f"""\
     #!/usr/bin/env bash
     # SENTINEL remote agent install - TrinTech Digital Defense
@@ -241,6 +253,7 @@ def build_install_bundle(
     CENTRAL_URL={shlex.quote(url)}
     SCRIPT_DIR="$(cd -- "$(dirname -- "${{BASH_SOURCE[0]}}")" && pwd)"
     TOKEN_FILE="${{SCRIPT_DIR}}/agent.key"
+    CA_FILE="${{SCRIPT_DIR}}/central-ca.crt"
     if [[ ! -f "$TOKEN_FILE" ]]; then
       echo "[!] Missing agent.key sidecar; keep it beside install_agent.sh"
       exit 1
@@ -248,7 +261,7 @@ def build_install_bundle(
     SHARED_TOKEN="$(< "$TOKEN_FILE")"
     INSTALL_DIR="${{INSTALL_DIR:-$HOME/Sentinel}}"
     REPO_URL="${{REPO_URL:-https://github.com/trintechdigitaldefense/Sentinel.git}}"
-    BRANCH="${{BRANCH:-hardening/production-readiness}}"
+    BRANCH="${{BRANCH:-main}}"
 
     echo "[*] Sentinel agent install -> $INSTALL_DIR"
     echo "[*] Central: $CENTRAL_URL"
@@ -267,10 +280,14 @@ def build_install_bundle(
     fi
 
     cd "$INSTALL_DIR"
-    python3 setup.py || true
+    python3 setup.py
 
     mkdir -p "$HOME/.sentinel"
-    SENTINEL_AGENT_TOKEN="$SHARED_TOKEN" CENTRAL_URL="$CENTRAL_URL" python3 - <<'PY'
+    if [[ -f "$CA_FILE" ]]; then
+      install -m 0644 "$CA_FILE" "$HOME/.sentinel/central-ca.crt"
+      export SENTINEL_TLS_CA="$HOME/.sentinel/central-ca.crt"
+    fi
+    SENTINEL_AGENT_TOKEN="$SHARED_TOKEN" CENTRAL_URL="$CENTRAL_URL" SENTINEL_TLS_CA="${{SENTINEL_TLS_CA:-}}" python3 - <<'PY'
 import json, os
 from pathlib import Path
 p = Path.home() / ".sentinel" / "config.json"
@@ -287,6 +304,8 @@ cfg["agent"]["shared_token"] = os.environ["SENTINEL_AGENT_TOKEN"]
 cfg["agent"]["central_url"] = os.environ["CENTRAL_URL"]
 cfg["agent"]["enabled"] = True
 cfg["agent"]["role"] = "agent"
+if os.environ.get("SENTINEL_TLS_CA"):
+    cfg["agent"]["tls_ca"] = os.environ["SENTINEL_TLS_CA"]
 tmp = p.with_suffix(".json.tmp")
 tmp.write_text(json.dumps(cfg, indent=2))
 os.chmod(tmp, 0o600)
@@ -343,6 +362,7 @@ PY
         "central_url": url,
         "token_set": True,
         "credential_file": str(token_path),
+        "ca_file": str(ca_path) if ca_path else None,
         "credential_expires_in_seconds": 30 * 24 * 60 * 60,
         "label": label,
     }
