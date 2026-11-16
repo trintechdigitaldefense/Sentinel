@@ -85,6 +85,7 @@ def test_live_ssh_session_survives_firewall_apply_reapply_and_rollback(tmp_path,
             "AllowUsers root",
             "LogLevel VERBOSE",
         ]) + "\n")
+        Path("/run/sshd").mkdir(parents=True, exist_ok=True)
         _run("sshd", "-t", "-f", str(config))
         sshd = subprocess.Popen(
             ["sshd", "-D", "-e", "-f", str(config)],
