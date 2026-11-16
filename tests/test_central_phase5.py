@@ -172,6 +172,9 @@ def test_invalid_expiry_timestamp_fails_closed(central_env):
     registry.write_text(json.dumps(data))
     assert ak.verify_key("bad-expiry-site", issued["api_key"]) is False
     assert ak.resolve_agent_id(issued["api_key"]) is None
+    status = {row["agent_id"]: row for row in ak.list_agents()}["bad-expiry-site"]
+    assert status["invalid_expiry"] is True
+    assert status["migration_required"] is True
 
 
 
