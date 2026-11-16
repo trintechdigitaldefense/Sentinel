@@ -174,6 +174,7 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
 
     def _token_ok(self) -> bool:
         """Accept shared token OR a valid per-agent API key (MSP mode)."""
+        self._agent_id_resolved = None  # type: ignore[attr-defined]
         expected = expected_token() if self.allow_shared_token else ""
         received = (self.headers.get("X-Sentinel-Token") or "").strip()
         auth = self.headers.get("Authorization") or ""
