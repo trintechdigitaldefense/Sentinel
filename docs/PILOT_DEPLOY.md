@@ -25,10 +25,16 @@ python3 sentinel.py suppress
 ```
 
 ## Multi-host (optional)
+
+Network-facing central listeners must use TLS. Configure the central service with both `agent.tls_cert` and `agent.tls_key` before binding beyond loopback, and set each agent's `central_url` to an `https://` endpoint.
+
+Use the supported SSH deployment command from the central host:
+
 ```bash
-python3 sentinel.py agent-key site-office-pc
-# on remote: python3 sentinel.py enroll --server http://SENSOR:8743 --key <api_key>
+python3 sentinel.py agent-push user@HOST --identity ~/.ssh/id_ed25519
 ```
+
+Generated agent bundles use a distinct expiring per-agent API key. Keep `install_agent.sh` and its `agent.key` sidecar together during transfer; the key file is mode `0600` and expires after 30 days. Do not email, publish, or commit either file. Reissue the agent credential before expiry.
 
 ## Limits to tell the client
 - One sensor ≠ every laptop fully protected
