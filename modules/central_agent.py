@@ -401,8 +401,13 @@ def start_central(
     """Start hardened central listener; returns server instance."""
     cfg = _cfg()
     port = int(port or (cfg.get("agent") or {}).get("port") or DEFAULT_PORT)
+    host = str((cfg.get("agent") or {}).get("bind") or "0.0.0.0")
+    try:
+        is_loopback = ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        is_loopback = host.lower() == "localhost"
     agents_dir()
-    tok = expected_token()
+    tok = expected_token() if is_loopback else ""
     if logger:
         logger.info("Central token ready (%s chars)", len(tok))
 
@@ -413,12 +418,6 @@ def start_central(
     # Bind callbacks on class for handler instances
     CentralAgentHandler.send_alert_fn = send_alert_fn
     CentralAgentHandler.canary_beacon_fn = _beacon
-
-    host = str((cfg.get("agent") or {}).get("bind") or "0.0.0.0")
-    try:
-        is_loopback = ipaddress.ip_address(host).is_loopback
-    except ValueError:
-        is_loopback = host.lower() == "localhost"
 
     CentralAgentHandler.allow_shared_token = is_loopback
     server = None
