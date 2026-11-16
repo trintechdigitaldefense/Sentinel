@@ -100,9 +100,9 @@ jobs:
             ubuntu:24.04 bash -euxo pipefail -c '
               apt-get update
               DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip nftables
-              python3 -m venv /tmp/sentinel-test-venv
-              /tmp/sentinel-test-venv/bin/pip install pytest
-              /tmp/sentinel-test-venv/bin/pytest -q tests/test_firewall_nft_integration.py
+              python3 -m venv /opt/sentinel-test-venv
+              /opt/sentinel-test-venv/bin/pip install pytest
+              /opt/sentinel-test-venv/bin/pytest -q tests/test_firewall_nft_integration.py
             '
   ssh-lockout-live:
     runs-on: ubuntu-latest
@@ -147,16 +147,16 @@ jobs:
             apt-get update
             DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip git openssl
             git config --global --add safe.directory /workspace
-            python3 -m venv /tmp/sentinel-test-venv
-            /tmp/sentinel-test-venv/bin/pip install --upgrade pip
-            /tmp/sentinel-test-venv/bin/pip install pytest
-            /tmp/sentinel-test-venv/bin/pip install -r /workspace/requirements.txt
+            python3 -m venv /opt/sentinel-test-venv
+            /opt/sentinel-test-venv/bin/pip install --upgrade pip
+            /opt/sentinel-test-venv/bin/pip install pytest
+            /opt/sentinel-test-venv/bin/pip install -r /workspace/requirements.txt
           '
 
       - name: Install, restart, stop, start and verify the systemd-managed agent
         run: |
           docker exec -e SENTINEL_SYSTEMD_TEST=1 sentinel-systemd \
-            /tmp/sentinel-test-venv/bin/pytest -q /workspace/tests/test_agent_systemd_service.py
+            /opt/sentinel-test-venv/bin/pytest -q /workspace/tests/test_agent_systemd_service.py
 
       - name: Remove disposable systemd container
         if: always()
