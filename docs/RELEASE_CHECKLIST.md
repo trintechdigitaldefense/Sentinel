@@ -43,3 +43,5 @@ This checklist does **not** by itself authorize a “production-ready” marketi
 | Firewall events are written to case records | **OPEN** | Current branch CI and evidence-pack inspection |
 | Setup does not mutate application source or overwrite invalid client config | **OPEN** | Current branch CI and disposable upgrade test |
 | Live firewall apply/rollback/lockout test in isolated VM | **OPEN** | Disposable VM evidence; never infer from dry-run smoke test |
+| Generated agent systemd lifecycle (install/check-in/crash restart/stop/start) | **OPEN** | Dedicated systemd-PID-1 CI container must pass; service lifecycle is distinct from sentinel-hunt |
+| Legacy agent-key migration handling | **PARTIAL** | Legacy records fail closed and are reported; owner must migrate actual deployed agents one at a time using `docs/AGENT_KEY_MIGRATION.md` |
