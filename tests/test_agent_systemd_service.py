@@ -88,9 +88,12 @@ def test_generated_agent_service_install_restart_stop_and_start(tmp_path, monkey
             label="systemd-installer-e2e",
         )
         bare_repo = test_root / "sentinel-source.git"
-        subprocess.run(
-            ["git", "-c", f"safe.directory={repo_root}", "clone", "--bare", str(repo_root), str(bare_repo)],
-            check=True, capture_output=True, text=True,
+        clone_result = subprocess.run(
+            ["git", "-c", "safe.directory=*", "clone", "--bare", str(repo_root), str(bare_repo)],
+            check=False, capture_output=True, text=True,
+        )
+        assert clone_result.returncode == 0, (
+            f"could not create disposable bare Git source: {clone_result.stderr} {clone_result.stdout}"
         )
         branch = "sentinel-systemd-e2e"
         head = subprocess.run(
