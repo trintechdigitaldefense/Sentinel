@@ -400,7 +400,7 @@ def start_central(
 ) -> socketserver.TCPServer:
     """Start hardened central listener; returns server instance."""
     cfg = _cfg()
-    port = int(port or (cfg.get("agent") or {}).get("port") or DEFAULT_PORT)
+    port = int(port if port is not None else ((cfg.get("agent") or {}).get("port") or DEFAULT_PORT))
     host = str((cfg.get("agent") or {}).get("bind") or "0.0.0.0")
     try:
         is_loopback = ipaddress.ip_address(host).is_loopback
