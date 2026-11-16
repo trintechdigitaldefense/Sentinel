@@ -49,7 +49,7 @@ def _wait_for_checkin(registry, previous=None, timeout=45):
 @pytest.mark.skipif(not SYSTEMD_TEST, reason="requires disposable root VM/container booted with systemd as PID 1")
 def test_generated_agent_service_install_restart_stop_and_start(tmp_path, monkeypatch):
     repo_root = Path(__file__).resolve().parents[1]
-    test_root = Path(tempfile.mkdtemp(prefix="sentinel-systemd-", dir="/var/tmp"))
+    test_root = Path(tempfile.mkdtemp(prefix="sentinel-systemd-", dir="/home"))
     central_home = test_root / "central-home"
     central_keys = test_root / "central-keys"
     agent_user_home = test_root / "agent-user"
