@@ -305,8 +305,14 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
             self._json(400, {"error": f"invalid_json: {e}"})
             return
 
-        if not data.get("ip"):
-            data["ip"] = ip
+        # Bind network identity to the socket peer and the authenticated API key.
+        # Never let a payload claim another host IP or agent registry identity.
+        data["ip"] = ip
+        authenticated_agent_id = getattr(self, "_agent_id_resolved", None)
+        if authenticated_agent_id:
+            data["agent_id"] = authenticated_agent_id
+        else:
+            data.pop("agent_id", None)
 
         host_raw = str(data.get("hostname") or data.get("host") or "unknown")
         host = re.sub(r"[^a-zA-Z0-9_-]", "_", host_raw)[:40]
@@ -357,6 +363,7 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
         audit("agent_report", {
             "ip": ip,
             "hostname": host_raw,
+            "agent_id": authenticated_agent_id,
             "canary_count": reg.get("canary_count", 0),
             "registered": reg.get("ok", False),
         })
