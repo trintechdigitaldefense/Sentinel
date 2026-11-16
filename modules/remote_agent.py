@@ -17,11 +17,13 @@ import logging
 import os
 import re
 import secrets
+import shlex
 import shutil
 import socket
 import subprocess
 import textwrap
 from datetime import datetime
+import ipaddress
 from pathlib import Path
 from typing import Any, Optional
 from urllib.parse import urlparse
@@ -88,7 +90,11 @@ def central_base_url() -> str:
 
 def bundles_dir() -> Path:
     d = _data() / "agent_bundles"
-    d.mkdir(parents=True, exist_ok=True)
+    d.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        os.chmod(d, 0o700)
+    except OSError:
+        pass
     return d
 
 
@@ -165,7 +171,13 @@ def build_install_bundle(
     """Write install_agent.sh + README for manual or SSH install on a remote host."""
     url = (central_url or central_base_url()).rstrip("/")
     parsed_url = urlparse(url)
-    if parsed_url.scheme != "https" and parsed_url.hostname not in {"localhost", "127.0.0.1", "::1"}:
+    if not parsed_url.hostname or parsed_url.username or parsed_url.password or parsed_url.query or parsed_url.fragment:
+        raise ValueError("Central URL must have a hostname and must not contain credentials, query, or fragment")
+    try:
+        loopback = ipaddress.ip_address(parsed_url.hostname).is_loopback
+    except ValueError:
+        loopback = parsed_url.hostname.lower() == "localhost"
+    if parsed_url.scheme != "https" and not (parsed_url.scheme == "http" and loopback):
         raise ValueError("Agent bundles require HTTPS for non-loopback central URLs")
     from modules.agent_keys import issue_key
     agent_id = re.sub(r"[^A-Za-z0-9_.-]", "_", label)[:80] or "agent"
@@ -189,7 +201,7 @@ def build_install_bundle(
     # SENTINEL remote agent install - TrinTech Digital Defense
     # Authorized defensive use only. Run on the TARGET host.
     set -euo pipefail
-    CENTRAL_URL="{url}"
+    CENTRAL_URL={shlex.quote(url)}
     SCRIPT_DIR="$(cd -- "$(dirname -- "${{BASH_SOURCE[0]}}")" && pwd)"
     TOKEN_FILE="${{SCRIPT_DIR}}/agent.key"
     if [[ ! -f "$TOKEN_FILE" ]]; then
