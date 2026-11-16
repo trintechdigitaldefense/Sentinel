@@ -42,6 +42,8 @@ python3 sentinel.py service-status      # confirm always-on
 
 - Network-facing central listeners require TLS; plaintext central service is restricted to loopback.
 - Agent bundles use distinct per-agent API keys with a 30-day expiry. Keep the `agent.key` sidecar protected (mode `0600`) and alongside `install_agent.sh` during transfer.
+- On root-managed Linux hosts running systemd, the bundle installs `sentinel-agent.service` with restart-on-failure; non-root or non-systemd installs remain foreground mode. The agent service is separate from the existing `sentinel-hunt` service.
+- Legacy keys without expiry are rejected; follow [the agent-key migration guide](docs/AGENT_KEY_MIGRATION.md) and migrate agents one at a time.
 - The installer preserves invalid client configuration and stops for operator recovery rather than replacing it. Setup no longer edits `sentinel.py` or dashboard source files.
 - Live firewall apply/rollback validation in a disposable VM remains a separate release gate; dry-run tests do not prove live firewall safety.
 
