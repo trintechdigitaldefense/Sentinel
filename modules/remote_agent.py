@@ -347,7 +347,7 @@ PY
       RUN_HOME="$HOME"
       RUN_SENTINEL_DIR="$SENTINEL_HOME"
       UNIT_PATH="/etc/systemd/system/sentinel-agent.service"
-      if [[ "$INSTALL_DIR" == *" "* || "$RUN_HOME" == *" "* || "$PYTHON_BIN" == *" "* ]]; then
+      if [[ "$INSTALL_DIR" == *" "* || "$RUN_HOME" == *" "* || "$RUN_SENTINEL_DIR" == *" "* || "$PYTHON_BIN" == *" "* ]]; then
         echo "[!] Spaces in install/home paths are unsupported for system service installation"
         exit 1
       fi
@@ -361,6 +361,7 @@ PY
     Type=simple
     User=$RUN_USER
     Environment=HOME=$RUN_HOME
+    Environment=PYTHON=$PYTHON_BIN
     Environment=SENTINEL_DIR=$RUN_SENTINEL_DIR
     WorkingDirectory=$INSTALL_DIR
     ExecStart=$PYTHON_BIN $INSTALL_DIR/sentinel.py agent
