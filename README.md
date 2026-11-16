@@ -13,7 +13,7 @@
 
 > **Authorized defensive use only.** Detect · Alert · Report. No offensive capability.
 
-**Status:** pilot candidate (v3.16.21) on main — **not** a certified production release until [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) gates are evidenced and owner-approved.
+**Status:** pilot candidate; the source tree reports version 3.16.21, which is not itself a published or certified production release. See [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) for the evidence gates and owner approval requirements.
 
 
 ## Deployment model (SMB pilot)
@@ -37,6 +37,13 @@ python3 sentinel.py service-status      # confirm always-on
 
 
 ---
+
+## Secure multi-host deployment
+
+- Network-facing central listeners require TLS; plaintext central service is restricted to loopback.
+- Agent bundles use distinct per-agent API keys with a 30-day expiry. Keep the `agent.key` sidecar protected (mode `0600`) and alongside `install_agent.sh` during transfer.
+- The installer preserves invalid client configuration and stops for operator recovery rather than replacing it. Setup no longer edits `sentinel.py` or dashboard source files.
+- Live firewall apply/rollback validation in a disposable VM remains a separate release gate; dry-run tests do not prove live firewall safety.
 
 ## What Sentinel does
 
