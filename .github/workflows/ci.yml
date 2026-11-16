@@ -104,3 +104,20 @@ jobs:
               /tmp/sentinel-test-venv/bin/pip install pytest
               /tmp/sentinel-test-venv/bin/pytest -q tests/test_firewall_nft_integration.py
             '
+  ssh-lockout-live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install isolated SSH and firewall test tools
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nftables openssh-server openssh-client iproute2
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install pytest
+          .venv/bin/pip install -r requirements.txt
+
+      - name: Verify a real SSH session survives firewall apply, reapply and rollback
+        run: |
+          sudo env PATH="$PATH:$PWD/.venv/bin" SENTINEL_ISOLATED_SSH_TEST=1 .venv/bin/pytest -q tests/test_firewall_ssh_continuity.py
