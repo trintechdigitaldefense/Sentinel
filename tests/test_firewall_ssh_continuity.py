@@ -86,11 +86,11 @@ def test_live_ssh_session_survives_firewall_apply_reapply_and_rollback(tmp_path,
             "LogLevel VERBOSE",
         ]) + "\n")
         Path("/run/sshd").mkdir(parents=True, exist_ok=True)
-        _run("sshd", "-t", "-f", str(config))
+        _run(shutil.which("sshd"), "-t", "-f", str(config))
         sshd_log = tmp_path / "sshd.log"
         sshd_log_stream = sshd_log.open("w")
         sshd = subprocess.Popen(
-            ["sshd", "-D", "-e", "-f", str(config)],
+            [shutil.which("sshd"), "-D", "-e", "-f", str(config)],
             stdout=sshd_log_stream,
             stderr=subprocess.STDOUT,
         )
