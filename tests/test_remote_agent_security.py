@@ -152,7 +152,7 @@ def test_ssh_push_transfers_private_ca_bundle_file(tmp_path, monkeypatch):
     monkeypatch.setattr(remote_agent.subprocess, "run", fake_run)
     result = remote_agent.push_via_ssh("operator@example.test")
     assert result["ok"] is True
-    scp_call = next(command for command in calls if command[0] == "/usr/bin/scp")
+    scp_call = next(command for command in calls if command[0] == "scp")
     assert str(ca) in scp_call
     remote_command = calls[-1][-1]
     assert "central-ca.crt" in remote_command
