@@ -2,6 +2,7 @@ from modules.central_agent import CentralAgentHandler
 
 def test_token_ok_accepts_shared(monkeypatch):
     class H(CentralAgentHandler):
+        allow_shared_token = True
         def __init__(self):
             self.headers = {"X-Sentinel-Token": "shared-secret-token-value"}
             self.client_address = ("127.0.0.1", 1)
@@ -10,6 +11,7 @@ def test_token_ok_accepts_shared(monkeypatch):
 
 def test_token_ok_rejects_wrong(monkeypatch):
     class H(CentralAgentHandler):
+        allow_shared_token = True
         def __init__(self):
             self.headers = {"X-Sentinel-Token": "wrong"}
             self.client_address = ("127.0.0.1", 1)
