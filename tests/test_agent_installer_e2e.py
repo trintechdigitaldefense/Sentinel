@@ -98,6 +98,7 @@ def test_generated_bundle_installs_and_checks_in_over_https(tmp_path, monkeypatc
             "BRANCH": branch,
             "PYTHON": sys.executable,
             "PYTHONUNBUFFERED": "1",
+            "SENTINEL_FORCE_FOREGROUND": "1",
         })
         install_log = tmp_path / "agent-install.log"
         log_stream = install_log.open("w")
