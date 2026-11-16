@@ -89,12 +89,12 @@ def test_generated_agent_service_install_restart_stop_and_start(tmp_path, monkey
         )
         bare_repo = test_root / "sentinel-source.git"
         subprocess.run(
-            ["git", "clone", "--bare", str(repo_root), str(bare_repo)],
+            ["git", "-c", f"safe.directory={repo_root}", "clone", "--bare", str(repo_root), str(bare_repo)],
             check=True, capture_output=True, text=True,
         )
         branch = "sentinel-systemd-e2e"
         head = subprocess.run(
-            ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+            ["git", "-c", f"safe.directory={repo_root}", "-C", str(repo_root), "rev-parse", "HEAD"],
             check=True, capture_output=True, text=True,
         ).stdout.strip()
         subprocess.run(
