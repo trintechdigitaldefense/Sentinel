@@ -355,10 +355,13 @@ def main():
 
     if bool(args.cert) != bool(args.keyfile):
         raise SystemExit("[!] TLS requires both --cert and --keyfile")
+    normalized_host = str(args.host).strip().strip("[]")
     try:
-        is_loopback = ipaddress.ip_address(args.host).is_loopback
+        is_loopback = ipaddress.ip_address(normalized_host).is_loopback
     except ValueError:
-        is_loopback = False
+        # Only the literal localhost name is trusted as loopback; do not
+        # resolve arbitrary hostnames while deciding whether HTTP is safe.
+        is_loopback = normalized_host.lower() == "localhost"
     if not is_loopback and not (args.cert and args.keyfile):
         raise SystemExit("[!] Refusing network listener without TLS; provide --cert and --keyfile or bind to loopback")
 
