@@ -53,6 +53,11 @@ def issue_local_agent_key(agent_id: str = "", master: Optional[str] = None) -> d
     home = Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel"))
     cfg_path = home / "config.json"
     cfg = _read_config(cfg_path)
+    if cfg_path.exists():
+        try:
+            os.chmod(cfg_path, 0o600)
+        except OSError:
+            pass
     agent = cfg.setdefault("agent", {})
     if not isinstance(agent, dict):
         raise RuntimeError("Sentinel config agent section must be an object")
