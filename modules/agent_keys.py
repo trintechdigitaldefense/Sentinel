@@ -36,6 +36,8 @@ def _load() -> dict:
         data = json.loads(p.read_text(encoding="utf-8"))
         if not isinstance(data, dict) or not isinstance(data.get("agents", {}), dict):
             raise ValueError("registry must contain an agents object")
+        if any(not isinstance(record, dict) for record in data["agents"].values()):
+            raise ValueError("every agent registry record must be an object")
         return data
     except Exception as exc:
         raise RuntimeError(f"agent key registry is unreadable; refusing to reset it: {exc}") from exc
@@ -160,7 +162,7 @@ def list_agents() -> list:
             "expires_at": r.get("expires_at"),
             "expired": not _not_expired(r),
             "legacy": not bool(r.get("expires_at")),
-            "migration_required": not bool(r.get("expires_at")),
+            "migration_required": not bool(r.get("expires_at")) and not bool(r.get("revoked")),
             "revoked": bool(r.get("revoked")),
             "revoked_at": r.get("revoked_at"),
         })
