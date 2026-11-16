@@ -15,7 +15,11 @@ def test_central_agent_tls_helper_rejects_partial_certificate_configuration():
 
 
 
-def test_network_listener_does_not_accept_legacy_shared_token(monkeypatch):
+def test_network_listener_does_not_accept_legacy_shared_token(tmp_path, monkeypatch):
+    import importlib
+    monkeypatch.setenv("SENTINEL_CENTRAL_DIR", str(tmp_path))
+    import modules.agent_keys as agent_keys
+    importlib.reload(agent_keys)
     from modules import central_agent
 
     class FakeRequest:
