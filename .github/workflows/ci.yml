@@ -128,10 +128,10 @@ jobs:
 
       - name: Boot disposable Ubuntu container with systemd as PID 1
         run: |
-          docker run -d --name sentinel-systemd --privileged --cgroupns=host \\
-            --tmpfs /run --tmpfs /run/lock \\
-            -v /sys/fs/cgroup:/sys/fs/cgroup:rw \\
-            -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \\
+          docker run -d --name sentinel-systemd --privileged --cgroupns=host \
+            --tmpfs /run --tmpfs /run/lock \
+            -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
+            -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
             ubuntu:24.04 /sbin/init
           for attempt in $(seq 1 30); do
             if docker exec sentinel-systemd systemctl is-system-running >/dev/null 2>&1; then
@@ -154,7 +154,7 @@ jobs:
 
       - name: Install, restart, stop, start and verify the systemd-managed agent
         run: |
-          docker exec -e SENTINEL_SYSTEMD_TEST=1 sentinel-systemd \\
+          docker exec -e SENTINEL_SYSTEMD_TEST=1 sentinel-systemd \
             /tmp/sentinel-test-venv/bin/pytest -q /workspace/tests/test_agent_systemd_service.py
 
       - name: Remove disposable systemd container
