@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import ipaddress
 import sqlite3
 import ssl
 from datetime import datetime, timezone
@@ -352,15 +353,28 @@ def main():
         print(result)
         return
 
+    if bool(args.cert) != bool(args.keyfile):
+        raise SystemExit("[!] TLS requires both --cert and --keyfile")
+    try:
+        is_loopback = ipaddress.ip_address(args.host).is_loopback
+    except ValueError:
+        is_loopback = False
+    if not is_loopback and not (args.cert and args.keyfile):
+        raise SystemExit("[!] Refusing network listener without TLS; provide --cert and --keyfile or bind to loopback")
+
     Handler.master_key = args.master_key
-    httpd = ThreadingHTTPServer((args.host, args.port), Handler)
+    tls_context = None
     if args.cert and args.keyfile:
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        ctx.load_cert_chain(args.cert, args.keyfile)
-        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+        tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        # Load and validate credentials before opening the listening socket.
+        tls_context.load_cert_chain(args.cert, args.keyfile)
+
+    httpd = ThreadingHTTPServer((args.host, args.port), Handler)
+    if tls_context is not None:
+        httpd.socket = tls_context.wrap_socket(httpd.socket, server_side=True)
         print(f"[+] SENTINEL central HTTPS on {args.host}:{args.port} (Phase 5)")
     else:
-        print(f"[+] SENTINEL central HTTP on {args.host}:{args.port} (use TLS in production) — Phase 5")
+        print(f"[+] SENTINEL central HTTP on loopback only {args.host}:{args.port} (Phase 5)")
     httpd.serve_forever()
 
 
