@@ -1,6 +1,7 @@
 # © 2026 TrinTech Digital Defense — authorized defensive use only
 import importlib
 import os
+import pytest
 from pathlib import Path
 
 
@@ -49,3 +50,26 @@ def test_bundle_rejects_non_tls_remote_url(tmp_path, monkeypatch):
             central_url="http://central.example.test:8743",
             label="office-agent",
         )
+
+
+
+def test_corrupt_remote_config_and_registry_are_not_replaced(tmp_path, monkeypatch):
+    monkeypatch.setenv("SENTINEL_DIR", str(tmp_path / "sentinel-home"))
+
+    import importlib
+    import modules.remote_agent as remote_agent
+
+    importlib.reload(remote_agent)
+    home = Path(remote_agent._home())
+    home.mkdir(parents=True, exist_ok=True)
+    config = home / "config.json"
+    config.write_text("{broken")
+    with pytest.raises(RuntimeError, match="refusing to replace"):
+        remote_agent._cfg()
+    assert config.read_text() == "{broken"
+
+    registry = remote_agent.agents_registry_path()
+    registry.write_text("{broken")
+    with pytest.raises(RuntimeError, match="refusing to reset"):
+        remote_agent.load_agents()
+    assert registry.read_text() == "{broken"
