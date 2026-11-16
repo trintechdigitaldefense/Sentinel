@@ -250,6 +250,9 @@ def build_install_bundle(
     # SENTINEL remote agent install - TrinTech Digital Defense
     # Authorized defensive use only. Run on the TARGET host.
     set -euo pipefail
+    PYTHON_BIN="${PYTHON:-python3}"
+    if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then echo "[!] Python executable not found: $PYTHON_BIN"; exit 1; fi
+    PYTHON_BIN="$(command -v "$PYTHON_BIN")"
     CENTRAL_URL={shlex.quote(url)}
     SCRIPT_DIR="$(cd -- "$(dirname -- "${{BASH_SOURCE[0]}}")" && pwd)"
     TOKEN_FILE="${{SCRIPT_DIR}}/agent.key"
@@ -280,14 +283,14 @@ def build_install_bundle(
     fi
 
     cd "$INSTALL_DIR"
-    python3 setup.py
+    "$PYTHON_BIN" setup.py
 
     mkdir -p "$HOME/.sentinel"
     if [[ -f "$CA_FILE" ]]; then
       install -m 0644 "$CA_FILE" "$HOME/.sentinel/central-ca.crt"
       export SENTINEL_TLS_CA="$HOME/.sentinel/central-ca.crt"
     fi
-    SENTINEL_AGENT_TOKEN="$SHARED_TOKEN" CENTRAL_URL="$CENTRAL_URL" SENTINEL_TLS_CA="${{SENTINEL_TLS_CA:-}}" python3 - <<'PY'
+    SENTINEL_AGENT_TOKEN="$SHARED_TOKEN" CENTRAL_URL="$CENTRAL_URL" SENTINEL_TLS_CA="${{SENTINEL_TLS_CA:-}}" "$PYTHON_BIN" - <<'PY'
 import json, os
 from pathlib import Path
 p = Path.home() / ".sentinel" / "config.json"
@@ -314,7 +317,7 @@ os.chmod(p, 0o600)
 print("[+] agent config written", p)
 PY
 
-    python3 - <<'PY'
+    "$PYTHON_BIN" - <<'PY'
 try:
     from modules.remote_agent import agent_plant_canaries
     print(agent_plant_canaries())
@@ -504,7 +507,7 @@ def deploy_canaries_fleet_plan() -> dict:
     Environment=HOME=$RUN_HOME
     Environment=SENTINEL_DIR=$RUN_HOME/.sentinel
     WorkingDirectory=$INSTALL_DIR
-    ExecStart=/usr/bin/env python3 $INSTALL_DIR/sentinel.py agent
+    ExecStart=$PYTHON_BIN $INSTALL_DIR/sentinel.py agent
     Restart=on-failure
     RestartSec=5
     TimeoutStopSec=30
@@ -532,7 +535,7 @@ def deploy_canaries_fleet_plan() -> dict:
     if [[ "${SENTINEL_FORCE_FOREGROUND:-0}" != "1" ]]; then
       echo "[=] systemd unavailable or installer is non-root; running agent in foreground"
     fi
-    exec python3 sentinel.py agent "$CENTRAL_URL"
+    exec "$PYTHON_BIN" sentinel.py agent "$CENTRAL_URL"
     """)
     sh_path = bdir / "install_agent.sh"
     sh_path.write_text(script)
