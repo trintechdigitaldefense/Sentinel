@@ -90,6 +90,8 @@ def enroll_status() -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
     central = cfg.get("central") or {}
     agent = cfg.get("agent") or {}
+    if not isinstance(central, dict) or not isinstance(agent, dict):
+        return {"ok": False, "enrolled": False, "error": "central and agent config sections must be objects"}
     enrolled = bool(
         central.get("enabled")
         and (central.get("api_key") or agent.get("shared_token") or agent.get("api_key"))
