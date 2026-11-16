@@ -34,8 +34,16 @@ def _now() -> str:
 
 
 def init_db() -> None:
-    DATA.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(DB)
+    DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        os.chmod(DATA, 0o700)
+    except OSError:
+        pass
+    previous_umask = os.umask(0o077)
+    try:
+        con = sqlite3.connect(DB)
+    finally:
+        os.umask(previous_umask)
     con.execute(
         """CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,6 +78,10 @@ def init_db() -> None:
     con.execute("CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_events(ts)")
     con.commit()
     con.close()
+    try:
+        os.chmod(DB, 0o600)
+    except OSError:
+        pass
 
 
 def audit(
