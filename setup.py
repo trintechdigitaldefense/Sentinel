@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # © 2026 TrinTech Digital Defense — authorized defensive use only
-"""SENTINEL installer — dependency check + config init + cases wire.
+"""SENTINEL installer — dependency check + safe config initialization.
 
 Usage:
   python3 setup.py
@@ -12,6 +12,7 @@ import json
 import os
 import py_compile
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -201,34 +202,66 @@ def default_config() -> dict:
     }
 
 
+def _atomic_write_config(cfg: dict) -> None:
+    """Write config atomically with restrictive permissions."""
+    HOME.mkdir(parents=True, exist_ok=True)
+    fd, temp_name = tempfile.mkstemp(prefix=".config.", suffix=".tmp", dir=str(HOME))
+    temp_path = Path(temp_name)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(cfg, stream, indent=2)
+            stream.write("\\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_path, CONFIG)
+        os.chmod(CONFIG, 0o600)
+    except Exception:
+        try:
+            temp_path.unlink()
+        except OSError:
+            pass
+        raise
+
+
 def init_config() -> None:
     if CONFIG.exists():
         try:
-            existing = json.loads(CONFIG.read_text())
-            print(f"[=] Config exists ({CONFIG})")
-            base = default_config()
-            changed = False
-            for k, v in base.items():
-                if k not in existing:
-                    existing[k] = v
-                    changed = True
-            if changed:
-                CONFIG.write_text(json.dumps(existing, indent=2))
+            existing = json.loads(CONFIG.read_text(encoding="utf-8"))
+            if not isinstance(existing, dict):
+                raise ValueError("configuration root must be a JSON object")
+        except Exception as exc:
+            backup = CONFIG.with_name(CONFIG.name + ".corrupt")
+            if not backup.exists():
+                import shutil
+                shutil.copy2(CONFIG, backup)
                 try:
-                    os.chmod(CONFIG, 0o600)
-                except Exception:
+                    os.chmod(backup, 0o600)
+                except OSError:
                     pass
-                print("[+] Config merged with new defaults (0600)")
-            return
-        except Exception as e:
-            print(f"[!] Config unreadable ({e}) — rewriting defaults")
-    cfg = default_config()
-    CONFIG.write_text(json.dumps(cfg, indent=2))
-    try:
-        os.chmod(CONFIG, 0o600)
-    except Exception:
-        pass
-    print(f"[+] Wrote default config → {CONFIG}")
+            print(f"[!] Config is invalid ({exc}). Original preserved at {backup}.")
+            print("[!] Refusing to overwrite client settings; repair or restore the config, then rerun setup.")
+            raise SystemExit(2)
+
+        base = default_config()
+        changed = False
+        for key, value in base.items():
+            if key not in existing:
+                existing[key] = value
+                changed = True
+        if changed:
+            _atomic_write_config(existing)
+            print("[+] Config merged with new defaults atomically (0600)")
+        else:
+            try:
+                os.chmod(CONFIG, 0o600)
+            except OSError:
+                pass
+            print(f"[=] Config exists ({CONFIG}); no changes required")
+        return
+
+    _atomic_write_config(default_config())
+    print(f"[+] Wrote default config -> {CONFIG}")
 
 
 def main() -> None:
@@ -243,8 +276,7 @@ def main() -> None:
     if "--check" in sys.argv:
         print("\n[=] Check-only mode — no writes")
         return
-    apply_cases_wire()
-    apply_dashboard_cases()
+    # Application source is shipped pre-wired; installation must not mutate it.
     check_engine()
     init_dirs()
     init_config()
