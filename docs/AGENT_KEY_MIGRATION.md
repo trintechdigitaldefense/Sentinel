@@ -10,7 +10,7 @@ The operator status command reports legacy entries:
 python3 sentinel.py agent-key status
 ```
 
-The output includes `legacy_agents` and `migration_required_count`. It never prints stored key hashes or raw credentials.
+The output includes `legacy_agents`, `migration_required_agents`, and `migration_required_count`. Missing-expiry legacy entries, malformed-expiry entries, and expired non-revoked credentials are flagged for replacement. It never prints stored key hashes or raw credentials.
 
 ## One-agent-at-a-time migration
 
