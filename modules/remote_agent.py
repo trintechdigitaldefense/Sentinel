@@ -324,8 +324,8 @@ PY
     Per-agent API key is stored in agent.key (0600); keep it beside the installer and treat both files as credentials.\n    The key expires after 30 days and must be reissued before expiry.
 
     ## Manual install on a remote Linux host
-    1. Copy install_agent.sh to the host
-    2. bash install_agent.sh
+    1. Copy install_agent.sh and agent.key together to the host
+    2. Keep agent.key in the same protected directory, then run bash install_agent.sh
     3. Leave agent running or use nohup
 
     ## SSH push from central (authorized key required)
