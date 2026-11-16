@@ -124,6 +124,9 @@ def test_generated_agent_service_install_restart_stop_and_start(tmp_path, monkey
         assert result.returncode == 0, result.stdout + "\n" + result.stderr
         assert unit_path.exists(), "installer did not create sentinel-agent.service"
         _systemctl("is-active", "--quiet", service)
+        assert _systemctl("show", "-p", "NoNewPrivileges", "--value", service).stdout.strip() == "yes"
+        assert _systemctl("show", "-p", "ProtectSystem", "--value", service).stdout.strip() == "full"
+        assert _systemctl("show", "-p", "PrivateTmp", "--value", service).stdout.strip() == "yes"
         first_pid = int(_systemctl("show", "-p", "MainPID", "--value", service).stdout.strip())
         assert first_pid > 0
         registry = central_home / "data" / "remote_agents.json"
