@@ -157,6 +157,7 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
 
     send_alert_fn: Optional[Callable] = None
     canary_beacon_fn: Optional[Callable] = None
+    allow_shared_token: bool = False
 
     def log_message(self, fmt, *args):
         return
@@ -166,7 +167,7 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
 
     def _token_ok(self) -> bool:
         """Accept shared token OR a valid per-agent API key (MSP mode)."""
-        expected = expected_token()
+        expected = expected_token() if self.allow_shared_token else ""
         received = (self.headers.get("X-Sentinel-Token") or "").strip()
         auth = self.headers.get("Authorization") or ""
         if auth.lower().startswith("bearer "):
@@ -419,6 +420,7 @@ def start_central(
     except ValueError:
         is_loopback = host.lower() == "localhost"
 
+    CentralAgentHandler.allow_shared_token = is_loopback
     server = None
     try:
         server = _ThreadedCentralServer((host, port), CentralAgentHandler)
