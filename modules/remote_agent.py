@@ -257,6 +257,7 @@ def build_install_bundle(
     SCRIPT_DIR="$(cd -- "$(dirname -- "${{BASH_SOURCE[0]}}")" && pwd)"
     TOKEN_FILE="${{SCRIPT_DIR}}/agent.key"
     CA_FILE="${{SCRIPT_DIR}}/central-ca.crt"
+    SENTINEL_HOME="${{SENTINEL_DIR:-$HOME/.sentinel}}"
     if [[ ! -f "$TOKEN_FILE" ]]; then
       echo "[!] Missing agent.key sidecar; keep it beside install_agent.sh"
       exit 1
@@ -285,15 +286,16 @@ def build_install_bundle(
     cd "$INSTALL_DIR"
     "$PYTHON_BIN" setup.py
 
-    mkdir -p "$HOME/.sentinel"
+    mkdir -p "$SENTINEL_HOME"
+    export SENTINEL_DIR="$SENTINEL_HOME"
     if [[ -f "$CA_FILE" ]]; then
-      install -m 0644 "$CA_FILE" "$HOME/.sentinel/central-ca.crt"
-      export SENTINEL_TLS_CA="$HOME/.sentinel/central-ca.crt"
+      install -m 0644 "$CA_FILE" "$SENTINEL_HOME/central-ca.crt"
+      export SENTINEL_TLS_CA="$SENTINEL_HOME/central-ca.crt"
     fi
     SENTINEL_AGENT_TOKEN="$SHARED_TOKEN" CENTRAL_URL="$CENTRAL_URL" SENTINEL_TLS_CA="${{SENTINEL_TLS_CA:-}}" "$PYTHON_BIN" - <<'PY'
 import json, os
 from pathlib import Path
-p = Path.home() / ".sentinel" / "config.json"
+p = Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel")) / "config.json"
 cfg = {{}}
 if p.exists():
     try:
@@ -337,6 +339,7 @@ PY
           && command -v systemctl >/dev/null 2>&1 ]]; then
       RUN_USER="$(id -un)"
       RUN_HOME="$HOME"
+      RUN_SENTINEL_DIR="$SENTINEL_HOME"
       UNIT_PATH="/etc/systemd/system/sentinel-agent.service"
       if [[ "$INSTALL_DIR" == *" "* || "$RUN_HOME" == *" "* ]]; then
         echo "[!] Spaces in install/home paths are unsupported for system service installation"
@@ -352,7 +355,7 @@ PY
     Type=simple
     User=$RUN_USER
     Environment=HOME=$RUN_HOME
-    Environment=SENTINEL_DIR=$RUN_HOME/.sentinel
+    Environment=SENTINEL_DIR=$RUN_SENTINEL_DIR
     WorkingDirectory=$INSTALL_DIR
     ExecStart=$PYTHON_BIN $INSTALL_DIR/sentinel.py agent
     Restart=on-failure
@@ -483,7 +486,10 @@ def push_via_ssh(
         prepared = subprocess.run(mkdir_cmd, capture_output=True, text=True, timeout=30)
         if prepared.returncode != 0:
             return {"ok": False, "error": "could not prepare protected remote bundle directory", "stderr": (prepared.stderr or "")[:500], "bundle": bundle}
-        scp_cmd.extend([script, token_file, f"{target}:{remote_dir}/"])
+        transfer_files = [script, token_file]
+        if bundle.get("ca_file"):
+            transfer_files.append(bundle["ca_file"])
+        scp_cmd.extend(transfer_files + [f"{target}:{remote_dir}/"])
         r1 = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=60)
         if r1.returncode != 0:
             return {
@@ -493,7 +499,7 @@ def push_via_ssh(
                 "hint": "Use an authorized key: ssh-copy-id user@host",
                 "bundle": bundle,
             }
-        remote = f"chmod 700 {remote_script} && chmod 600 {remote_dir}/agent.key && nohup bash {remote_script} >/tmp/sentinel-agent-install.log 2>&1 & echo STARTED:$!"
+        remote = f"chmod 700 {remote_script} && chmod 600 {remote_dir}/agent.key && if [ -f {remote_dir}/central-ca.crt ]; then chmod 644 {remote_dir}/central-ca.crt; fi && nohup bash {remote_script} >/tmp/sentinel-agent-install.log 2>&1 & echo STARTED:$!"
         r2 = subprocess.run(ssh_cmd + [target, remote], capture_output=True, text=True, timeout=timeout)
         return {
             "ok": r2.returncode == 0,
