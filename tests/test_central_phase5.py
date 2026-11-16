@@ -147,3 +147,28 @@ def test_network_central_server_refuses_plain_http(central_env, monkeypatch):
     )
     with pytest.raises(SystemExit, match="Refusing network listener without TLS"):
         srv.main()
+
+
+def test_reissuing_agent_key_invalidates_previous_credential(central_env):
+    _, ak, _ = central_env
+    master = "test-master-key-rotation"
+    first = ak.issue_key("rotating-site", master, master)
+    second = ak.issue_key("rotating-site", master, master)
+    assert first["ok"] and second["ok"]
+    assert first["api_key"] != second["api_key"]
+    assert ak.verify_key("rotating-site", first["api_key"]) is False
+    assert ak.verify_key("rotating-site", second["api_key"]) is True
+    assert ak.resolve_agent_id(first["api_key"]) is None
+    assert ak.resolve_agent_id(second["api_key"]) == "rotating-site"
+
+
+def test_invalid_expiry_timestamp_fails_closed(central_env):
+    _, ak, _ = central_env
+    master = "test-master-key-invalid-expiry"
+    issued = ak.issue_key("bad-expiry-site", master, master)
+    registry = ak._keys_path()
+    data = json.loads(registry.read_text())
+    data["agents"]["bad-expiry-site"]["expires_at"] = "not-a-timestamp"
+    registry.write_text(json.dumps(data))
+    assert ak.verify_key("bad-expiry-site", issued["api_key"]) is False
+    assert ak.resolve_agent_id(issued["api_key"]) is None
