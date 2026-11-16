@@ -472,6 +472,15 @@ def send_alert(alert_type, details, logger=None):
             f.write(json.dumps(alert) + "\n")
     except Exception:
         pass
+    # Persist high/critical detections into the case-management workflow.
+    try:
+        from modules.case_hooks import maybe_open_case_from_engine_alert
+        maybe_open_case_from_engine_alert(
+            str(alert_type), details if isinstance(details, dict) else {"raw": details}
+        )
+    except Exception as exc:
+        if logger:
+            logger.debug("automatic case creation failed: %s", exc)
     # Persistent critical store (until operator ACK)
     if _is_crit:
         try:
@@ -2406,6 +2415,13 @@ def main():
                 print(f"\n{C.GREEN}✓ No alerts.{C.RESET}")
         else:
             print(f"\n{C.GREEN}✓ No alerts yet. Run 'sentinel start' first.{C.RESET}")
+
+    elif command == "cases":
+        try:
+            from modules.wire_cases import cases_command
+            cases_command(args)
+        except Exception as e:
+            print(f"[!] cases unavailable: {e}")
 
     elif command == "clean":
         for fpath in [DEVICE_DB, ALERT_LOG, FIM_BASELINE, CRON_BASELINE, SSH_BLOCKLIST_FILE, USER_BASELINE, SUID_BASELINE]:
