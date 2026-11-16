@@ -341,8 +341,8 @@ PY
     # Containers, development and non-root installs retain foreground mode.
     if [[ "${{SENTINEL_FORCE_FOREGROUND:-0}}" != "1" \
           && "$(id -u)" -eq 0 \
-          && -d /run/systemd/system \
-          && command -v systemctl >/dev/null 2>&1 ]]; then
+          && -d /run/systemd/system ]] \
+          && command -v systemctl >/dev/null 2>&1; then
       RUN_USER="$(id -un)"
       RUN_HOME="$HOME"
       RUN_SENTINEL_DIR="$SENTINEL_HOME"
