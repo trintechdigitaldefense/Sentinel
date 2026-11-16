@@ -87,10 +87,12 @@ def test_live_ssh_session_survives_firewall_apply_reapply_and_rollback(tmp_path,
         ]) + "\n")
         Path("/run/sshd").mkdir(parents=True, exist_ok=True)
         _run("sshd", "-t", "-f", str(config))
+        sshd_log = tmp_path / "sshd.log"
+        sshd_log_stream = sshd_log.open("w")
         sshd = subprocess.Popen(
             ["sshd", "-D", "-e", "-f", str(config)],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=sshd_log_stream,
+            stderr=subprocess.STDOUT,
         )
 
         # Wait for the SSH listener before establishing the persistent session.
@@ -104,7 +106,18 @@ def test_live_ssh_session_survives_firewall_apply_reapply_and_rollback(tmp_path,
                 break
             time.sleep(0.25)
         else:
-            pytest.fail("temporary sshd did not become reachable from the isolated client namespace")
+            sshd_log_stream.flush()
+            diag = _run("ip", "addr", "show", "dev", host_if, check=False).stdout
+            peer_diag = _run("ip", "-n", namespace, "addr", "show", check=False).stdout
+            verbose = _run("ip", "netns", "exec", namespace, "ssh", "-vvv", "-i", str(key),
+                           "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=no",
+                           "-o", "UserKnownHostsFile=/dev/null", "-p", ssh_port,
+                           f"root@{host_ip}", "true", check=False, timeout=5)
+            pytest.fail(
+                "temporary sshd was unreachable before firewall changes; "
+                f"sshd_poll={sshd.poll()}\\nsshd_log={sshd_log.read_text()}\\n"
+                f"host_link={diag}\\nclient_link={peer_diag}\\nssh_debug={verbose.stderr[-5000:]}"
+            )
 
         client = subprocess.Popen(
             ["ip", "netns", "exec", namespace, "ssh", "-T", "-i", str(key),
@@ -175,6 +188,8 @@ def test_live_ssh_session_survives_firewall_apply_reapply_and_rollback(tmp_path,
             except subprocess.TimeoutExpired:
                 sshd.kill()
                 sshd.wait(timeout=3)
+        if "sshd_log_stream" in locals():
+            sshd_log_stream.close()
         _run("nft", "delete", "table", "inet", "sentinel", check=False)
         _run("ip", "link", "delete", host_if, check=False)
         if created_ns:
