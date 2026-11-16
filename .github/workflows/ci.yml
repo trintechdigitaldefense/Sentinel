@@ -132,7 +132,7 @@ jobs:
             --tmpfs /run --tmpfs /run/lock \
             -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
             -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
-            ubuntu:24.04 /sbin/init
+            ubuntu:24.04 bash -c 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y systemd systemd-sysv && exec /lib/systemd/systemd'
           for attempt in $(seq 1 30); do
             if docker exec sentinel-systemd systemctl is-system-running >/dev/null 2>&1; then
               break
