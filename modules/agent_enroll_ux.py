@@ -121,7 +121,8 @@ def enroll_status() -> dict[str, Any]:
         "agent_id": agent.get("agent_id"),
         "has_master_key": bool(agent.get("master_key")),
         "legacy_agents": legacy_agents,
-        "migration_required_count": len(legacy_agents),
+        "migration_required_agents": migration_agents,
+        "migration_required_count": len(migration_agents),
         "hint": (
             "Reissue each legacy agent key and re-enroll the remote agent; "
             "legacy keys without expiry are rejected."
