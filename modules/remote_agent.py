@@ -321,6 +321,10 @@ os.chmod(p, 0o600)
 print("[+] agent config written", p)
 PY
 
+    if [[ "${{SENTINEL_REMOVE_BUNDLE:-0}}" == "1" ]]; then
+      rm -f "$TOKEN_FILE" "$CA_FILE"
+    fi
+
     "$PYTHON_BIN" - <<'PY'
 try:
     from modules.remote_agent import agent_plant_canaries
@@ -501,7 +505,7 @@ def push_via_ssh(
                 "hint": "Use an authorized key: ssh-copy-id user@host",
                 "bundle": bundle,
             }
-        remote = f"chmod 700 {remote_script} && chmod 600 {remote_dir}/agent.key && if [ -f {remote_dir}/central-ca.crt ]; then chmod 644 {remote_dir}/central-ca.crt; fi && nohup bash {remote_script} >/tmp/sentinel-agent-install.log 2>&1 & echo STARTED:$!"
+        remote = f"chmod 700 {remote_script} && chmod 600 {remote_dir}/agent.key && if [ -f {remote_dir}/central-ca.crt ]; then chmod 644 {remote_dir}/central-ca.crt; fi && (nohup bash -c 'SENTINEL_REMOVE_BUNDLE=1 bash {remote_script}; rc=$?; rm -rf {remote_dir}; exit $rc' >/tmp/sentinel-agent-install.log 2>&1 </dev/null & echo STARTED:$!)"
         r2 = subprocess.run(ssh_cmd + [target, remote], capture_output=True, text=True, timeout=timeout)
         return {
             "ok": r2.returncode == 0,
