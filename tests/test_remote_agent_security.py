@@ -157,3 +157,5 @@ def test_ssh_push_transfers_private_ca_bundle_file(tmp_path, monkeypatch):
     remote_command = calls[-1][-1]
     assert "central-ca.crt" in remote_command
     assert "chmod 644" in remote_command
+    assert "SENTINEL_REMOVE_BUNDLE=1" in remote_command
+    assert "rm -rf" in remote_command
