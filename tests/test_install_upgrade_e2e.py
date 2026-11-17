@@ -36,6 +36,9 @@ def installer_lab(tmp_path):
     shim_dir.mkdir()
 
     _run(["git", "init", "--bare", str(remote)], tmp_path)
+    # Android/proot tmpfs environments can fail Git receive-pack loose-object unpacking.
+    # Keep incoming packs in the isolated bare test remote; pushes remain real Git transports.
+    _run(["git", "config", "receive.unpackLimit", "1"], remote)
     seed.mkdir()
     _run(["git", "init"], seed)
     _run(["git", "config", "user.email", "sentinel-test@example.invalid"], seed)
