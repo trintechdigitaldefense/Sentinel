@@ -923,7 +923,7 @@ async function runAction(name) {{
           const u = new URL(String(raw), window.location.origin);
           if (u.origin !== window.location.origin || u.pathname !== "/api/report/download") return null;
           const name = u.searchParams.get("name") || "";
-          if (!/^[A-Za-z0-9_.-]+\.pdf$/i.test(name)) return null;
+          if (!/^[A-Za-z0-9_.-]+[.]pdf$/i.test(name)) return null;
           return "/api/report/download?name=" + encodeURIComponent(name);
         }} catch (e) {{ return null; }}
       }}).filter(Boolean);
