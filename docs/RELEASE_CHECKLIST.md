@@ -1,33 +1,42 @@
-# Release checklist (gates)
+# SENTINEL release checklist
 
-**Branch under review:** `hardening/production-readiness`  
-**Candidate version label:** **v3.16.8** (not tagged on `main` until owner approval)  
-**Last acceptance run (this environment):** 2026-10-26  
+**Current reviewed revision:** `e80c09b5a1cc461ed7d598cea9c1c5b2ec0c58ae` (`main`, PR #9 merged)  
+**Updated:** 2026-11-17  
+**Product status:** pilot candidate; no production release or certification is declared by this checklist.
 
-Legend: **PASS** = evidenced here · **PARTIAL** = automated only / incomplete · **OPEN** = not done · **N/A** = not applicable
+Legend: **PASS** = current evidence recorded · **PARTIAL** = automated/static evidence only · **OPEN** = evidence or owner decision still required.
 
-| Gate | Status | Evidence |
-|------|--------|----------|
-| No unresolved **Critical** in SECURITY_AUDIT | **PARTIAL** | C-01, C-02 remediated on branch; confirm after merge to main + CI green |
-| High-risk dashboard authz tests pass | **PASS** | `tests/test_dashboard_authz.py` in full suite |
-| Install/upgrade preserves user data by default | **PASS** (static + unit) | `install.sh` / `setup.py` non-destructive; `tests/test_install_safe.py` |
-| Firewall dry-run default + recovery in disposable VM | **PARTIAL** | CI `firewall_smoke.py` dry-run only — **no live apply VM in this run** |
-| High-severity alerts survive delivery failure + restart | **PARTIAL** | offline queue + critical store code/tests exist — **not** chaos-tested on live channels |
-| Doctor does not claim production-ready / CLIENT-READY | **PASS** | Verdict language updated (M2) |
-| Full CI suite passes | **PASS** (Actions on hardening branch) | Local pytest 138+; **GitHub Actions success on `38f661c`** (runs 40424099269 / 40424094495) |
-| Install/upgrade/rollback/uninstall docs verified | **PASS** (doc review) | INSTALL.md M5; uninstall command documented |
-| No real secrets committed | **PASS** (spot check) | No live tokens in tree in this audit pass |
-| README claims match tested implementation | **PASS** (doc review) | M5 README truthful matrix |
-| Known limitations documented | **PASS** | README + SECURITY_AUDIT |
-| Owner-reviewed RC + rollback plan | **OPEN** | Awaiting human sign-off below |
+| Gate | Status | Current evidence / remaining work |
+|---|---|---|
+| PR #9 alert reliability merged | **PASS** | Merge commit `e80c09b5a1cc461ed7d598cea9c1c5b2ec0c58ae` on `main` |
+| PR #9 CI | **PASS** | GitHub Actions Python 3.10 and 3.12 jobs passed before merge |
+| Post-merge local regression suite | **PASS** | Python 3.12: `python3 -m pytest -q` → 242 passed, 1 ReportLab deprecation warning |
+| Active finding state and delivery retry | **PASS** (automated) | Regression tests cover lifecycle, failure/retry, concurrency, queue retention, and compatibility |
+| Installer preserves local data by default | **PASS** (automated/static) | Installer safety implementation and regression tests; still test upgrades on supported target platforms |
+| Dashboard authorization | **PARTIAL** | Authorization tests pass; full browser/XSS and exposed-network assessment remain open |
+| Firewall dry-run behavior | **PARTIAL** | Dry-run/contract tests exist; no live apply validation on a disposable VM is recorded here |
+| Live alert channel delivery and receipt | **OPEN** | No real recipient, WhatsApp, webhook, syslog, or SIEM delivery test is claimed |
+| Offline queue across real host restart / power loss | **PARTIAL** | Automated persistence/queue tests exist; field restart/soak evidence is still needed |
+| Detection coverage and false-positive rate | **OPEN** | Requires representative pilot telemetry and operator review |
+| Current security audit / residual-risk review | **PARTIAL** | `SECURITY_AUDIT.md` is a historical audit snapshot; perform a fresh review against current `main` |
+| Secrets and deployment configuration review | **OPEN** | Recheck target-specific secrets, credentials, network exposure, and access controls before each pilot |
+| Owner sign-off and rollback rehearsal | **OPEN** | Owner must review residual risks, approve the pilot scope, and rehearse rollback |
 
-## Owner sign-off (required before merge to `main` and any production tag)
+## Required before a customer pilot
 
-- [ ] Product owner reviewed SECURITY_AUDIT residual risks  
-- [ ] GitHub Actions CI green on this PR  
-- [ ] Pilot host dry-run completed (doctor + go-live + one hunt cycle)  
-- [ ] Rollback plan understood (previous tag / `git merge --ff-only` inverse)  
+- [ ] Review the current code and historical findings in [SECURITY_AUDIT.md](SECURITY_AUDIT.md); record disposition of each remaining risk.
+- [ ] Validate install, upgrade, backup, and rollback on a disposable supported host.
+- [ ] Run `doctor`, confirm intended baselines/canaries, and observe a supervised hunt cycle.
+- [ ] Verify alert routing with an explicitly approved test endpoint/recipient; record delivery and queue retry evidence.
+- [ ] Validate firewall behavior in dry-run first; live apply only with explicit customer approval and console recovery.
+- [ ] Confirm dashboard bind/authentication, operator roles, secrets handling, and network exposure.
+- [ ] Document pilot owner, scope, maintenance window, escalation contacts, and rollback procedure.
 
-**Signature / date:** __________________  
+## Release / marketing guardrails
 
-This checklist does **not** by itself authorize a “production-ready” marketing claim.
+- Do not describe Sentinel as certified, vulnerability-free, or production-ready based only on automated tests.
+- A passing queue test does not establish third-party message receipt.
+- A dry-run firewall test does not establish that live rules are safe on a customer's host.
+- The PR #9 merge and documentation refresh do not create a release tag, publish a package, or authorize deployment.
+
+**Owner sign-off / date:** __________________
