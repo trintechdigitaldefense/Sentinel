@@ -218,7 +218,7 @@ def _atomic_write_config(config: Path, payload: dict) -> None:
         os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
             fd = -1
-            stream.write(json.dumps(payload, indent=2) + "\\n")
+            stream.write(json.dumps(payload, indent=2) + "\n")
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temp_name, config)
