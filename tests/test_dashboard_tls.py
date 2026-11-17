@@ -31,6 +31,13 @@ def test_remote_dashboard_accepts_explicit_secure_cookie():
     _validate_remote_dashboard_config({"remote_access": True, "cookie_secure": True})
 
 
+def test_remote_dashboard_rejects_ambiguous_string_booleans():
+    from modules.dashboard_impl import _validate_remote_dashboard_config
+
+    with pytest.raises(RuntimeError, match="must be a boolean"):
+        _validate_remote_dashboard_config({"remote_access": "true", "cookie_secure": "true"})
+
+
 def test_local_dashboard_does_not_require_secure_cookie():
     from modules.dashboard_impl import _validate_remote_dashboard_config
 
