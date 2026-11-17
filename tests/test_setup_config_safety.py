@@ -83,6 +83,23 @@ def test_init_config_refuses_dangling_symlink(tmp_path, monkeypatch):
     assert not (tmp_path / "missing-target.json").exists()
 
 
+
+def test_init_config_rejects_fifo_without_blocking(tmp_path, monkeypatch):
+    import os
+    import setup as setup_mod
+
+    config = tmp_path / "config.json"
+    os.mkfifo(config)
+    monkeypatch.setattr(setup_mod, "CONFIG", config)
+
+    with pytest.raises(SystemExit) as exc:
+        setup_mod.init_config()
+
+    assert exc.value.code == 1
+    assert config.exists()
+    assert config.is_fifo()
+
+
 def test_atomic_replace_failure_preserves_original_and_cleans_temp(tmp_path, monkeypatch):
     import setup as setup_mod
 
