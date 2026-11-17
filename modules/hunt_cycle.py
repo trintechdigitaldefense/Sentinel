@@ -177,8 +177,18 @@ def run_cycle(
             logging.getLogger('sentinel').debug('%s: %s', __name__, e)
 
         try:
+            from modules.alerting import AlertRouter, normalize_alerting_config
             from modules.phase4 import offline_flush
-            offline_flush()
+
+            router = AlertRouter(
+                normalize_alerting_config((config or {}).get("alerting") or {})
+            )
+            flush_result = offline_flush(router.send_queued)
+
+            if not flush_result.get("ok", False):
+                (logger or logging.getLogger("sentinel")).warning(
+                    "Offline alert flush incomplete: %s", flush_result
+                )
         except Exception as e:
             logging.getLogger('sentinel').debug('%s: %s', __name__, e)
 

@@ -3,6 +3,9 @@
 """Sentinel Phase 4 — Hard to Copy (compact)"""
 from __future__ import annotations
 import json, os, socket, subprocess, shutil, zipfile
+import fcntl
+import tempfile
+from contextlib import contextmanager
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -129,36 +132,189 @@ def evidence_pack(hours=24, out_dir=None):
             if f.is_file(): zf.write(f, f.name)
     return {"ok": True, "folder": str(work), "zip": str(zpath), "files": copied, "recent_alerts": 0}
 QUEUE_FILE = "offline_queue.jsonl"
+
+
+@contextmanager
+def _queue_lock(path):
+    """Serialize queue reads, appends and flushes across processes."""
+    lock_path = path.with_name(path.name + ".lock")
+    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o600)
+    try:
+        os.fchmod(fd, 0o600)
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        finally:
+            os.close(fd)
+
+
+def _queue_read(path):
+    if not path.exists():
+        return []
+    return [
+        line for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+
+
+def _queue_write(path, lines):
+    """Atomically replace the queue using a private temporary file."""
+    fd, tmp_name = tempfile.mkstemp(
+        prefix=path.name + ".",
+        suffix=".tmp",
+        dir=str(path.parent),
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            if lines:
+                stream.write("\n".join(lines) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+
+        os.replace(tmp_name, path)
+
+        try:
+            os.chmod(path, 0o600)
+            dir_fd = os.open(str(path.parent), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass
+    finally:
+        if os.path.exists(tmp_name):
+            os.unlink(tmp_name)
+
+
 def offline_enqueue(alert_type, details, config=None):
     path = _data() / QUEUE_FILE
-    entry = {"queued_at": datetime.now().isoformat(), "type": alert_type,
-             "details": details if isinstance(details, dict) else {"raw": str(details)[:500]}}
-    lines = path.read_text().splitlines() if path.exists() else []
-    lines.append(json.dumps(entry))
-    path.write_text("\n".join(lines[-500:]) + "\n")
+    entry = {
+        "queued_at": datetime.now().isoformat(),
+        "type": alert_type,
+        "details": details if isinstance(details, dict)
+        else {"raw": str(details)[:500]},
+    }
+
+    with _queue_lock(path):
+        lines = _queue_read(path)
+        lines.append(json.dumps(entry))
+        lines = lines[-500:]
+        _queue_write(path, lines)
+
     return {"ok": True, "queued": len(lines)}
+
+
 def offline_status():
     path = _data() / QUEUE_FILE
-    if not path.exists(): return {"ok": True, "count": 0, "items": []}
+
+    with _queue_lock(path):
+        lines = _queue_read(path)
+
     items = []
-    for line in path.read_text().splitlines()[-20:]:
-        try: items.append(json.loads(line))
-        except Exception: pass
-    total = sum(1 for x in path.read_text().splitlines() if x.strip())
-    return {"ok": True, "count": total, "items": items}
-def offline_flush(send_fn=None):
-    path = _data() / QUEUE_FILE
-    if not path.exists(): return {"ok": True, "flushed": 0}
-    lines = [l for l in path.read_text().splitlines() if l.strip()]
-    flushed = 0
-    for line in lines:
+    for line in lines[-20:]:
         try:
-            row = json.loads(line)
-            if send_fn: send_fn(row.get("type"), row.get("details"))
-            flushed += 1
-        except Exception: pass
-    path.write_text("")
-    return {"ok": True, "flushed": flushed, "errors": 0}
+            items.append(json.loads(line))
+        except Exception:
+            pass
+
+    return {"ok": True, "count": len(lines), "items": items}
+
+
+def offline_flush(send_fn=None):
+    """Deliver queued alerts and remove only explicitly confirmed entries.
+
+    Network delivery happens outside the queue lock. A separate flush lock
+    serializes flush operations, while reconciliation preserves entries
+    concurrently added to the queue.
+    """
+    path = _data() / QUEUE_FILE
+
+    if not callable(send_fn):
+        with _queue_lock(path):
+            count = len(_queue_read(path))
+        return {
+            "ok": False,
+            "flushed": 0,
+            "errors": count,
+            "retained": count,
+            "error": "No delivery callback supplied; queue retained",
+        }
+
+    flush_lock_path = path.with_name(path.name + ".flush")
+
+    with _queue_lock(flush_lock_path):
+        # Take a snapshot, then release the queue lock before delivery.
+        with _queue_lock(path):
+            lines = _queue_read(path)
+
+        if not lines:
+            return {
+                "ok": True,
+                "flushed": 0,
+                "errors": 0,
+                "retained": 0,
+            }
+
+        confirmed_lines = []
+        errors = 0
+
+        for line in lines:
+            try:
+                row = json.loads(line)
+                if not isinstance(row, dict):
+                    raise ValueError("queue entry is not an object")
+
+                result = send_fn(row.get("type"), row.get("details"))
+
+                confirmed = (
+                    result is True
+                    or (
+                        isinstance(result, dict)
+                        and (
+                            result.get("sent") is True
+                            or result.get("delivered") is True
+                        )
+                    )
+                )
+
+                if confirmed:
+                    confirmed_lines.append(line)
+                else:
+                    errors += 1
+
+            except Exception:
+                errors += 1
+
+        # Reconcile against the current queue, preserving concurrent additions.
+        with _queue_lock(path):
+            current = _queue_read(path)
+
+            remove_counts = {}
+            for line in confirmed_lines:
+                remove_counts[line] = remove_counts.get(line, 0) + 1
+
+            retained = []
+            for line in current:
+                remaining = remove_counts.get(line, 0)
+                if remaining:
+                    remove_counts[line] = remaining - 1
+                else:
+                    retained.append(line)
+
+            if confirmed_lines:
+                _queue_write(path, retained)
+
+        return {
+            "ok": errors == 0,
+            "flushed": len(confirmed_lines),
+            "errors": errors,
+            "retained": len(retained),
+        }
+
 def phase4_self_check(config=None):
     c = ensure_phase4_defaults(config)
     return {"behavioral_enabled": True, "baseline_exists": (_data() / "behavioral_baseline.json").exists(),
