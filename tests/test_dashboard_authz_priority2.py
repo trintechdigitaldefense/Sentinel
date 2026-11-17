@@ -148,3 +148,55 @@ def test_realtime_threat_renderer_uses_text_nodes_not_innerhtml():
 
     assert "textContent" in renderer
     assert "innerHTML" not in renderer
+
+
+def test_query_string_token_cannot_authenticate():
+    h = _handler(headers={}, path="/?token=tok")
+    assert h._auth_ok() is False
+
+
+def test_valid_session_cookie_authenticates():
+    h = _handler(headers={"Cookie": "sentinel_token=tok"}, path="/api/status")
+    assert h._auth_ok() is True
+
+
+def test_dashboard_html_does_not_embed_access_token():
+    from modules.dashboard_impl import _html
+
+    page = _html("must-not-appear-in-html", {"host": "test-host"})
+    assert "must-not-appear-in-html" not in page
+    assert "token=" not in page
+    assert "const TOKEN" not in page
+
+
+def test_report_renderer_uses_dom_apis_and_validates_download_urls():
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / "modules" / "dashboard_impl.py").read_text()
+    start = source.index("async function runAction(name)")
+    end = source.index("async function toggleControl(want)", start)
+    renderer = source[start:end]
+
+    assert "new URL(" in renderer
+    assert "u.origin !== window.location.origin" in renderer
+    assert "textContent" in renderer
+    assert "createElement" in renderer
+    assert "innerHTML" not in renderer
+
+
+def test_security_headers_are_set_for_dashboard_responses():
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / "modules" / "dashboard_impl.py").read_text()
+    start = source.index("    def _send(")
+    end = source.index("    def _read_json_body", start)
+    sender = source[start:end]
+
+    for header in (
+        "X-Content-Type-Options",
+        "Referrer-Policy",
+        "X-Frame-Options",
+        "Permissions-Policy",
+        "Content-Security-Policy",
+    ):
+        assert header in sender
