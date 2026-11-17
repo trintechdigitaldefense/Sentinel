@@ -978,7 +978,7 @@ async function runAction(name) {{
         frame.title = "PDF report";
         frame.src = links[0];
         viewer.append(preview, frame);
-      }}}
+      }}
       return;
     }}
     if (out) out.textContent = JSON.stringify(j, null, 2);
