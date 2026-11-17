@@ -63,6 +63,8 @@ def test_browser_login_xss_report_links_and_security_headers(dashboard_server):
         browser = playwright.chromium.launch(headless=True)
         context = browser.new_context()
         page = context.new_page()
+        page_errors = []
+        page.on("pageerror", lambda error: page_errors.append(str(error)))
 
         response = page.goto(dashboard_server)
         assert response is not None and response.status == 200
@@ -74,6 +76,7 @@ def test_browser_login_xss_report_links_and_security_headers(dashboard_server):
         page.locator("#realtime table").wait_for()
         assert page.url == dashboard_server
         assert "browser-test-token" not in page.content()
+        assert page.evaluate("typeof renderThreats") == "function", page_errors
 
         # Alert IDs are data attributes, never interpolated into inline JavaScript.
         page.evaluate("window.__sentinelXss = 0")
