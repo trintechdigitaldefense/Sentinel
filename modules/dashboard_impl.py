@@ -1245,7 +1245,7 @@ class _Handler(BaseHTTPRequestHandler):
         host = self.headers.get("Host")
         if not origin or not host or origin.strip().lower() == "null":
             return False
-        if any(ch in host for ch in ("\r", "\n", "\t", ",", "@", "/", "\\")):
+        if any(ch.isspace() for ch in host) or any(ch in host for ch in (",", "@", "/", "\\")):
             return False
         try:
             parsed_origin = urlparse(origin)
