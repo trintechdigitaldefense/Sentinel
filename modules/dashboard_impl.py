@@ -1772,7 +1772,7 @@ def _safe_dashboard_bind(requested_bind: str) -> str:
     Remote access must terminate TLS in a separately managed reverse proxy
     on the same host; dashboard.allow_public_bind is intentionally ignored.
     """
-    if requested_bind in ("127.0.0.1", "::1", "localhost"):
+    if requested_bind == "127.0.0.1":
         return requested_bind
     return "127.0.0.1"
 
