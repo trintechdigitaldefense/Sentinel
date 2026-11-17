@@ -48,13 +48,15 @@ python3 sentinel.py service-status      # confirm always-on
 | Canary / deception files | Implemented | Tracked decoys; missing tracked paths alert |
 | Host firewall control plane | Implemented · dry-run default | Confirm required to apply; lockout guard |
 | SSH brute-force blocking | Implemented · **auto_block off by default** | Opt-in autonomy |
-| Multi-channel alerts | Implemented · tested (partial) | Dedup, quiet hours, offline queue |
+| Multi-channel alerts | Implemented · automated tests | Persistent finding state, delivery deduplication, quiet hours, offline retry queue |
 | Critical alert persistence | Implemented · tested | Survive restarts until ACK |
 | Local dashboard | Implemented · authz tests | Loopback + view-only defaults; token auth |
 | Doctor / go-live | Implemented | Install-health — not a production certification |
 | SIEM / Splunk HEC | Implemented · tested (partial) | Optional; disabled until configured |
 | Cases / evidence packs | Implemented | Hash = post-export integrity, not legal CoC alone — see [docs/EVIDENCE_HASH.md](docs/EVIDENCE_HASH.md) |
 | MSP central / agent keys | Implemented | Requires correct module load; see audit |
+
+**Alert delivery reliability (PR #9):** unchanged active findings are tracked separately from trusted detection baselines. Finding state is written atomically with restrictive file permissions and thread/process locking. Alert delivery attempts are serialized per fingerprint; failed or unconfirmed deliveries are not treated as handled. Confirmed offline-queue entries can be retried by the hunt-cycle maintenance path. This reduces duplicate notifications and avoids silently losing retryable alerts; it does not prove that a third-party channel is reachable or that a human received an alert.
 
 Labels mean: code is present and exercised in automated tests where noted. They do **not** mean exhaustive detection coverage or field validation on your network.
 
@@ -159,7 +161,7 @@ python scripts/firewall_smoke.py
 Details: [docs/TESTING.md](docs/TESTING.md).  
 CI runs compile-all, future-import guard, ruff, firewall smoke, pytest on PRs to `main`.
 
-**Latest local verification on hardening branch:** `pytest -q tests/` → **131+ passed** (Milestone 4). Re-run after pull for your tree.
+**Post-merge verification on `main` at `e80c09b` (2026-11-17):** `python3 -m pytest -q` → **242 passed**, with one ReportLab/Python deprecation warning, on Python 3.12. GitHub Actions for PR #9 also passed on Python 3.10 and 3.12. These are automated checks; they are not live firewall, SIEM, WhatsApp, or customer-host validation.
 
 ---
 
