@@ -22,3 +22,25 @@ def test_email_requires_server():
         assert False
     except ConfigError:
         pass
+
+
+def test_dashboard_remote_tls_settings_are_explicit_and_round_trip():
+    cfg = parse_config({"dashboard": {"remote_access": True, "cookie_secure": True}})
+    assert cfg.dashboard.remote_access is True
+    assert cfg.dashboard.cookie_secure is True
+
+
+def test_dashboard_remote_access_requires_secure_cookie():
+    try:
+        parse_config({"dashboard": {"remote_access": True, "cookie_secure": False}})
+        assert False, "remote dashboard must require secure cookies"
+    except ConfigError as e:
+        assert "cookie_secure" in str(e)
+
+
+def test_dashboard_tls_settings_must_be_booleans():
+    try:
+        parse_config({"dashboard": {"remote_access": "true", "cookie_secure": "true"}})
+        assert False, "string booleans must be rejected"
+    except ConfigError as e:
+        assert "must be a boolean" in str(e)
