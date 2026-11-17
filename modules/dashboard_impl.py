@@ -1247,6 +1247,8 @@ class _Handler(BaseHTTPRequestHandler):
             return False
         if any(ch.isspace() for ch in host) or any(ch in host for ch in (",", "@", "/", "\\")):
             return False
+        if origin.rstrip().endswith(":") or host.strip().endswith(":"):
+            return False
         try:
             parsed_origin = urlparse(origin)
             parsed_host = urlparse("//" + host.strip())
@@ -1274,8 +1276,14 @@ class _Handler(BaseHTTPRequestHandler):
                 return False
             origin_host = parsed_origin.hostname.rstrip(".").encode("idna").decode("ascii").lower()
             request_host = parsed_host.hostname.rstrip(".").encode("idna").decode("ascii").lower()
-            origin_port = parsed_origin.port or (443 if expected_scheme == "https" else 80)
-            request_port = parsed_host.port or (443 if expected_scheme == "https" else 80)
+            origin_port = parsed_origin.port
+            request_port = parsed_host.port
+            if origin_port is None:
+                origin_port = 443 if expected_scheme == "https" else 80
+            if request_port is None:
+                request_port = 443 if expected_scheme == "https" else 80
+            if origin_port == 0 or request_port == 0:
+                return False
             return origin_host == request_host and origin_port == request_port
         except (UnicodeError, ValueError):
             return False
