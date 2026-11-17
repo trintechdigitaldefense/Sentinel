@@ -184,6 +184,16 @@ def test_report_renderer_uses_dom_apis_and_validates_download_urls():
     assert "innerHTML" not in renderer
 
 
+
+def test_session_cookie_secure_flag_is_explicit_not_connection_inferred():
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / "modules" / "dashboard_impl.py").read_text()
+    assert 'if self.secure_cookie:' in source
+    assert 'if hasattr(self.connection, "getpeercert")' not in source
+    assert 'dash.get("cookie_secure", False)' in source
+
+
 def test_security_headers_are_set_for_dashboard_responses():
     from pathlib import Path
 
