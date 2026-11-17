@@ -201,8 +201,16 @@ def offline_enqueue(alert_type, details, config=None):
 
     with _queue_lock(path):
         lines = _queue_read(path)
+        # Never evict an unconfirmed alert to make room for a newer one.
+        # At capacity, reject the new enqueue and preserve the existing queue.
+        if len(lines) >= 500:
+            return {
+                "ok": False,
+                "queued": False,
+                "count": len(lines),
+                "error": "offline queue full; existing entries preserved",
+            }
         lines.append(json.dumps(entry))
-        lines = lines[-500:]
         _queue_write(path, lines)
 
     return {"ok": True, "queued": len(lines)}
