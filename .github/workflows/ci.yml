@@ -26,8 +26,9 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install ruff pytest
+          pip install ruff pytest playwright
           pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
 
       - name: Ruff syntax/undefined names (all maintained sources)
         run: |
