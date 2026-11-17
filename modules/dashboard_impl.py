@@ -1146,6 +1146,70 @@ class _Handler(BaseHTTPRequestHandler):
                 return True
         return False
 
+    def _csrf_ok(self) -> bool:
+        """Require a same-origin Origin header for session-cookie-authenticated POSTs.
+
+        Bearer-authenticated API clients are not exposed to browser cookie CSRF.
+        The expected scheme is derived only from the explicit secure-cookie
+        deployment setting; arbitrary forwarded headers are never trusted.
+        """
+        auth = self.headers.get("Authorization") or ""
+        if auth.startswith("Bearer ") and self.token and secrets.compare_digest(
+            auth[7:].strip(), self.token
+        ):
+            return True
+
+        cookie = self.headers.get("Cookie") or ""
+        session_cookie = False
+        for part in cookie.split(";"):
+            key, sep, value = part.strip().partition("=")
+            if sep and key == "sentinel_token" and self.token and secrets.compare_digest(
+                value.strip(), self.token
+            ):
+                session_cookie = True
+                break
+        if not session_cookie:
+            return True
+
+        origin = self.headers.get("Origin")
+        host = self.headers.get("Host")
+        if not origin or not host or origin.strip().lower() == "null":
+            return False
+        if any(ch in host for ch in ("\\r", "\\n", "\\t", ",", "@", "/", "\\\\")):
+            return False
+        try:
+            parsed_origin = urlparse(origin)
+            parsed_host = urlparse("//" + host.strip())
+            expected_scheme = "https" if self.secure_cookie else "http"
+            if parsed_origin.scheme.lower() != expected_scheme:
+                return False
+            if (
+                not parsed_origin.hostname
+                or parsed_origin.username is not None
+                or parsed_origin.password is not None
+                or parsed_origin.path not in ("", "/")
+                or parsed_origin.params
+                or parsed_origin.query
+                or parsed_origin.fragment
+            ):
+                return False
+            if (
+                not parsed_host.hostname
+                or parsed_host.username is not None
+                or parsed_host.password is not None
+                or parsed_host.path
+                or parsed_host.query
+                or parsed_host.fragment
+            ):
+                return False
+            origin_host = parsed_origin.hostname.rstrip(".").encode("idna").decode("ascii").lower()
+            request_host = parsed_host.hostname.rstrip(".").encode("idna").decode("ascii").lower()
+            origin_port = parsed_origin.port or (443 if expected_scheme == "https" else 80)
+            request_port = parsed_host.port or (443 if expected_scheme == "https" else 80)
+            return origin_host == request_host and origin_port == request_port
+        except (UnicodeError, ValueError):
+            return False
+
 
     def _send(self, code: int, body: bytes, ctype: str = "text/html; charset=utf-8", extra_headers: dict | None = None):
         self.send_response(code)
@@ -1360,6 +1424,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if not self._auth_ok():
             self._send(401, b'{"ok":false,"error":"unauthorized"}', "application/json")
+            return
+        if not self._csrf_ok():
+            self._send(403, b'{"ok":false,"error":"cross-origin request rejected"}', "application/json")
             return
         body_in = self._read_json_body()
 
