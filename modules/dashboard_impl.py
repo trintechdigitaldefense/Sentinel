@@ -500,8 +500,8 @@ def _html(token: str, data: dict) -> str:
     <div class="action-group">
       <div class="action-label">Reports for the client</div>
       <div class="actions">
-        <a class="btn btn-pdf" id="btn-pdf-report" href="/api/report/pdf?type=client&amp;token={esc(token)}" target="_blank" rel="noopener" onclick="openPdf('client'); return true;">📄 Client report (easy to read)</a>
-        <a class="btn secondary" href="/api/report/technical?token={esc(token)}" target="_blank" rel="noopener" onclick="openPdf('technical'); return true;">🔧 Technical report (for IT)</a>
+        <a class="btn btn-pdf" id="btn-pdf-report" href="/api/report/pdf?type=client" target="_blank" rel="noopener" onclick="openPdf('client'); return true;">📄 Client report (easy to read)</a>
+        <a class="btn secondary" href="/api/report/technical" target="_blank" rel="noopener" onclick="openPdf('technical'); return true;">🔧 Technical report (for IT)</a>
       </div>
     </div>
 
@@ -550,7 +550,7 @@ def _html(token: str, data: dict) -> str:
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
-  <link rel="icon" type="image/png" href="/api/assets/logo?token={esc(token)}"/>
+  <link rel="icon" type="image/png" href="/api/assets/logo"/>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1"/>
 <title>SENTINEL Dashboard</title>
@@ -690,7 +690,7 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
 <body>
 <header>
   <div class="brand-row">
-    <img class="brand-logo" src="/api/assets/logo?token={esc(token)}" alt="TrinTech" width="48" height="48"/>
+    <img class="brand-logo" src="/api/assets/logo" alt="TrinTech" width="48" height="48"/>
     <div>
     <h1>SENTINEL protection dashboard</h1>
     <div class="meta">{esc(data.get('host'))} · {esc(data.get('local_ip'))} · v{esc(data.get('version'))} · {esc(str(data.get('ts') or '')[:19])}Z</div>
@@ -821,8 +821,8 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
     <h2>📄 PDF reports</h2>
     <p class="muted">Tap a button to open the report immediately in this browser. You can download from the viewer.</p>
     <div class="actions">
-      <a class="btn btn-pdf" href="/api/report/pdf?type=client&amp;token={esc(token)}" target="_blank" rel="noopener" onclick="openPdf('client'); return true;">Generate &amp; view client PDF</a>
-      <a class="btn secondary" href="/api/report/technical?token={esc(token)}" target="_blank" rel="noopener" onclick="openPdf('technical'); return true;">Technical PDF</a>
+      <a class="btn btn-pdf" href="/api/report/pdf?type=client" target="_blank" rel="noopener" onclick="openPdf('client'); return true;">Generate &amp; view client PDF</a>
+      <a class="btn secondary" href="/api/report/technical" target="_blank" rel="noopener" onclick="openPdf('technical'); return true;">Technical PDF</a>
       <button class="btn secondary" type="button" onclick="openPdf('client')">📄 Open client PDF</button>
       <button class="btn secondary" type="button" onclick="openPdf('technical')">🔧 Open technical PDF</button>
     </div>
@@ -850,9 +850,8 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
 </div>
 <footer>TrinTech Digital Defense · Authorized defensive use only · Token required</footer>
 <script>
-const TOKEN = "{esc(token)}";
 function authHeaders(json) {{
-  const h = {{"Authorization": "Bearer " + TOKEN}};
+  const h = {{}};
   if (json) h["Content-Type"] = "application/json";
   return h;
 }}
@@ -879,8 +878,8 @@ async function ackAllCritical() {{
 function openPdf(kind) {{
   const k = (kind || "client").toLowerCase();
   const url = (k === "tech" || k === "technical")
-    ? ("/api/report/technical?token=" + encodeURIComponent(TOKEN))
-    : ("/api/report/pdf?type=client&token=" + encodeURIComponent(TOKEN));
+    ? "/api/report/technical"
+    : "/api/report/pdf?type=client";
   const out = document.getElementById("action-out");
   if (out) out.textContent = "Opening " + k + " PDF…";
   try {{ window.open(url, "_blank"); }} catch (e) {{
@@ -918,13 +917,16 @@ async function runAction(name) {{
       if (Array.isArray(j.downloads)) links.push.apply(links, j.downloads);
       // unique
       links = links.filter(function(v, i, a) {{ return a.indexOf(v) === i; }});
-      // attach token for top-level navigation (Bearer not sent on <a> / window.open)
-      function withToken(u) {{
-        if (!u) return u;
-        if (u.indexOf("token=") >= 0) return u;
-        return u + (u.indexOf("?") >= 0 ? "&" : "?") + "token=" + encodeURIComponent(TOKEN);
-      }}
-      links = links.map(withToken);
+      // Only same-origin report-download URLs with a PDF filename are accepted.
+      links = links.map(function(raw) {{
+        try {{
+          const u = new URL(String(raw), window.location.origin);
+          if (u.origin !== window.location.origin || u.pathname !== "/api/report/download") return null;
+          const name = u.searchParams.get("name") || "";
+          if (!/^[A-Za-z0-9_.-]+\.pdf$/i.test(name)) return null;
+          return "/api/report/download?name=" + encodeURIComponent(name);
+        }} catch (e) {{ return null; }}
+      }}).filter(Boolean);
       if (out) {{
         out.textContent = "OK — report ready. Use View / Download below.";
       }}
@@ -942,20 +944,36 @@ async function runAction(name) {{
         viewer.className = "pdf-viewer-wrap";
         if (box.parentNode) box.parentNode.insertBefore(viewer, box.nextSibling);
       }}
-      box.innerHTML = links.map(function(u, i) {{
+      box.replaceChildren();
+      links.forEach(function(u, i) {{
         const label = (i === 0) ? "Client / primary report" : ("Report " + (i + 1));
-        return '<div class="report-row">'
-          + '<a class="btn btn-pdf" href="' + u + '" target="_blank" rel="noopener">View ' + label + '</a> '
-          + '<a class="btn secondary" href="' + u + '" download>Download</a>'
-          + '</div>';
-      }}).join("");
-      // Inline viewer for first PDF
+        const row = document.createElement("div");
+        row.className = "report-row";
+        const view = document.createElement("a");
+        view.className = "btn btn-pdf";
+        view.href = u;
+        view.target = "_blank";
+        view.rel = "noopener";
+        view.textContent = "View " + label;
+        const download = document.createElement("a");
+        download.className = "btn secondary";
+        download.href = u;
+        download.download = "";
+        download.textContent = "Download";
+        row.append(view, document.createTextNode(" "), download);
+        box.appendChild(row);
+      }});
+      viewer.replaceChildren();
       if (links[0]) {{
-        viewer.innerHTML = '<p class="muted">Preview (if the browser supports PDF)</p>'
-          + '<iframe class="pdf-frame" title="PDF report" src="' + links[0] + '"></iframe>';
-        // Also open a tab for mobile browsers that block iframes
-        try {{ window.open(links[0], "_blank"); }} catch (e) {{}}
-      }}
+        const preview = document.createElement("p");
+        preview.className = "muted";
+        preview.textContent = "Preview (if the browser supports PDF)";
+        const frame = document.createElement("iframe");
+        frame.className = "pdf-frame";
+        frame.title = "PDF report";
+        frame.src = links[0];
+        viewer.append(preview, frame);
+      }}}
       return;
     }}
     if (out) out.textContent = JSON.stringify(j, null, 2);
@@ -1071,11 +1089,34 @@ const POLL_MS = (RT_LEVEL === "CRITICAL" || RT_LEVEL === "HIGH") ? 8000 : 12000;
 setInterval(pollRealtime, POLL_MS);
 // soft full reload less often to refresh other panels
 const REFRESH_MS = (RT_LEVEL === "CRITICAL" || RT_LEVEL === "HIGH") ? 60000 : 120000;
-setTimeout(function(){{ location.href = location.pathname + location.search; }}, REFRESH_MS);
+setTimeout(function(){{ location.href = location.pathname; }}, REFRESH_MS);
 </script>
 </body>
 </html>
 """
+
+
+def _login_html() -> str:
+    """Return a token-entry page; credentials are submitted in the POST body, never the URL."""
+    return """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SENTINEL dashboard sign-in</title>
+</head>
+<body>
+<main>
+  <h1>SENTINEL dashboard</h1>
+  <p>Enter the dashboard access token shown by the local Sentinel process.</p>
+  <form method="post" action="/api/session" autocomplete="off">
+    <label for="token">Dashboard access token</label>
+    <input id="token" name="token" type="password" required autocomplete="current-password">
+    <button type="submit">Sign in</button>
+  </form>
+</main>
+</body>
+</html>"""
 
 
 class _Handler(BaseHTTPRequestHandler):
@@ -1086,23 +1127,17 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
     def _auth_ok(self) -> bool:
-        """Prefer Authorization Bearer, then cookie, then query token (deprecated)."""
-        # 1) Bearer
+        """Authenticate only with a Bearer header or the HttpOnly session cookie."""
+        if not self.token:
+            return False
         auth = self.headers.get("Authorization") or ""
-        if auth.startswith("Bearer ") and auth[7:].strip() == self.token:
+        if auth.startswith("Bearer ") and secrets.compare_digest(auth[7:].strip(), self.token):
             return True
-        # 2) Cookie sentinel_token=
         cookie = self.headers.get("Cookie") or ""
         for part in cookie.split(";"):
-            part = part.strip()
-            if part.startswith("sentinel_token="):
-                if part.split("=", 1)[1].strip() == self.token:
-                    return True
-        # 3) Query string (deprecated — still accepted for first page load)
-        q = parse_qs(urlparse(self.path).query)
-        t = (q.get("token") or [""])[0]
-        if t and t == self.token:
-            return True
+            key, sep, value = part.strip().partition("=")
+            if sep and key == "sentinel_token" and secrets.compare_digest(value.strip(), self.token):
+                return True
         return False
 
 
@@ -1111,6 +1146,17 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+            "form-action 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+            "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-src 'self'",
+        )
         if extra_headers:
             for k, v in extra_headers.items():
                 self.send_header(k, v)
@@ -1129,10 +1175,13 @@ class _Handler(BaseHTTPRequestHandler):
             return {}
 
     def do_GET(self):
-        if not self._auth_ok():
-            self._send(401, b'{"ok":false,"error":"unauthorized","hint":"Authorization: Bearer <token> or initial ?token="}', "application/json")
-            return
         path = urlparse(self.path).path
+        if not self._auth_ok():
+            if path in ("", "/"):
+                self._send(200, _login_html().encode("utf-8"), "text/html; charset=utf-8")
+            else:
+                self._send(401, b'{"ok":false,"error":"unauthorized"}', "application/json")
+            return
         data = collect_full()
         data["control"] = bool(self.allow_control)
         if path in ("/api/critical", "/api/critical/"):
@@ -1275,19 +1324,35 @@ class _Handler(BaseHTTPRequestHandler):
         if path.startswith("/api/"):
             self._send(200, json.dumps(data, indent=2, default=str).encode(), "application/json")
             return
-        # Prefer cookie for subsequent requests (H-04 mitigation)
-        body = _html(self.token, data).encode("utf-8")
-        extra = {
-            "Set-Cookie": f"sentinel_token={self.token}; Path=/; HttpOnly; SameSite=Strict",
-            "X-Token-Deprecation": "Prefer Authorization: Bearer; query token is deprecated",
-        }
-        self._send(200, body, "text/html; charset=utf-8", extra_headers=extra)
+        body = _html("", data).encode("utf-8")
+        self._send(200, body, "text/html; charset=utf-8")
 
     def do_POST(self):
+        path = urlparse(self.path).path
+        if path == "/api/session":
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
+            if length < 1 or length > 4096:
+                self._send(400, b'{"ok":false,"error":"invalid sign-in request"}', "application/json")
+                return
+            raw = self.rfile.read(length).decode("utf-8", errors="replace")
+            candidate = (parse_qs(raw).get("token") or [""])[0]
+            if not self.token or not secrets.compare_digest(candidate, self.token):
+                self._send(401, b'{"ok":false,"error":"invalid dashboard token"}', "application/json")
+                return
+            cookie = f"sentinel_token={self.token}; Path=/; HttpOnly; SameSite=Strict"
+            if hasattr(self.connection, "getpeercert"):
+                cookie += "; Secure"
+            self._send(303, b"", "text/plain; charset=utf-8", {
+                "Location": "/",
+                "Set-Cookie": cookie,
+            })
+            return
         if not self._auth_ok():
             self._send(401, b'{"ok":false,"error":"unauthorized"}', "application/json")
             return
-        path = urlparse(self.path).path
         body_in = self._read_json_body()
 
         # Control-mode: only allow *disabling* controls with the shareable token.
@@ -1569,9 +1634,10 @@ def start_dashboard(port: int | None = None, bind: str | None = None):
     except Exception as e:
         logging.getLogger("sentinel").debug("rbac check: %s", e)
     server = HTTPServer((bind, port), _Handler)
-    url = f"http://{bind}:{port}/?token={token}"
+    url = f"http://{bind}:{port}/"
     print(f"[+] SENTINEL Dashboard on port {port}")
     print(f"[+] Client URL: {url}")
+    print(f"[+] Dashboard access token: {token}")
     print(f"[+] Control: {'enabled' if _Handler.allow_control else 'view-only'}")
     print("[*] Full surface: critical, alerts, visibility, defense, cases, actions")
     print("[*] Serving forever - Ctrl+C to stop")
