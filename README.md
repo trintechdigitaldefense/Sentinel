@@ -13,7 +13,7 @@
 
 > **Authorized defensive use only.** Detect · Alert · Report. No offensive capability.
 
-**Status:** pilot candidate; the source tree reports version 3.16.21, which is not itself a published or certified production release. See [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) for the evidence gates and owner approval requirements.
+**Status:** pilot candidate. Automated CI evidence is available, but this repository state is not a published or certified production release. See [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) for the remaining evidence gates and owner approval requirements.
 
 
 ## Deployment model (SMB pilot)
@@ -52,7 +52,7 @@ python3 sentinel.py service-status      # confirm always-on
 | Capability | Implementation status | Notes |
 |------------|----------------------|--------|
 | FIM (baseline + check) | Implemented · tested (partial) | Mode/owner/SUID; realtime needs `inotify-tools` |
-| Persistence hunting | Implemented · tested (partial) | Cron, systemd, keys, LD_PRELOAD surfaces |
+| Persistence hunting | Implemented · tested (partial) | Cron, systemd, keys, LD_PRELOAD surfaces; repeated unchanged cron/RC-file findings are deduplicated without rewriting trusted baselines |
 | Reverse-shell / behavioral | Implemented · tested (partial) | Heuristics — not proof of compromise alone |
 | Canary / deception files | Implemented | Tracked decoys; missing tracked paths alert |
 | Host firewall control plane | Implemented · dry-run default | Confirm required to apply; lockout guard |
@@ -168,7 +168,7 @@ python scripts/firewall_smoke.py
 Details: [docs/TESTING.md](docs/TESTING.md).  
 CI runs compile-all, future-import guard, ruff, firewall smoke, pytest on PRs to `main`.
 
-**Latest local verification on hardening branch:** `pytest -q tests/` → **131+ passed** (Milestone 4). Re-run after pull for your tree.
+**Latest PR CI evidence (commit `dc3c093c598d0a851a8e67fb16af6bc3642ef624`):** Python 3.10 and 3.12 each report **243 passed, 4 skipped**. The PR workflows also passed lint/compile checks, SSH session continuity through firewall apply/reapply/rollback, isolated live nftables apply/reapply/rollback, and the generated systemd agent lifecycle in a disposable Ubuntu 24.04 systemd container. See [PR CI run](https://github.com/trintechdigitaldefense/Sentinel/actions/runs/43986582597) and [push CI run](https://github.com/trintechdigitaldefense/Sentinel/actions/runs/43986573430). These results are automated test evidence—not validation on a customer/pilot host or production certification.
 
 ---
 
@@ -192,7 +192,9 @@ CI runs compile-all, future-import guard, ruff, firewall smoke, pytest on PRs to
 - Heuristic detections (shells, entropy tripwires) can false-positive; treat as leads, not verdicts.
 - Realtime FIM is reduced without `inotifywait` (`visibility_status().incomplete`).
 - Query-string dashboard tokens can leak via logs/Referer (prefer Bearer; tracked as H-04).
-- Live firewall **apply** and third-party SIEM delivery are not fully exercised in CI.
+- Firewall apply/reapply/rollback is exercised in an isolated CI environment; this does not replace controlled validation on each supported pilot host. Third-party SIEM delivery is not fully exercised in CI.
+- Generated systemd lifecycle is tested in a disposable Ubuntu 24.04 systemd container; distribution-specific pilot validation remains required.
+- SSH/SCP CA transfer and remote bundle cleanup are covered with mocked SSH/SCP calls, not a live remote-host deployment. Existing deployed agents have not yet been migrated; follow [the agent-key migration guide](docs/AGENT_KEY_MIGRATION.md) one agent at a time.
 - Doctor “install OK” is **not** a production certification.
 
 ---
