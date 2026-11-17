@@ -29,16 +29,11 @@ def _run(cmd, cwd, env=None, check=True):
 @pytest.fixture
 def installer_lab(tmp_path):
     """Build an isolated bare origin, seed repo, checkout, and harmless Python shim."""
-    remote = tmp_path / "origin.git"
     seed = tmp_path / "seed"
     checkout = tmp_path / "Sentinel"
     shim_dir = tmp_path / "shim"
     shim_dir.mkdir()
 
-    _run(["git", "init", "--bare", str(remote)], tmp_path)
-    # Android/proot tmpfs environments can fail Git receive-pack loose-object unpacking.
-    # Keep incoming packs in the isolated bare test remote; pushes remain real Git transports.
-    _run(["git", "config", "receive.unpackLimit", "1"], remote)
     seed.mkdir()
     _run(["git", "init"], seed)
     _run(["git", "config", "user.email", "sentinel-test@example.invalid"], seed)
@@ -49,9 +44,10 @@ def installer_lab(tmp_path):
     _run(["git", "add", "."], seed)
     _run(["git", "commit", "-m", "initial"], seed)
     _run(["git", "branch", "-M", "main"], seed)
-    _run(["git", "remote", "add", "origin", str(remote)], seed)
-    _run(["git", "push", "-u", "origin", "main"], seed)
-    _run(["git", "clone", "--branch", "main", str(remote), str(checkout)], tmp_path)
+    # Use the seed repository itself as the local upstream. This still exercises
+    # real clone/fetch/fast-forward behavior without receive-pack, which is broken
+    # in some Android/proot filesystems used by developers.
+    _run(["git", "clone", "--branch", "main", str(seed), str(checkout)], tmp_path)
 
     # The installer only needs Python to be discoverable and to return success
     # for the setup/compile calls; this shim prevents executing project setup.
@@ -61,11 +57,11 @@ def installer_lab(tmp_path):
 
     env = {
         "SENTINEL_HOME": str(checkout),
-        "SENTINEL_REPO": str(remote),
+        "SENTINEL_REPO": str(seed),
         "SENTINEL_BRANCH": "main",
         "PATH": str(shim_dir) + os.pathsep + os.environ.get("PATH", ""),
     }
-    return {"remote": remote, "seed": seed, "checkout": checkout, "env": env}
+    return {"seed": seed, "checkout": checkout, "env": env}
 
 
 def _remote_commit(lab, filename, content, message):
@@ -73,7 +69,6 @@ def _remote_commit(lab, filename, content, message):
     (seed / filename).write_text(content, encoding="utf-8")
     _run(["git", "add", filename], seed)
     _run(["git", "commit", "-m", message], seed)
-    _run(["git", "push", "origin", "main"], seed)
 
 
 def _install(lab):
