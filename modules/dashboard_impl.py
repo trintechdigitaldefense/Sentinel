@@ -1139,7 +1139,6 @@ class _Handler(BaseHTTPRequestHandler):
 
         if path in ("/api/report/pdf", "/api/report/client", "/api/report/generate", "/api/report/tech", "/api/report/technical"):
             try:
-                from urllib.parse import parse_qs
                 qs = parse_qs(urlparse(self.path).query)
                 kind = (qs.get("type") or qs.get("kind") or ["client"])[0].lower()
                 if path.endswith("/tech") or path.endswith("/technical") or kind in ("tech", "technical", "operator"):

@@ -411,68 +411,111 @@ def run_cmd(cmd, timeout=10):
 
 
 def send_alert(alert_type, details, logger=None):
-    # Critical events always persist and are never dropped by quiet/hygiene
+    """Send an alert and report whether it was handled.
+
+    A finding is handled only after delivery, durable queueing, or
+    intentional policy suppression. Critical persistence and quarantine
+    behavior remain independent of notification delivery.
+    """
+    result = {
+        "ok": False,
+        "sent": False,
+        "queued_offline": False,
+        "suppressed": False,
+        "deduped": False,
+        "channels": [],
+    }
+
+    # Critical events always persist and are never dropped by quiet/hygiene.
     _is_crit = False
     try:
-        from modules.critical_alerts import is_critical as _is_critical_fn, record as _crit_record
+        from modules.critical_alerts import is_critical as _is_critical_fn
         try:
-            _extra = CRITICAL_ALERTS if isinstance(CRITICAL_ALERTS, (set, list, tuple, frozenset)) else set()
+            _extra = (
+                CRITICAL_ALERTS
+                if isinstance(CRITICAL_ALERTS, (set, list, tuple, frozenset))
+                else set()
+            )
         except Exception:
             _extra = set()
         _is_crit = _is_critical_fn(str(alert_type), extra=set(_extra))
     except Exception:
         _is_crit = str(alert_type) in {
             "REVERSE_SHELL", "BEHAVIORAL_REVERSE_SHELL", "CANARY_TRIGGERED",
-            "CANARY_BEACON", "AGENT_REVERSE_SHELL", "NEW_SUID", "LD_PRELOAD_CREATED",
+            "CANARY_BEACON", "AGENT_REVERSE_SHELL", "NEW_SUID",
+            "LD_PRELOAD_CREATED",
         }
 
+    # Policy suppressions are intentional handling, not delivery failures.
     if not _is_crit:
         try:
             from modules.suppressions import is_suppressed
-            _ev = {"type": str(alert_type), "details": details, "detail": str(details)}
+            event = {
+                "type": str(alert_type),
+                "details": details,
+                "detail": str(details),
+            }
             if isinstance(details, dict):
-                _ev.update({k: details.get(k) for k in ("path", "command", "pattern", "user", "ip")})
-            if is_suppressed(_ev):
+                event.update({
+                    key: details.get(key)
+                    for key in ("path", "command", "pattern", "user", "ip")
+                })
+            if is_suppressed(event):
                 if logger:
-                    logger.info(f"{C.GRAY}suppressed by rule:{C.RESET} {alert_type}")
-                return
+                    logger.info(
+                        "%ssuppressed by rule:%s %s",
+                        C.GRAY, C.RESET, alert_type,
+                    )
+                result.update(ok=True, suppressed=True)
+                return result
         except Exception:
             pass
 
-    if not _is_crit:
         try:
             from modules.phase7 import quiet_should_suppress
-            _qs = quiet_should_suppress(str(alert_type))
-            if _qs.get("suppress"):
-                return
+            quiet_result = quiet_should_suppress(str(alert_type))
+            if quiet_result.get("suppress"):
+                result.update(ok=True, suppressed=True)
+                return result
         except Exception:
             pass
 
         try:
             from modules.phase5 import hygiene_should_emit
-            _hy = hygiene_should_emit(str(alert_type), None)
-            if not _hy.get("allow", True):
-                return
+            hygiene_result = hygiene_should_emit(str(alert_type), None)
+            if not hygiene_result.get("allow", True):
+                result.update(ok=True, suppressed=True)
+                return result
         except Exception:
             pass
+
     config = load_config_safe()
-    # Phase 1: quiet mode filter (skip for critical)
+
     if not _is_crit:
         try:
             if not quiet_should_emit(config, alert_type, details):
-                return
+                result.update(ok=True, suppressed=True)
+                return result
         except Exception:
             pass
-    ts = datetime.now().isoformat()
-    alert = {"timestamp": ts, "type": alert_type, "details": details,
-             "hostname": socket.gethostname(), "local_ip": get_local_ip()}
+
+    timestamp = datetime.now().isoformat()
+    alert = {
+        "timestamp": timestamp,
+        "type": alert_type,
+        "details": details,
+        "hostname": socket.gethostname(),
+        "local_ip": get_local_ip(),
+    }
+
     log_file = config.get("alerting", {}).get("log_file", str(ALERT_LOG))
     try:
-        with open(log_file, "a") as f:
-            f.write(json.dumps(alert) + "\n")
+        with open(log_file, "a", encoding="utf-8") as stream:
+            stream.write(json.dumps(alert) + "\n")
     except Exception:
         pass
-    # Persistent critical store (until operator ACK)
+
+    # Persistent critical store (until operator ACK).
     if _is_crit:
         try:
             from modules.critical_alerts import record as _crit_record
@@ -485,71 +528,99 @@ def send_alert(alert_type, details, logger=None):
             )
             if logger:
                 logger.warning(
-                    f"{C.RED}{C.BOLD}CRITICAL PERSISTED:{C.RESET} {alert_type} — remains open until: "
-                    f"{C.BOLD}python3 sentinel.py critical ack <id>{C.RESET}"
+                    "%s%sCRITICAL PERSISTED:%s %s — remains open until: "
+                    "%spython3 sentinel.py critical ack <id>%s",
+                    C.RED, C.BOLD, C.RESET, alert_type, C.BOLD, C.RESET,
                 )
         except Exception:
             pass
-    # Unified multi-channel router (dedup, WhatsApp, webhook, offline queue)
+
+    # Unified router owns channel delivery, SIEM emission and offline queueing.
+    router_result = {}
     try:
-        from modules.alerting import AlertRouter
-        _sev_map = {
-            "REVERSE_SHELL": "CRITICAL", "BEHAVIORAL_REVERSE_SHELL": "CRITICAL",
-            "CANARY_TRIGGERED": "CRITICAL", "CANARY_BEACON": "CRITICAL",
-            "IP_BLOCKED": "HIGH", "NEW_SUID": "HIGH", "LD_PRELOAD_CREATED": "HIGH",
-            "FIM_MODIFIED": "HIGH", "FIM_DELETED": "HIGH", "NEW_DEVICE": "MEDIUM",
-            "AUTH_FAILURE": "MEDIUM", "DEVICE_GONE": "LOW",
+        from modules.alerting import AlertRouter, normalize_alerting_config
+
+        severity_map = {
+            "REVERSE_SHELL": "CRITICAL",
+            "BEHAVIORAL_REVERSE_SHELL": "CRITICAL",
+            "CANARY_TRIGGERED": "CRITICAL",
+            "CANARY_BEACON": "CRITICAL",
+            "IP_BLOCKED": "HIGH",
+            "NEW_SUID": "HIGH",
+            "LD_PRELOAD_CREATED": "HIGH",
+            "FIM_MODIFIED": "HIGH",
+            "FIM_DELETED": "HIGH",
+            "NEW_DEVICE": "MEDIUM",
+            "AUTH_FAILURE": "MEDIUM",
+            "DEVICE_GONE": "LOW",
         }
-        sev = _sev_map.get(str(alert_type), "MEDIUM")
+        severity = severity_map.get(str(alert_type), "MEDIUM")
         try:
             if str(alert_type) in CRITICAL_ALERTS:
-                sev = "CRITICAL"
+                severity = "CRITICAL"
         except Exception:
             pass
         if _is_crit:
-            sev = "CRITICAL"
-        router = AlertRouter(config.get("alerting") or {})
-        det = details if isinstance(details, str) else json.dumps(details, default=str)
-        router.send(sev, str(alert_type), detail=str(det)[:500], meta={"type": alert_type})
-        try:
-            from modules.siem import emit as _siem_emit
-            _siem_cfg = (config.get("alerting") or {}).get("siem") or {}
-            if _siem_cfg.get("enabled"):
-                _siem_emit(sev, str(alert_type), detail=str(det)[:500], meta={"type": alert_type}, cfg=_siem_cfg)
-        except Exception:
-            pass
-    except Exception:
-        pass
-    # Phase 1: auto-quarantine on critical alerts
-    try:
-        if alert_type in CRITICAL_ALERTS or alert_type in set(config.get("quarantine", {}).get("on_alerts", [])):
-            auto_quarantine(config, alert_type, details if isinstance(details, dict) else {"raw": details},
-                            logger=logger, run_cmd=run_cmd, send_alert=None)
-    except Exception:
-        pass
-    email_cfg = config.get("alerting", {}).get("email", {})
-    if email_cfg.get("enabled", False) and email_cfg.get("from_email") and email_cfg.get("to_email"):
-        try:
-            import smtplib
-            from email.mime.text import MIMEText
-            from email.mime.multipart import MIMEMultipart
-            msg = MIMEMultipart()
-            msg["From"] = email_cfg["from_email"]
-            msg["To"] = email_cfg["to_email"]
-            msg["Subject"] = f"[ALERT] Sentinel: {alert_type}"
-            msg.attach(MIMEText(
-                f"SENTINEL SECURITY ALERT\nType: {alert_type}\nTime: {ts}\nHost: {socket.gethostname()}\nIP: {get_local_ip()}\nDetails: {json.dumps(details, indent=2)}\n", "plain"))
-            smtp = smtplib.SMTP(email_cfg["smtp_server"], email_cfg["smtp_port"])
-            smtp.starttls()
-            smtp.login(email_cfg["from_email"], email_cfg.get("app_password", ""))
-            smtp.sendmail(email_cfg["from_email"], email_cfg["to_email"], msg.as_string())
-            smtp.quit()
-            if logger:
-                logger.info(f"{C.GREEN}✓{C.RESET} Alert sent via email: {C.BOLD}{alert_type}{C.RESET}")
-        except Exception as e:
-            if logger:
-                logger.warning(f"{C.YELLOW}!{C.RESET} Email alert failed: {e}")
+            severity = "CRITICAL"
 
+        alerting_cfg = normalize_alerting_config(config.get("alerting") or {})
+        router = AlertRouter(alerting_cfg)
+        detail_text = (
+            details if isinstance(details, str)
+            else json.dumps(details, default=str)
+        )
+        router_result = router.send(
+            severity,
+            str(alert_type),
+            detail=str(detail_text)[:500],
+            meta={"type": alert_type},
+        )
+        if isinstance(router_result, dict):
+            result.update({
+                "sent": bool(router_result.get("sent")),
+                "queued_offline": bool(router_result.get("queued_offline")),
+                "suppressed": bool(router_result.get("suppressed")),
+                "deduped": bool(router_result.get("deduped")),
+            })
+            result["channels"].extend(router_result.get("channels") or [])
+            result["ok"] = bool(
+                result["sent"]
+                or result["queued_offline"]
+                or result["suppressed"]
+                or result["deduped"]
+            )
+    except Exception as exc:
+        if logger:
+            logger.warning("Alert router failed for %s: %s", alert_type, exc)
+
+    # Phase 1: preserve auto-quarantine behavior for critical alerts.
+    try:
+        if (
+            alert_type in CRITICAL_ALERTS
+            or alert_type in set(config.get("quarantine", {}).get("on_alerts", []))
+        ):
+            auto_quarantine(
+                config,
+                alert_type,
+                details if isinstance(details, dict) else {"raw": details},
+                logger=logger,
+                run_cmd=run_cmd,
+                send_alert=None,
+            )
+    except Exception:
+        pass
+
+    # The unified router exclusively owns channel delivery and queueing.
+
+    # Local logging and critical persistence alone do not count as delivery.
+    result["ok"] = bool(
+        result["ok"]
+        or result["sent"]
+        or result["queued_offline"]
+        or result["suppressed"]
+        or result["deduped"]
+    )
+    return result
 
 def sha256_file(filepath):
     try:
@@ -1069,14 +1140,15 @@ def user_monitor_check(config, logger):
 # MODULE 6: CRON & SCHEDULED TASK INTEGRITY
 # ════════════════════════════════════════════════════════════════════
 
-def cron_monitor_check(config, logger):
+def _cron_monitor_check_locked(config, logger):
     cm = config.get("cron_monitor", {})
+    from modules.finding_state import newly_active, pending_active, mark_handled
+
     if not cm.get("active", True):
+        newly_active("cron", {})
         return []
 
-    changes = []
     current = []
-
     try:
         cr = run_cmd(["crontab", "-l"], timeout=5)
         for line in cr.strip().split("\n"):
@@ -1102,47 +1174,113 @@ def cron_monitor_check(config, logger):
                     with open(fpath) as f:
                         for line in f:
                             if line.strip() and not line.startswith("#"):
-                                current.append({"source": f"cron.d/{entry}", "entry": line.strip()[:200]})
+                                current.append({
+                                    "source": f"cron.d/{entry}",
+                                    "entry": line.strip()[:200],
+                                })
                 except Exception:
                     pass
     except Exception:
         pass
 
+    # Only a genuinely missing baseline may be initialized automatically.
     try:
         with open(CRON_BASELINE) as f:
             baseline = json.load(f)
-    except Exception:
-        with open(CRON_BASELINE, "w") as f:
-            json.dump(current, f, indent=2)
-        logger.info(f"{C.GREEN}✓{C.RESET} Cron baseline created: {C.BOLD}{len(current)} entries{C.RESET}")
+    except FileNotFoundError:
+        try:
+            with open(CRON_BASELINE, "x") as f:
+                json.dump(current, f, indent=2)
+        except FileExistsError:
+            # Another process created it; read it rather than overwriting it.
+            try:
+                with open(CRON_BASELINE) as f:
+                    baseline = json.load(f)
+            except Exception as exc:
+                logger.error("Cron baseline unreadable; preserving it: %s", exc)
+                return []
+        except Exception as exc:
+            logger.error("Could not create missing cron baseline: %s", exc)
+            return []
+        else:
+            newly_active("cron", {})
+            logger.info(
+                "%s✓%s Cron baseline created: %s entries",
+                C.GREEN, C.RESET, len(current),
+            )
+            return []
+    except Exception as exc:
+        logger.error("Cron baseline unreadable; preserving it: %s", exc)
         return []
 
-    baseline_set = {c["entry"] for c in baseline}
-    current_set = {c["entry"] for c in current}
+    if not isinstance(baseline, list) or any(
+        not isinstance(item, dict) or not isinstance(item.get("entry"), str)
+        for item in baseline
+    ):
+        logger.error("Cron baseline has an invalid format; preserving it.")
+        return []
 
+    baseline_set = {item["entry"] for item in baseline}
+    current_set = {item["entry"] for item in current}
+
+    candidates = {}
     for entry in current_set - baseline_set:
-        msg = f"{C.RED}⚠ NEW CRON:{C.RESET} {C.BOLD}{entry[:100]}{C.RESET}"
-        logger.warning(msg)
-        changes.append({"type": "new", "entry": entry[:200]})
-        send_alert("NEW_CRON", {"entry": entry[:200]}, logger)
-
+        candidates[f"new:{entry}"] = ("new", entry)
     for entry in baseline_set - current_set:
-        msg = f"{C.YELLOW}!{C.RESET} {C.BOLD}REMOVED CRON:{C.RESET} {C.BOLD}{entry[:100]}{C.RESET}"
+        candidates[f"removed:{entry}"] = ("removed", entry)
+
+    active = {
+        key: hashlib.sha256(entry.encode("utf-8")).hexdigest()
+        for key, (_, entry) in candidates.items()
+    }
+    reportable = pending_active("cron", active)
+
+    changes = []
+    handled_keys = set()
+    for key, (change_type, entry) in candidates.items():
+        if key not in reportable:
+            continue
+        if change_type == "new":
+            msg = f"{C.RED}⚠ NEW CRON:{C.RESET} {C.BOLD}{entry[:100]}{C.RESET}"
+            alert_type = "NEW_CRON"
+        else:
+            msg = f"{C.YELLOW}!{C.RESET} {C.BOLD}REMOVED CRON:{C.RESET} {C.BOLD}{entry[:100]}{C.RESET}"
+            alert_type = "REMOVED_CRON"
+
         logger.warning(msg)
-        changes.append({"type": "removed", "entry": entry[:200]})
-        send_alert("REMOVED_CRON", {"entry": entry[:200]}, logger)
+        changes.append({"type": change_type, "entry": entry[:200]})
+        try:
+            outcome = send_alert(alert_type, {"entry": entry[:200]}, logger)
+            if isinstance(outcome, dict) and outcome.get("ok") is True:
+                handled_keys.add(key)
+        except Exception as exc:
+            logger.warning("Cron alert failed for %s: %s", entry, exc)
+
+    mark_handled("cron", active, handled_keys)
 
     if not changes:
         logger.info(f"{C.GREEN}✓{C.RESET} Cron integrity verified")
     else:
-        logger.info(f"{C.GREEN}✓{C.RESET} Cron integrity: {C.BOLD}{len(changes)} change(s){C.RESET}")
-
+        logger.info(
+            f"{C.GREEN}✓{C.RESET} Cron integrity: "
+            f"{C.BOLD}{len(changes)} new finding(s){C.RESET}"
+        )
     return changes
 
 
 # ════════════════════════════════════════════════════════════════════
 # MODULE 7: SYSTEM HARDENING AUDIT
 # ════════════════════════════════════════════════════════════════════
+
+
+
+def cron_monitor_check(config, logger):
+    """Run cron detection and notification as one locked workflow."""
+    from modules.finding_state import locked
+
+    with locked("cron"):
+        return _cron_monitor_check_locked(config, logger)
+
 
 def hardening_audit(config, logger):
     ha = config.get("hardening_audit", {})
@@ -2800,7 +2938,12 @@ def main():
         print(evidence_pack(hours=hours))
     elif command == "offline":
         if args and args[0] == "flush":
-            print(offline_flush())
+            from modules.alerting import AlertRouter, normalize_alerting_config
+
+            queued_router = AlertRouter(
+                normalize_alerting_config(config.get("alerting") or {})
+            )
+            print(offline_flush(queued_router.send_queued))
         else:
             print(offline_status())
     elif command == "phase4":
