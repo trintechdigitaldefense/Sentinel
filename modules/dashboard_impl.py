@@ -1787,6 +1787,11 @@ def _validate_remote_dashboard_config(dash: dict) -> None:
             "dashboard.remote_access requires dashboard.cookie_secure=true; "
             "configure a trusted local TLS reverse proxy before remote access"
         )
+    if dash.get("cookie_secure") is True and dash.get("remote_access") is not True:
+        raise RuntimeError(
+            "dashboard.cookie_secure requires dashboard.remote_access=true; "
+            "the dashboard backend does not provide direct HTTPS"
+        )
 
 
 def start_dashboard(port: int | None = None, bind: str | None = None):
