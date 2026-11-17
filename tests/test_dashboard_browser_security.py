@@ -22,7 +22,10 @@ def dashboard_server(monkeypatch):
             "local_ip": "127.0.0.1",
             "version": "test",
             "ts": "2026-11-17T00:00:00",
-            "critical": {\n                "open": [{"id": "x\');window.__sentinelXss=3;//", "type": "test", "count": 1}],\n                "open_count": 1,\n            },
+            "critical": {
+                "open": [{"id": "x');window.__sentinelXss=3;//", "type": "test", "count": 1}],
+                "open_count": 1,
+            },
             "realtime": {"level": "CLEAR", "threats": []},
         },
     )
