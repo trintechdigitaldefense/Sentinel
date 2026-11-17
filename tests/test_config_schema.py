@@ -44,3 +44,10 @@ def test_dashboard_tls_settings_must_be_booleans():
         assert False, "string booleans must be rejected"
     except ConfigError as e:
         assert "must be a boolean" in str(e)
+
+def test_dashboard_secure_cookie_requires_remote_access_mode():
+    try:
+        parse_config({"dashboard": {"remote_access": False, "cookie_secure": True}})
+        assert False, "secure cookies require remote TLS proxy mode"
+    except ConfigError as e:
+        assert "remote_access=true" in str(e)
