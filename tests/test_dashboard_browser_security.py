@@ -13,7 +13,7 @@ def dashboard_server(monkeypatch):
     import modules.dashboard_impl as dashboard
 
     dashboard._Handler.token = "browser-test-token"
-    dashboard._Handler.allow_control = False
+    dashboard._Handler.allow_control = True
     monkeypatch.setattr(
         dashboard,
         "collect_full",
@@ -22,7 +22,7 @@ def dashboard_server(monkeypatch):
             "local_ip": "127.0.0.1",
             "version": "test",
             "ts": "2026-11-17T00:00:00",
-            "critical": {"open": [], "open_count": 0},
+            "critical": {\n                "open": [{"id": "x\');window.__sentinelXss=3;//", "type": "test", "count": 1}],\n                "open_count": 1,\n            },
             "realtime": {"level": "CLEAR", "threats": []},
         },
     )
@@ -71,6 +71,15 @@ def test_browser_login_xss_report_links_and_security_headers(dashboard_server):
         page.locator("#realtime table").wait_for()
         assert page.url == dashboard_server
         assert "browser-test-token" not in page.content()
+
+        # Alert IDs are data attributes, never interpolated into inline JavaScript.
+        page.evaluate("window.__sentinelXss = 0")
+        ack_button = page.locator("button[data-alert-id]")
+        assert ack_button.count() == 1
+        assert ack_button.get_attribute("onclick") is None
+        page.on("dialog", lambda dialog: dialog.dismiss())
+        ack_button.click()
+        assert page.evaluate("window.__sentinelXss") == 0
 
         cookies = context.cookies()
         session = next(cookie for cookie in cookies if cookie["name"] == "sentinel_token")
