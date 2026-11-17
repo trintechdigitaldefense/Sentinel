@@ -101,3 +101,46 @@ def test_flush_preserves_entries_added_during_delivery(
     remaining = phase4.offline_status()
     assert remaining["count"] == 1
     assert remaining["items"][0]["type"] == "added-during-flush"
+
+
+
+def test_enqueue_at_capacity_preserves_existing_unconfirmed_entries(tmp_path, monkeypatch):
+    monkeypatch.setenv("SENTINEL_DIR", str(tmp_path))
+
+    path = tmp_path / "data" / phase4.QUEUE_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    original_rows = [
+        json.dumps({"type": f"alert-{i}", "details": {"detail": str(i)}})
+        for i in range(500)
+    ]
+    original_content = "\n".join(original_rows) + "\n"
+    path.write_text(original_content, encoding="utf-8")
+
+    result = phase4.offline_enqueue("new-alert", {"detail": "must not evict old alerts"})
+
+    assert result["ok"] is False
+    assert result["queued"] is False
+    assert result["count"] == 500
+    assert "full" in result["error"]
+    assert path.read_text(encoding="utf-8") == original_content
+
+
+def test_enqueue_accepts_last_slot_without_dropping_existing_rows(tmp_path, monkeypatch):
+    monkeypatch.setenv("SENTINEL_DIR", str(tmp_path))
+
+    path = tmp_path / "data" / phase4.QUEUE_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    original_rows = [
+        json.dumps({"type": f"alert-{i}", "details": {"detail": str(i)}})
+        for i in range(499)
+    ]
+    path.write_text("\n".join(original_rows) + "\n", encoding="utf-8")
+
+    result = phase4.offline_enqueue("last-slot", {"detail": "accepted"})
+
+    assert result["ok"] is True
+    assert result["queued"] == 500
+    rows = path.read_text(encoding="utf-8").splitlines()
+    assert len(rows) == 500
+    assert json.loads(rows[-1])["type"] == "last-slot"
+    assert json.loads(rows[0])["type"] == "alert-0"
