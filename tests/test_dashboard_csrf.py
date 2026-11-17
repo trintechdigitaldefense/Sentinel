@@ -82,6 +82,9 @@ def test_post_rejects_cross_origin_cookie_request_before_reading_body(monkeypatc
         def _auth_ok(self):
             return True
 
+        def _csrf_ok(self):
+            return dashboard._Handler._csrf_ok(self)
+
         def _read_json_body(self):
             raise AssertionError("request body must not be processed after CSRF rejection")
 
