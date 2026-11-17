@@ -1778,8 +1778,11 @@ def _safe_dashboard_bind(requested_bind: str) -> str:
 
 
 def _validate_remote_dashboard_config(dash: dict) -> None:
-    """Fail closed if remote access is declared without Secure session cookies."""
-    if dash.get("remote_access") and not dash.get("cookie_secure"):
+    """Fail closed on ambiguous remote-access and secure-cookie configuration."""
+    for key in ("remote_access", "cookie_secure"):
+        if key in dash and not isinstance(dash[key], bool):
+            raise RuntimeError(f"dashboard.{key} must be a boolean")
+    if dash.get("remote_access") is True and dash.get("cookie_secure") is not True:
         raise RuntimeError(
             "dashboard.remote_access requires dashboard.cookie_secure=true; "
             "configure a trusted local TLS reverse proxy before remote access"
