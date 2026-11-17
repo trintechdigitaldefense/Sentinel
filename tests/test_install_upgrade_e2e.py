@@ -12,6 +12,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _run(cmd, cwd, env=None, check=True):
     merged = os.environ.copy()
+    # Git exports repository/object-database variables to child processes.
+    # They can corrupt local bare-repository transport in this isolated lab
+    # (notably GIT_OBJECT_DIRECTORY and GIT_ALTERNATE_OBJECT_DIRECTORIES).
+    # Each command must resolve its repository from its own cwd/arguments.
+    for key in tuple(merged):
+        if key.startswith("GIT_"):
+            merged.pop(key)
     if env:
         merged.update(env)
     return subprocess.run(
