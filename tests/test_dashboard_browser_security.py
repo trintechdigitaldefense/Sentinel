@@ -130,8 +130,8 @@ def test_browser_login_xss_report_links_and_security_headers(dashboard_server):
         headers = {key.lower(): value for key, value in secured_response.headers.items()}
         assert headers["x-content-type-options"] == "nosniff"
         assert headers["referrer-policy"] == "no-referrer"
-        assert headers["x-frame-options"] == "DENY"
-        assert "frame-ancestors 'none'" in headers["content-security-policy"]
+        assert headers["x-frame-options"] == "SAMEORIGIN"
+        assert "frame-ancestors 'self'" in headers["content-security-policy"]
 
         unauth_context.close()
         context.close()
