@@ -101,3 +101,9 @@ def test_session_cookie_rejects_host_whitespace_and_port_mismatch():
 
     assert _Handler._csrf_ok(_cookie("http://localhost:8793", "localhost:8792")) is False
     assert _Handler._csrf_ok(_cookie("http://local host:8792", "local host:8792")) is False
+
+def test_session_cookie_rejects_empty_and_zero_ports():
+    from modules.dashboard_impl import _Handler
+
+    assert _Handler._csrf_ok(_cookie("http://localhost:0", "localhost:0")) is False
+    assert _Handler._csrf_ok(_cookie("http://localhost:", "localhost:")) is False
