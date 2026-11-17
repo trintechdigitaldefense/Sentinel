@@ -243,6 +243,8 @@ def validate(cfg: SentinelConfig) -> None:
         errors.append("dashboard.cookie_secure must be a boolean")
     if cfg.dashboard.remote_access and not cfg.dashboard.cookie_secure:
         errors.append("dashboard.remote_access requires dashboard.cookie_secure=true")
+    if cfg.dashboard.cookie_secure and not cfg.dashboard.remote_access:
+        errors.append("dashboard.cookie_secure requires dashboard.remote_access=true")
     if cfg.alerting.dedup_minutes < 0:
         errors.append("alerting.dedup_minutes must be >= 0")
     if cfg.logging.level.upper() not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
