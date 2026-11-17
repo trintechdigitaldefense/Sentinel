@@ -70,7 +70,7 @@ def _save_cfg(cfg: dict) -> None:
             if fd >= 0:
                 os.close(fd)
 
-    payload = json.dumps(cfg, indent=2, default=str) + "\\n"
+    payload = json.dumps(cfg, indent=2, default=str) + "\n"
     fd, temp_name = tempfile.mkstemp(
         prefix=f".{p.name}.", suffix=".tmp", dir=str(p.parent)
     )
@@ -1227,7 +1227,7 @@ class _Handler(BaseHTTPRequestHandler):
         host = self.headers.get("Host")
         if not origin or not host or origin.strip().lower() == "null":
             return False
-        if any(ch in host for ch in ("\\r", "\\n", "\\t", ",", "@", "/", "\\\\")):
+        if any(ch in host for ch in ("\r", "\n", "\t", ",", "@", "/", "\\")):
             return False
         try:
             parsed_origin = urlparse(origin)
