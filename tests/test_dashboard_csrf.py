@@ -95,3 +95,9 @@ def test_post_rejects_cross_origin_cookie_request_before_reading_body(monkeypatc
     handler.do_POST = dashboard._Handler.do_POST.__get__(handler, Fake)
     handler.do_POST()
     assert handler.sent == (403, {"ok": False, "error": "cross-origin request rejected"})
+
+def test_session_cookie_rejects_host_whitespace_and_port_mismatch():
+    from modules.dashboard_impl import _Handler
+
+    assert _Handler._csrf_ok(_cookie("http://localhost:8793", "localhost:8792")) is False
+    assert _Handler._csrf_ok(_cookie("http://local host:8792", "local host:8792")) is False
