@@ -20,7 +20,8 @@ def test_html_includes_logo(monkeypatch, tmp_path):
         "go_live": {}, "service": {}, "cases_open": [], "blocklist": {},
         "ssh_blocks": {}, "heartbeat": {},
     })
-    assert "/api/assets/logo?token=tok123" in html
+    assert 'src="/api/assets/logo"' in html
+    assert "token=tok123" not in html
     assert "brand-logo" in html
 
 
