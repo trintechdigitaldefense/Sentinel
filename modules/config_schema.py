@@ -95,6 +95,8 @@ class DashboardCfg:
     password: str = ""
     allow_control: bool = False
     token: str = ""
+    remote_access: bool = False
+    cookie_secure: bool = False
 
 
 @dataclass
@@ -235,6 +237,12 @@ def validate(cfg: SentinelConfig) -> None:
     errors = []
     if cfg.dashboard.port < 1 or cfg.dashboard.port > 65535:
         errors.append(f"dashboard.port out of range: {cfg.dashboard.port}")
+    if not isinstance(cfg.dashboard.remote_access, bool):
+        errors.append("dashboard.remote_access must be a boolean")
+    if not isinstance(cfg.dashboard.cookie_secure, bool):
+        errors.append("dashboard.cookie_secure must be a boolean")
+    if cfg.dashboard.remote_access and not cfg.dashboard.cookie_secure:
+        errors.append("dashboard.remote_access requires dashboard.cookie_secure=true")
     if cfg.alerting.dedup_minutes < 0:
         errors.append("alerting.dedup_minutes must be >= 0")
     if cfg.logging.level.upper() not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):
