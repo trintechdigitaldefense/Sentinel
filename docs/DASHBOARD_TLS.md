@@ -22,7 +22,7 @@ In `~/.sentinel/config.json`, configure the dashboard section:
 ```
 
 - `remote_access=true` declares that remote browser access is intended. Sentinel refuses to start in this mode unless `cookie_secure=true`.
-- `cookie_secure=true` causes the HttpOnly session cookie to include the `Secure` attribute. Use it only when the browser-facing connection is HTTPS through the trusted local reverse proxy.
+- `cookie_secure=true` causes the HttpOnly session cookie to include the `Secure` attribute. It is valid only together with `remote_access=true`; use both only when the browser-facing connection is HTTPS through the trusted local reverse proxy.
 - Sentinel does not trust `X-Forwarded-Proto` or other client-supplied forwarding headers to decide whether a connection is secure.
 - `SameSite=Strict` and HttpOnly remain enabled. The dashboard's Origin/Host check expects HTTPS when `cookie_secure=true`.
 
@@ -30,13 +30,25 @@ The configuration flag is an operator assertion, not cryptographic proof that th
 
 ## Example Nginx reverse proxy
 
-Replace `sentinel.example.com` and certificate paths with values provisioned for the host. Keep the default server block so unknown Host names are not routed to Sentinel.
+Replace `sentinel.example.com` and certificate paths with values provisioned for the host. Keep the default server blocks on both HTTP and HTTPS so unknown Host names are not routed to Sentinel.
 
 ```nginx
+server {
+    listen 80;
+    server_name sentinel.example.com;
+    return 301 https://$host$request_uri;
+}
+
 server {
     listen 80 default_server;
     server_name _;
     return 444;
+}
+
+server {
+    listen 443 ssl default_server;
+    server_name _;
+    ssl_reject_handshake on;
 }
 
 server {
