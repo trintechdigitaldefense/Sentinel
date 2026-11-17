@@ -7,8 +7,10 @@ import json
 import os
 import secrets
 import socket
+import stat
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -39,13 +41,63 @@ def _cfg() -> dict:
 
 
 def _save_cfg(cfg: dict) -> None:
+    """Safely persist runtime config using a same-directory atomic replacement."""
+    if not isinstance(cfg, dict):
+        raise ValueError("configuration root must be a JSON object")
     p = _home() / "config.json"
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(cfg, indent=2, default=str))
+
+    # Refuse symlinks, FIFOs, devices, and malformed existing files rather than
+    # silently replacing data that the dashboard could not safely read.
     try:
-        os.chmod(p, 0o600)
-    except Exception as e:
-        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+        before = p.lstat()
+    except FileNotFoundError:
+        before = None
+    if before is not None:
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("configuration path must be a regular non-symlink file")
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(str(p), flags)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise ValueError("configuration path is not a regular file")
+            with os.fdopen(fd, "r", encoding="utf-8") as stream:
+                fd = -1
+                existing = json.load(stream)
+            if not isinstance(existing, dict):
+                raise ValueError("existing configuration root must be a JSON object")
+        finally:
+            if fd >= 0:
+                os.close(fd)
+
+    payload = json.dumps(cfg, indent=2, default=str) + "\\n"
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{p.name}.", suffix=".tmp", dir=str(p.parent)
+    )
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            fd = -1
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_name, p)
+        try:
+            dir_fd = os.open(str(p.parent), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            # Some filesystems/platforms do not support directory fsync.
+            pass
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
 
 
 
