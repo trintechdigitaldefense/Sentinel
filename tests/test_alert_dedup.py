@@ -101,17 +101,26 @@ def test_cron_change_alerts_once_until_resolved(sentinel_data, monkeypatch):
     assert sentinel_module.cron_monitor_check({}, logger) == []
     assert len(alerts) == 1
 
+    # Restoring the original trusted baseline resolves the finding silently.
     current["text"] = "trusted-entry\n"
-    assert sentinel_module.cron_monitor_check({}, logger) == [
-        {"type": "removed", "entry": "new-digest-entry"}
-    ]
-    assert [item[0] for item in alerts] == ["NEW_CRON", "REMOVED_CRON"]
+    assert sentinel_module.cron_monitor_check({}, logger) == []
+    assert [item[0] for item in alerts] == ["NEW_CRON"]
 
+    # Reintroducing the same drift after resolution must alert again.
     current["text"] = "trusted-entry\nnew-digest-entry\n"
     assert sentinel_module.cron_monitor_check({}, logger) == [
         {"type": "new", "entry": "new-digest-entry"}
     ]
-    assert [item[0] for item in alerts] == ["NEW_CRON", "REMOVED_CRON", "NEW_CRON"]
+    assert [item[0] for item in alerts] == ["NEW_CRON", "NEW_CRON"]
+
+    # Removing a trusted baseline entry is a distinct active finding.
+    current["text"] = "new-digest-entry\n"
+    assert sentinel_module.cron_monitor_check({}, logger) == [
+        {"type": "removed", "entry": "trusted-entry"}
+    ]
+    assert [item[0] for item in alerts] == ["NEW_CRON", "NEW_CRON", "REMOVED_CRON"]
+    assert sentinel_module.cron_monitor_check({}, logger) == []
+    assert len(alerts) == 3
 
 
 def test_finding_state_file_is_private_and_resolves(sentinel_data):
