@@ -240,6 +240,25 @@ def _atomic_write_config(config: Path, payload: dict) -> None:
             pass
 
 
+def _read_existing_config(path: Path) -> str:
+    """Read only a regular config file without blocking on special files.
+
+    O_NONBLOCK prevents a FIFO from hanging setup; O_NOFOLLOW prevents a
+    symlink swap on platforms that support it. fstat validates the opened fd.
+    """
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(str(path), flags)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError("configuration path is not a regular file")
+        with os.fdopen(fd, "r", encoding="utf-8") as stream:
+            fd = -1
+            return stream.read()
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
 def init_config() -> None:
     # is_symlink() also detects dangling links, for which exists() is false.
     if CONFIG.is_symlink():
@@ -247,7 +266,7 @@ def init_config() -> None:
         raise SystemExit(1)
     if CONFIG.exists():
         try:
-            existing = json.loads(CONFIG.read_text(encoding="utf-8"))
+            existing = json.loads(_read_existing_config(CONFIG))
             if not isinstance(existing, dict):
                 raise ValueError("configuration root must be a JSON object")
             print(f"[=] Config exists ({CONFIG})")
