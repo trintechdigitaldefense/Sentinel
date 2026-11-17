@@ -1,3 +1,5 @@
+> **Historical snapshot notice (updated 2026-11-17):** This audit describes revision `27a353f` from 2026-10-26. It is not a fresh audit of current `main`. Subsequent changes, including PR #9 (merged as `e80c09b5a1cc461ed7d598cea9c1c5b2ec0c58ae`), changed relevant code and tests. Do not treat every finding below as a verified current-state finding or assume it is fully closed; revalidate each item against current code. Current release gates are tracked in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+
 # SENTINEL Security & Production-Readiness Audit
 
 **Repository:** https://github.com/trintechdigitaldefense/Sentinel  

@@ -1,3 +1,5 @@
+> **Historical snapshot notice (updated 2026-11-17):** This file records the v3.14.6-rc1 / October 2026 candidate review. Its branch, PR #6, and 131-test results are historical and are not the current `main` state. The current post-merge evidence and open gates are in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) and [TESTING.md](TESTING.md).
+
 # Release candidate notes — v3.14.6-rc1
 
 **Date:** 2026-10-26  
@@ -55,3 +57,15 @@ Ship a **pilot-candidate** hardening train: safer install, safer dashboard defau
 3. Optional: one friendly-host pilot smoke (doctor + hunt 10 minutes)  
 
 **Do not** publish marketing as “production-ready” until remaining PARTIAL/OPEN gates are closed or explicitly accepted in writing.
+
+
+## Post-merge update — PR #9 (2026-11-17)
+
+- PR #9, **reliable alert delivery deduplication**, was merged into `main`.
+- Merge commit: `e80c09b5a1cc461ed7d598cea9c1c5b2ec0c58ae`.
+- GitHub Actions passed on Python 3.10 and Python 3.12 for the final PR head.
+- Post-merge local verification on Python 3.12: `python3 -m pytest -q` → **242 passed**, one ReportLab deprecation warning.
+- The change adds persistent active-finding state separate from trusted detection baselines, serialized alert delivery, and more reliable offline-queue retry/retention behavior.
+- These results do not constitute live channel delivery, live firewall-apply validation, customer-host soak testing, or production certification.
+
+The original candidate acceptance table and merge recommendation above are retained as historical records; the current release gates supersede that recommendation.

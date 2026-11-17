@@ -1,3 +1,15 @@
+# Changelog
+
+## Unreleased — post-merge alert reliability (2026-11-17)
+
+- PR #9 merged to `main` as `e80c09b`: reliable active-finding alert deduplication and delivery retry handling.
+- Added persistent finding state separate from trusted detection baselines; atomic mode-0600 writes and thread/process locking.
+- Serialized alert delivery per fingerprint; only confirmed delivery, durable queueing, or intentional suppression is treated as handled.
+- Hardened offline queue writes/flush behavior and routed hunt-cycle maintenance retries through the unified alert router.
+- Added lifecycle, concurrency, failure/retry, offline-queue, and email-compatibility regression coverage.
+- Post-merge local verification: `python3 -m pytest -q` → 242 passed, 1 ReportLab deprecation warning (Python 3.12). PR #9 CI passed on Python 3.10 and 3.12.
+- No product version bump or release tag is implied by this documentation update. Live channel delivery and production-host validation remain separate gates.
+
 ## [3.14.8] — 2026-10-27
 
 ## 3.16.21b — GitHub brand banner
