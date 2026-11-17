@@ -552,40 +552,40 @@ def _html(token: str, data: dict) -> str:
     <div class="action-group">
       <div class="action-label">Reports for the client</div>
       <div class="actions">
-        <a class="btn btn-pdf" id="btn-pdf-report" href="/api/report/pdf?type=client" target="_blank" rel="noopener" onclick="openPdf('client'); return true;">📄 Client report (easy to read)</a>
-        <a class="btn secondary" href="/api/report/technical" target="_blank" rel="noopener" onclick="openPdf('technical'); return true;">🔧 Technical report (for IT)</a>
+        <a class="btn btn-pdf" id="btn-pdf-report" href="/api/report/pdf?type=client" target="_blank" rel="noopener" >📄 Client report (easy to read)</a>
+        <a class="btn secondary" href="/api/report/technical" target="_blank" rel="noopener" >🔧 Technical report (for IT)</a>
       </div>
     </div>
 
     <div class="action-group">
       <div class="action-label">Check the system</div>
       <div class="actions">
-        <button class="btn" onclick="runAction('refresh')">🔄 Refresh this page data</button>
-        <button class="btn secondary" onclick="runAction('doctor')">🩺 Health check (doctor)</button>
-        <button class="btn secondary" onclick="runAction('service-status')">⚙️ Service status</button>
-        <button class="btn secondary" onclick="runAction('go-live-status')">🚀 Go-live status</button>
-        <button class="btn secondary" onclick="runAction('visibility')">👁️ Scan visibility</button>
+        <button class="btn" data-action="refresh">🔄 Refresh this page data</button>
+        <button class="btn secondary" data-action="doctor">🩺 Health check (doctor)</button>
+        <button class="btn secondary" data-action="service-status">⚙️ Service status</button>
+        <button class="btn secondary" data-action="go-live-status">🚀 Go-live status</button>
+        <button class="btn secondary" data-action="visibility">👁️ Scan visibility</button>
       </div>
     </div>
 
     <div class="action-group">
       <div class="action-label">Alerts &amp; quiet hours</div>
       <div class="actions">
-        <button class="btn secondary" onclick="runAction('quiet-on')"> Quiet mode ON</button>
-        <button class="btn secondary" onclick="runAction('quiet-off')"> Quiet mode OFF</button>
-        <button class="btn secondary" onclick="ackAllCritical()">✅ Clear all critical alerts</button>
-        <button class="btn secondary" onclick="runAction('ops')">📊 Refresh ops numbers</button>
+        <button class="btn secondary" data-action="quiet-on"> Quiet mode ON</button>
+        <button class="btn secondary" data-action="quiet-off"> Quiet mode OFF</button>
+        <button class="btn secondary" data-ack-all="true">✅ Clear all critical alerts</button>
+        <button class="btn secondary" data-action="ops">📊 Refresh ops numbers</button>
       </div>
     </div>
 
     <div class="action-group">
       <div class="action-label">Field tools</div>
       <div class="actions">
-        <button class="btn secondary" onclick="runAction('field-soak')">Field-soak check</button>
-        <button class="btn secondary" onclick="runAction('multi-host')">Multi-host status</button>
-        <button class="btn secondary" onclick="runAction('field-evidence')">Build field evidence</button>
-        <button class="btn secondary" onclick="runAction('fleet-scan')">Fleet scan</button>
-        <button class="btn secondary" onclick="runAction('ssh-status')">SSH block status</button>
+        <button class="btn secondary" data-action="field-soak">Field-soak check</button>
+        <button class="btn secondary" data-action="multi-host">Multi-host status</button>
+        <button class="btn secondary" data-action="field-evidence">Build field evidence</button>
+        <button class="btn secondary" data-action="fleet-scan">Fleet scan</button>
+        <button class="btn secondary" data-action="ssh-status">SSH block status</button>
       </div>
     </div>
 
@@ -736,6 +736,11 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
 #rt-live {{ font-weight:600; }}
 #rt-live.pulse {{ animation: pulse 1.2s infinite; }}
 @keyframes pulse {{ 0%{{opacity:1}} 50%{{opacity:.45}} 100%{{opacity:1}} }}
+.muted-controls {{ margin-left:.35rem; font-size:.75rem; }}
+.metric-critical {{ color:var(--crit); }}
+.metric-good {{ color:var(--good); }}
+.metric-warn {{ color:var(--warn); }}
+.fleet-json {{ max-height:240px; overflow:auto; font-size:11px; }}
 
 </style>
 </head>
@@ -763,10 +768,10 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
     · Quiet <span class="badge {'warn' if quiet_on else 'off'}">{'ON' if quiet_on else 'OFF'}</span>
     · <span id="ctrl-label" data-control="{str(control).lower()}">{'CONTROL' if control else 'VIEW-ONLY'}</span>
     <label class="switch" title="Enable or disable dashboard controls">
-      <input type="checkbox" id="ctrl-toggle" {'checked' if control else ''} onchange="toggleControl(this.checked)"/>
+      <input type="checkbox" id="ctrl-toggle" {'checked' if control else ''} data-control-toggle="true"/>
       <span class="slider"></span>
     </label>
-    <span class="muted" style="margin-left:.35rem;font-size:.75rem">{'Controls on' if control else 'Controls off'}</span>
+    <span class="muted muted-controls">{'Controls on' if control else 'Controls off'}</span>
   </div>
 </header>
 <div class="wrap">
@@ -798,16 +803,16 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
       {rt_rows}
     </table>
     <div class="actions">
-      <button class="btn secondary" onclick="runAction('realtime-scan')">Re-scan now</button>
+      <button class="btn secondary" data-action="realtime-scan">Re-scan now</button>
       <a class="btn secondary" href="/api/realtime">Realtime JSON</a>
     </div>
   </div>
   <div class="grid" id="overview">
     <div class="card"><h2>Protection cycles</h2><div class="metric">{esc(hunt.get('cycles', 0))}</div>
       <div class="muted">last {esc(hunt.get('last_cycle_sec', '—'))}s · ok={esc(hunt.get('last_ok'))}</div></div>
-    <div class="card"><h2>Critical alerts</h2><div class="metric" style="color:var(--crit)">{esc(crit.get('open_count', 0))}</div>
+    <div class="card"><h2>Critical alerts</h2><div class="metric metric-critical">{esc(crit.get('open_count', 0))}</div>
       <div class="muted">need a human to clear</div></div>
-    <div class="card" id="fw-metric"><h2>Firewall plane</h2><div class="metric" style="color:{('var(--good)' if (data.get('firewall') or {}).get('running') or (data.get('firewall') or {}).get('armed') else 'var(--warn)')}">{esc("RUNNING" if (data.get("firewall") or {}).get("running") or (data.get("firewall") or {}).get("armed") else "OFF")}</div>
+    <div class="card" id="fw-metric"><h2>Firewall plane</h2><div class="metric {'metric-good' if (data.get('firewall') or {}).get('running') or (data.get('firewall') or {}).get('armed') else 'metric-warn'}">{esc("RUNNING" if (data.get("firewall") or {}).get("running") or (data.get("firewall") or {}).get("armed") else "OFF")}</div>
       <div class="muted">{esc((data.get("firewall") or {}).get("mode") or (data.get("firewall") or {}).get("backend") or "—")} · blocks {esc((data.get("firewall") or {}).get("managed_ips") or 0)}</div></div>
     <div class="card"><h2>All alerts</h2><div class="metric">{esc(data.get('alert_total', 0))}</div>
       <div class="muted">offline q {esc(ops.get('offline_queue', 0))}</div></div>
@@ -873,10 +878,10 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
     <h2>📄 PDF reports</h2>
     <p class="muted">Tap a button to open the report immediately in this browser. You can download from the viewer.</p>
     <div class="actions">
-      <a class="btn btn-pdf" href="/api/report/pdf?type=client" target="_blank" rel="noopener" onclick="openPdf('client'); return true;">Generate &amp; view client PDF</a>
-      <a class="btn secondary" href="/api/report/technical" target="_blank" rel="noopener" onclick="openPdf('technical'); return true;">Technical PDF</a>
-      <button class="btn secondary" type="button" onclick="openPdf('client')">📄 Open client PDF</button>
-      <button class="btn secondary" type="button" onclick="openPdf('technical')">🔧 Open technical PDF</button>
+      <a class="btn btn-pdf" href="/api/report/pdf?type=client" target="_blank" rel="noopener" >Generate &amp; view client PDF</a>
+      <a class="btn secondary" href="/api/report/technical" target="_blank" rel="noopener" >Technical PDF</a>
+      <button class="btn secondary" type="button" data-open-pdf="client">📄 Open client PDF</button>
+      <button class="btn secondary" type="button" data-open-pdf="technical">🔧 Open technical PDF</button>
     </div>
   </div>
 
@@ -885,7 +890,7 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
     <h2>Network fleet</h2>
     <p class="muted">All discovered devices on the client network. Local host gets canary files; other hosts need a Sentinel agent for file canaries. High-severity items can wait in operator review before client-critical flags.</p>
     <div class="meta">Hosts: {esc(fleet.get('count', 0))} · Scan: {esc(fleet.get('scan_method'))} · Local canaries: {esc(fleet.get('canary_planted'))} · Agent canaries pending: {esc(fleet.get('canary_pending_agent'))} · Review queue: {esc(fleet.get('pending_review', 0))}</div>
-    <pre style="max-height:240px;overflow:auto;font-size:11px">{esc(fleet_json)}</pre>
+    <pre class="fleet-json">{esc(fleet_json)}</pre>
   </div>
 
 {control_panel}
@@ -929,8 +934,21 @@ async function ackAllCritical() {{
 }}
 
 document.addEventListener("click", function(event) {{
-  const button = event.target.closest("button[data-alert-id]");
-  if (button) ackCritical(button.getAttribute("data-alert-id"));
+  const target = event.target.closest("[data-alert-id], [data-action], [data-open-pdf], [data-ack-all]");
+  if (!target) return;
+  if (target.hasAttribute("data-alert-id")) {{
+    ackCritical(target.getAttribute("data-alert-id"));
+  }} else if (target.hasAttribute("data-action")) {{
+    runAction(target.getAttribute("data-action"));
+  }} else if (target.hasAttribute("data-open-pdf")) {{
+    openPdf(target.getAttribute("data-open-pdf"));
+  }} else if (target.hasAttribute("data-ack-all")) {{
+    ackAllCritical();
+  }}
+}});
+document.addEventListener("change", function(event) {{
+  const toggle = event.target.closest("[data-control-toggle]");
+  if (toggle) toggleControl(toggle.checked);
 }});
 function openPdf(kind) {{
   const k = (kind || "client").toLowerCase();
@@ -1273,11 +1291,20 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("X-Frame-Options", "SAMEORIGIN")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         self.send_header("Cross-Origin-Resource-Policy", "same-origin")
+        nonce = None
+        if ctype.startswith("text/html"):
+            nonce = secrets.token_urlsafe(18)
+            nonce_bytes = nonce.encode("ascii")
+            body = body.replace(b"<style>", b'<style nonce="' + nonce_bytes + b'">')
+            body = body.replace(b"<script>", b'<script nonce="' + nonce_bytes + b'">')
+        nonce_source = f" 'nonce-{nonce}'" if nonce else ""
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; "
-            "form-action 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-            "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-src 'self'",
+            "form-action 'self'; img-src 'self' data:; "
+            f"style-src 'self'{nonce_source}; style-src-attr 'none'; "
+            f"script-src 'self'{nonce_source}; script-src-attr 'none'; "
+            "connect-src 'self'; frame-src 'self'",
         )
         if extra_headers:
             for k, v in extra_headers.items():
