@@ -204,7 +204,9 @@ def default_config() -> dict:
 def init_config() -> None:
     if CONFIG.exists():
         try:
-            existing = json.loads(CONFIG.read_text())
+            existing = json.loads(CONFIG.read_text(encoding="utf-8"))
+            if not isinstance(existing, dict):
+                raise ValueError("configuration root must be a JSON object")
             print(f"[=] Config exists ({CONFIG})")
             base = default_config()
             changed = False
@@ -213,7 +215,7 @@ def init_config() -> None:
                     existing[k] = v
                     changed = True
             if changed:
-                CONFIG.write_text(json.dumps(existing, indent=2))
+                CONFIG.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
                 try:
                     os.chmod(CONFIG, 0o600)
                 except Exception:
@@ -221,7 +223,11 @@ def init_config() -> None:
                 print("[+] Config merged with new defaults (0600)")
             return
         except Exception as e:
-            print(f"[!] Config unreadable ({e}) — rewriting defaults")
+            # Never replace an existing, unreadable customer config with defaults.
+            # Preserve the original bytes for operator-led recovery.
+            print(f"[!] Config unreadable ({e}) — refusing to overwrite {CONFIG}")
+            print("[!] Restore a valid backup or repair the file manually, then rerun setup.")
+            raise SystemExit(1)
     cfg = default_config()
     CONFIG.write_text(json.dumps(cfg, indent=2))
     try:
