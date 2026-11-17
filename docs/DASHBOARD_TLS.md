@@ -2,7 +2,7 @@
 
 ## Security boundary
 
-The Sentinel dashboard HTTP server is an application backend, not a public TLS endpoint. It now binds only to a loopback address (`127.0.0.1`, `::1`, or `localhost`). Any configured non-loopback bind—including `0.0.0.0`, a LAN address, or `dashboard.allow_public_bind=true`—is refused and replaced with `127.0.0.1`.
+The Sentinel dashboard HTTP server is an application backend, not a public TLS endpoint. It now binds only to the literal IPv4 loopback address (`127.0.0.1`). Any configured non-loopback bind—including `0.0.0.0`, a LAN address, or `dashboard.allow_public_bind=true`—is refused and replaced with `127.0.0.1`.
 
 For remote browser access, terminate HTTPS on a reverse proxy running on the **same host** and proxy to the loopback-only Sentinel listener. Do not expose port 8792 directly to a LAN or the Internet.
 
