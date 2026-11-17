@@ -80,3 +80,9 @@ def test_start_dashboard_ignores_legacy_public_bind_and_stays_loopback(monkeypat
     dashboard.start_dashboard()
     assert observed["address"] == ("127.0.0.1", 8792)
     assert observed["closed"] is True
+
+def test_secure_cookie_requires_declared_remote_tls_proxy():
+    from modules.dashboard_impl import _validate_remote_dashboard_config
+
+    with pytest.raises(RuntimeError, match="remote_access=true"):
+        _validate_remote_dashboard_config({"remote_access": False, "cookie_secure": True})
