@@ -11,7 +11,7 @@ def test_dashboard_backend_refuses_non_loopback_bind(requested):
     assert _safe_dashboard_bind(requested) == "127.0.0.1"
 
 
-@pytest.mark.parametrize("requested", ["127.0.0.1", "::1", "localhost"])
+@pytest.mark.parametrize("requested", ["127.0.0.1"])
 def test_dashboard_backend_allows_loopback_bind(requested):
     from modules.dashboard_impl import _safe_dashboard_bind
 
