@@ -1082,12 +1082,12 @@ def user_monitor_check(config, logger):
 
 def cron_monitor_check(config, logger):
     cm = config.get("cron_monitor", {})
+    from modules.finding_state import newly_active
     if not cm.get("active", True):
+        newly_active("cron", {})
         return []
 
-    changes = []
     current = []
-
     try:
         cr = run_cmd(["crontab", "-l"], timeout=5)
         for line in cr.strip().split("\n"):
@@ -1125,31 +1125,43 @@ def cron_monitor_check(config, logger):
     except Exception:
         with open(CRON_BASELINE, "w") as f:
             json.dump(current, f, indent=2)
+        newly_active("cron", {})
         logger.info(f"{C.GREEN}✓{C.RESET} Cron baseline created: {C.BOLD}{len(current)} entries{C.RESET}")
         return []
 
     baseline_set = {c["entry"] for c in baseline}
     current_set = {c["entry"] for c in current}
-
+    candidates = {}
     for entry in current_set - baseline_set:
-        msg = f"{C.RED}⚠ NEW CRON:{C.RESET} {C.BOLD}{entry[:100]}{C.RESET}"
-        logger.warning(msg)
-        changes.append({"type": "new", "entry": entry[:200]})
-        send_alert("NEW_CRON", {"entry": entry[:200]}, logger)
-
+        candidates[f"new:{entry}"] = ("new", entry)
     for entry in baseline_set - current_set:
-        msg = f"{C.YELLOW}!{C.RESET} {C.BOLD}REMOVED CRON:{C.RESET} {C.BOLD}{entry[:100]}{C.RESET}"
+        candidates[f"removed:{entry}"] = ("removed", entry)
+
+    active = {
+        key: hashlib.sha256(entry.encode("utf-8")).hexdigest()
+        for key, (_, entry) in candidates.items()
+    }
+    reportable = newly_active("cron", active)
+
+    changes = []
+    for key, (change_type, entry) in candidates.items():
+        if key not in reportable:
+            continue
+        if change_type == "new":
+            msg = f"{C.RED}⚠ NEW CRON:{C.RESET} {C.BOLD}{entry[:100]}{C.RESET}"
+            alert_type = "NEW_CRON"
+        else:
+            msg = f"{C.YELLOW}!{C.RESET} {C.BOLD}REMOVED CRON:{C.RESET} {C.BOLD}{entry[:100]}{C.RESET}"
+            alert_type = "REMOVED_CRON"
         logger.warning(msg)
-        changes.append({"type": "removed", "entry": entry[:200]})
-        send_alert("REMOVED_CRON", {"entry": entry[:200]}, logger)
+        changes.append({"type": change_type, "entry": entry[:200]})
+        send_alert(alert_type, {"entry": entry[:200]}, logger)
 
     if not changes:
         logger.info(f"{C.GREEN}✓{C.RESET} Cron integrity verified")
     else:
-        logger.info(f"{C.GREEN}✓{C.RESET} Cron integrity: {C.BOLD}{len(changes)} change(s){C.RESET}")
-
+        logger.info(f"{C.GREEN}✓{C.RESET} Cron integrity: {C.BOLD}{len(changes)} new finding(s){C.RESET}")
     return changes
-
 
 # ════════════════════════════════════════════════════════════════════
 # MODULE 7: SYSTEM HARDENING AUDIT

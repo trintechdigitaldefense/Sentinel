@@ -163,6 +163,8 @@ def check(send_alert: Optional[Callable] = None, logger=None) -> dict:
     bp = baseline_path()
     if not bp.exists():
         create_baseline()
+        from modules.finding_state import newly_active
+        newly_active("persistence", {})
         if logger:
             logger.info("Persistence baseline created (%s entries)", len(snapshot()))
         return {"ok": True, "needs_baseline": False, "events": [], "detail": "baseline created"}
@@ -173,34 +175,26 @@ def check(send_alert: Optional[Callable] = None, logger=None) -> dict:
         return {"ok": False, "events": [], "detail": "corrupt baseline"}
 
     cur = snapshot()
-    events = []
+    candidates = {}
+    fingerprints = {}
+    extra_alerts = {}
+
+    def add_candidate(event, fingerprint):
+        key = f"{event['type']}:{event['path']}"
+        candidates[key] = event
+        encoded = json.dumps(fingerprint, sort_keys=True, separators=(",", ":"), default=str)
+        fingerprints[key] = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
     for path, meta in cur.items():
         old = base.get(path)
         if not old:
-            # Newly appeared persistence artifact
-            ev = {"type": "NEW_PERSISTENCE", "path": path, "kind": meta.get("type"), "meta": meta}
-            events.append(ev)
-            if logger:
-                logger.warning("NEW persistence: %s (%s)", path, meta.get("type"))
-            if send_alert:
-                try:
-                    send_alert("NEW_PERSISTENCE", {"path": path, "kind": meta.get("type")})
-                except Exception as e:
-                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
-
+            add_candidate(
+                {"type": "NEW_PERSISTENCE", "path": path, "kind": meta.get("type"), "meta": meta},
+                meta,
+            )
             continue
         if old.get("absent") and not meta.get("absent") and meta.get("sha256"):
-            ev = {"type": "LD_PRELOAD_CREATED", "path": path, "meta": meta}
-            events.append(ev)
-            if logger:
-                logger.warning("LD_PRELOAD file created: %s", path)
-            if send_alert:
-                try:
-                    send_alert("LD_PRELOAD_CREATED", {"path": path})
-                except Exception as e:
-                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
-
+            add_candidate({"type": "LD_PRELOAD_CREATED", "path": path, "meta": meta}, meta)
             continue
         if old.get("sha256") and meta.get("sha256") and old["sha256"] != meta["sha256"]:
             kind = meta.get("type") or "file"
@@ -213,43 +207,57 @@ def check(send_alert: Optional[Callable] = None, logger=None) -> dict:
                 "cron_user": "CRON_CHANGED",
                 "rc": "RC_FILE_CHANGED",
             }.get(kind, "PERSISTENCE_CHANGED")
-            ev = {"type": alert_type, "path": path, "kind": kind}
-            events.append(ev)
-            if logger:
-                logger.warning("%s: %s", alert_type, path)
-            if send_alert:
-                try:
-                    send_alert(alert_type, {"path": path, "kind": kind})
-                except Exception as e:
-                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+            add_candidate({"type": alert_type, "path": path, "kind": kind}, meta)
 
-            # authorized_keys key_count jump
             if kind == "authorized_keys":
                 old_n = old.get("key_count", -1)
                 new_n = meta.get("key_count", -1)
                 if old_n >= 0 and new_n > old_n:
-                    if send_alert:
-                        try:
-                            send_alert("AUTHORIZED_KEYS_ADDED", {"path": path, "old_count": old_n, "new_count": new_n})
-                        except Exception as e:
-                            logging.getLogger('sentinel').debug('%s: %s', __name__, e)
-
+                    extra_key = f"AUTHORIZED_KEYS_ADDED:{path}"
+                    encoded = json.dumps(
+                        {"sha256": meta.get("sha256"), "old_count": old_n, "new_count": new_n},
+                        sort_keys=True, separators=(",", ":"),
+                    )
+                    fingerprints[extra_key] = hashlib.sha256(encoded.encode("utf-8")).hexdigest()
+                    extra_alerts[extra_key] = (
+                        "AUTHORIZED_KEYS_ADDED",
+                        {"path": path, "old_count": old_n, "new_count": new_n},
+                    )
 
     for path, old in base.items():
         if path not in cur and not old.get("absent"):
-            ev = {"type": "REMOVED_PERSISTENCE", "path": path, "kind": old.get("type")}
-            events.append(ev)
-            if logger:
-                logger.warning("REMOVED persistence: %s", path)
-            if send_alert:
-                try:
-                    send_alert("REMOVED_PERSISTENCE", {"path": path, "kind": old.get("type")})
-                except Exception as e:
-                    logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+            add_candidate(
+                {"type": "REMOVED_PERSISTENCE", "path": path, "kind": old.get("type")},
+                old,
+            )
 
+    from modules.finding_state import newly_active
+    reportable = newly_active("persistence", fingerprints)
+    events = []
+    for key, event in candidates.items():
+        if key not in reportable:
+            continue
+        events.append(event)
+        if logger:
+            logger.warning("%s: %s", event["type"], event["path"])
+        if send_alert:
+            try:
+                details = {"path": event["path"]}
+                if event.get("kind") is not None:
+                    details["kind"] = event["kind"]
+                send_alert(event["type"], details)
+            except Exception as exc:
+                logging.getLogger("sentinel").debug("%s: %s", __name__, exc)
+
+    for key, (alert_type, details) in extra_alerts.items():
+        if key not in reportable or not send_alert:
+            continue
+        try:
+            send_alert(alert_type, details)
+        except Exception as exc:
+            logging.getLogger("sentinel").debug("%s: %s", __name__, exc)
 
     return {"ok": True, "events": events, "count": len(events)}
-
 
 def status() -> dict:
     bp = baseline_path()
