@@ -1127,6 +1127,7 @@ def _login_html() -> str:
 class _Handler(BaseHTTPRequestHandler):
     token = ""
     allow_control = False  # safe class default
+    secure_cookie = False  # set only when HTTPS is provided directly or by a trusted TLS proxy
 
     def log_message(self, fmt, *args):
         pass
@@ -1348,7 +1349,9 @@ class _Handler(BaseHTTPRequestHandler):
                 self._send(401, b'{"ok":false,"error":"invalid dashboard token"}', "application/json")
                 return
             cookie = f"sentinel_token={self.token}; Path=/; HttpOnly; SameSite=Strict"
-            if hasattr(self.connection, "getpeercert"):
+            # When TLS terminates at a reverse proxy, this server sees plain HTTP.
+            # Operators must explicitly enable cookie_secure in trusted local config.
+            if self.secure_cookie:
                 cookie += "; Secure"
             self._send(303, b"", "text/plain; charset=utf-8", {
                 "Location": "/",
@@ -1625,6 +1628,9 @@ def start_dashboard(port: int | None = None, bind: str | None = None):
         print("[!] Refusing public bind without dashboard.allow_public_bind=true — using 127.0.0.1")
         bind = "127.0.0.1"
     _Handler.token = token
+    # Set dashboard.cookie_secure=true when HTTPS is terminated by a trusted proxy.
+    # This is intentionally explicit; untrusted forwarding headers are not consulted.
+    _Handler.secure_cookie = bool(dash.get("cookie_secure", False))
     try:
         from modules.rbac import can_control
         _Handler.allow_control = can_control({"dashboard": dash})
