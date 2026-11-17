@@ -1,60 +1,68 @@
 # SENTINEL testing notes
 
-## Commands (reproducible)
+## Reproducible local checks
+
+Run from the repository root in the intended Python environment:
 
 ```bash
-# Compile all modules
-python - <<'PY'
+# Compile all Python sources
+python3 - <<'PY'
 import py_compile
 from pathlib import Path
-for p in [Path("sentinel.py"), Path("setup.py"), *Path("modules").rglob("*.py")]:
-    py_compile.compile(str(p), doraise=True)
+
+for path in [Path("sentinel.py"), Path("setup.py"), *Path("modules").rglob("*.py")]:
+    py_compile.compile(str(path), doraise=True)
 print("compile OK")
 PY
 
-# Unit / integration tests
-pytest -q tests/ --tb=line
+# Full automated test suite
+python3 -m pytest -q
 
 # Installer shell syntax
 bash -n install.sh
 
-# Firewall dry-run smoke (no root required for dry paths)
-python scripts/firewall_smoke.py
+# Firewall dry-run smoke (does not perform a live firewall apply)
+python3 scripts/firewall_smoke.py
 ```
 
-## Verified in Milestone 6 acceptance (2026-10-26)
+## Post-merge verification — PR #9
 
-- `pytest -q tests/` → **131 passed**
-- compile all modules → **pass**
-- `bash -n install.sh` → **pass**
-- See [RELEASE_CANDIDATE.md](RELEASE_CANDIDATE.md)
-
-## Verified in Milestone 3–4 environment (2026-10-26)
-
-Milestone 4 added self_defense / fim visibility / tripwire tests.
-
-## Verified in Milestone 3 environment (2026-10-26)
+**Revision:** `e80c09b5a1cc461ed7d598cea9c1c5b2ec0c58ae`  
+**Date:** 2026-11-17  
+**Local runtime:** Python 3.12
 
 | Check | Result |
-|-------|--------|
-| All `modules/**/*.py` compile | Pass (86 files) |
-| `pytest -q tests/` | See CI / local run on hardening branch |
-| `bash -n install.sh` | Pass |
-| Future-import order guard | Pass |
+|---|---|
+| Local branch / revision | `main` at the same SHA as `origin/main` |
+| `git diff --check` | Pass |
+| `python3 -m pytest -q` | **242 passed**, 1 warning, 68.68 seconds |
+| Warning | ReportLab emits a deprecation warning because it checks `ast.NameConstant`; no test failed |
+| GitHub Actions for PR #9 | Python 3.10 and Python 3.12 jobs passed |
 
-## Known limitations
+The local run above is the user's post-merge run, not a claim that every check in the reproducible command list was executed in that run. The PR's CI results are separate evidence.
 
-- Live firewall **apply** is not exercised in CI (requires disposable VM + root).
-- Live SIEM/WhatsApp delivery is mocked or skipped.
-- Dashboard browser XSS campaign not automated; authz unit tests cover control-mode escalation denial.
-- Coverage % is not a security certification.
+## PR #9 regression coverage
+
+The alert-reliability change adds or extends coverage for:
+
+- Persistent active-finding lifecycle: new, unchanged, resolved, recurring, and changed fingerprints.
+- Notification failure and retry behavior.
+- Concurrent alert attempts and shared-state locking.
+- Offline queue atomicity, retention of unconfirmed rows, and queued delivery retries.
+- Email configuration compatibility and unified routing behavior.
+
+Relevant files include `tests/test_alert_dedup.py`, `tests/test_alert_concurrency.py`, `tests/test_alert_engine_concurrency.py`, `tests/test_offline_queue.py`, `tests/test_queued_alert_delivery.py`, and `tests/test_alert_email_compat.py`.
 
 ## CI
 
-`.github/workflows/ci.yml` runs on `push` to `main` / `hardening/**` and PRs to `main`:
-- ruff E9/F821/F823 on sentinel, setup, modules, tests
-- compile all Python sources
-- future-import guard
-- firewall smoke
-- full pytest
-- `bash -n install.sh`
+The repository workflow runs lint/compile guards, the firewall smoke test, the full pytest suite, and installer shell syntax checks. For the authoritative status of a specific change, inspect that pull request's Actions checks.
+
+## Checks that remain outside the automated suite
+
+- Live firewall **apply** on a disposable VM with console recovery.
+- Real email, WhatsApp, webhook, syslog, or Splunk delivery and receipt.
+- Customer-host pilot/soak validation and restart/reboot behavior in the target environment.
+- Full browser-based dashboard security/XSS testing.
+- Detection quality and false-positive rate on representative customer workloads.
+
+Passing unit tests and CI are useful evidence, not a security certification or a production-readiness declaration.
