@@ -1004,22 +1004,55 @@ function renderThreats(rt) {{
     badges[1].textContent = level;
     badges[1].className = "badge " + (map[level] || "off");
   }}
-  const tbodyHint = document.querySelector("#realtime table");
-  if (!tbodyHint) return;
-  let rows = "";
-  const threats = rt.threats || [];
+  const table = document.querySelector("#realtime table");
+  if (!table) return;
+  // Threat telemetry is untrusted input: build DOM nodes and assign textContent.
+  // Never concatenate telemetry into HTML or attribute strings.
+  const tbody = table.tBodies[0] || table.createTBody();
+  tbody.replaceChildren();
+
+  const header = document.createElement("tr");
+  for (const label of ["Severity", "Type", "Detail"]) {{
+    const th = document.createElement("th");
+    th.textContent = label;
+    header.appendChild(th);
+  }}
+  tbody.appendChild(header);
+
+  const allowedSeverities = new Set(["CRITICAL", "HIGH", "MEDIUM", "LOW"]);
+  const threats = Array.isArray(rt.threats) ? rt.threats.slice(0, 15) : [];
   if (threats.length) {{
-    for (const t of threats.slice(0, 15)) {{
+    for (const t of threats) {{
+      const rawSeverity = String(t.severity || "MEDIUM").toUpperCase();
+      const sev = allowedSeverities.has(rawSeverity) ? rawSeverity : "MEDIUM";
       const det = t.cmd || t.detail || t.id || t.port || "";
-      const sev = String(t.severity || "MEDIUM").toUpperCase();
-      rows += "<tr class=\"row-" + sev + "\"><td class=\"sev-" + sev + "\">" + sev +
-              "</td><td class=\"crit\">" + (t.type||"") +
-              "</td><td class=\"mono\">" + String(det).slice(0,120) + "</td></tr>";
+      const row = document.createElement("tr");
+      row.className = "row-" + sev;
+
+      const severityCell = document.createElement("td");
+      severityCell.className = "sev-" + sev;
+      severityCell.textContent = sev;
+
+      const typeCell = document.createElement("td");
+      typeCell.className = "crit";
+      typeCell.textContent = String(t.type || "");
+
+      const detailCell = document.createElement("td");
+      detailCell.className = "mono";
+      detailCell.textContent = String(det).slice(0, 120);
+
+      row.append(severityCell, typeCell, detailCell);
+      tbody.appendChild(row);
     }}
   }} else {{
-    rows = "<tr><td colspan=\"3\" class=\"muted\">No active threats detected</td></tr>";
+    const row = document.createElement("tr");
+    const cell = document.createElement("td");
+    cell.colSpan = 3;
+    cell.className = "muted";
+    cell.textContent = "No active threats detected";
+    row.appendChild(cell);
+    tbody.appendChild(row);
   }}
-  tbodyHint.innerHTML = "<tr><th>Severity</th><th>Type</th><th>Detail</th></tr>" + rows;
   const scoreEl = document.querySelector("#realtime p b");
   // update score/count text roughly via full p
 }}
@@ -1269,22 +1302,22 @@ class _Handler(BaseHTTPRequestHandler):
             dash = cfg.setdefault("dashboard", {})
             current = bool(dash.get("allow_control", False))
             role = str(dash.get("role") or "viewer").lower()
-            # Escalation denied: token alone cannot turn controls ON
-            if want and not current:
+            # The shareable dashboard token must never grant administrator role.
+            # Enabling/confirming controls is allowed only when an operator has
+            # already provisioned BOTH allow_control=true and role=admin on disk.
+            if want and (not current or role != "admin"):
                 self._send(
                     403,
                     json.dumps({
                         "ok": False,
-                        "error": "cannot enable controls via token alone; set dashboard.allow_control=true in config.json on the host",
+                        "error": "administrator role and dashboard.allow_control=true must be provisioned locally",
                     }).encode(),
                     "application/json",
                 )
                 return
-            # Allow turning OFF for safety, or confirming ON if already enabled
+            # Any authenticated operator may turn controls OFF as a fail-safe.
             dash["allow_control"] = want
-            if want:
-                dash["role"] = "admin"
-            elif dash.get("role") == "admin":
+            if not want and dash.get("role") == "admin":
                 dash["role"] = "viewer"
             cfg["dashboard"] = dash
             _save_cfg(cfg)

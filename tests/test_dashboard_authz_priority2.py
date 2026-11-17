@@ -111,3 +111,40 @@ def test_malformed_json_body_does_not_crash(monkeypatch):
     h._read_json_body = lambda: {}  # empty action
     h.do_POST()
     assert h.sent is not None
+
+
+
+def test_viewer_token_cannot_promote_role_when_control_preprovisioned(monkeypatch):
+    """A shareable viewer token must not promote viewer to admin."""
+    import modules.dashboard_impl as d
+
+    cfg = {"dashboard": {"allow_control": True, "role": "viewer", "token": "tok"}}
+    monkeypatch.setattr(d, "_cfg", lambda: cfg)
+    monkeypatch.setattr(d, "_save_cfg", lambda c: None)
+
+    h = _handler(
+        allow_control=False,
+        headers={"Authorization": "Bearer tok"},
+        path="/api/control-mode",
+    )
+    h.do_POST = d._Handler.do_POST.__get__(h, type(h))
+    h._read_json_body = lambda: {"allow_control": True}
+    h.do_POST()
+
+    assert h.sent is not None
+    assert h.sent[0] == 403
+    assert cfg["dashboard"]["role"] == "viewer"
+    assert cfg["dashboard"]["allow_control"] is True
+
+
+def test_realtime_threat_renderer_uses_text_nodes_not_innerhtml():
+    """Untrusted threat telemetry must not be interpolated into HTML."""
+    from pathlib import Path
+
+    source = (Path(__file__).resolve().parents[1] / "modules" / "dashboard_impl.py").read_text()
+    start = source.index("function renderThreats(rt)")
+    end = source.index("async function pollRealtime()", start)
+    renderer = source[start:end]
+
+    assert "textContent" in renderer
+    assert "innerHTML" not in renderer
