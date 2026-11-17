@@ -11,7 +11,9 @@ from __future__ import annotations
 import json
 import os
 import py_compile
+import stat
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
@@ -201,10 +203,72 @@ def default_config() -> dict:
     }
 
 
+def _atomic_write_config(config: Path, payload: dict) -> None:
+    """Atomically replace config.json without following symlinks or truncating it."""
+    config.parent.mkdir(parents=True, exist_ok=True)
+    if config.is_symlink():
+        raise ValueError("configuration path must not be a symbolic link")
+    if config.exists() and not stat.S_ISREG(config.stat(follow_symlinks=False).st_mode):
+        raise ValueError("configuration path is not a regular file")
+
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{config.name}.", suffix=".tmp", dir=str(config.parent)
+    )
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            fd = -1
+            stream.write(json.dumps(payload, indent=2) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_name, config)
+        # Best-effort directory sync: replacement is already atomic if this is unsupported.
+        try:
+            dir_fd = os.open(str(config.parent), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
+
+
+def _read_existing_config(path: Path) -> str:
+    """Read only a regular config file without blocking on special files.
+
+    O_NONBLOCK prevents a FIFO from hanging setup; O_NOFOLLOW prevents a
+    symlink swap on platforms that support it. fstat validates the opened fd.
+    """
+    flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+    fd = os.open(str(path), flags)
+    try:
+        if not stat.S_ISREG(os.fstat(fd).st_mode):
+            raise ValueError("configuration path is not a regular file")
+        with os.fdopen(fd, "r", encoding="utf-8") as stream:
+            fd = -1
+            return stream.read()
+    finally:
+        if fd >= 0:
+            os.close(fd)
+
+
 def init_config() -> None:
+    # is_symlink() also detects dangling links, for which exists() is false.
+    if CONFIG.is_symlink():
+        print(f"[!] Config path is a symbolic link — refusing to write {CONFIG}")
+        raise SystemExit(1)
     if CONFIG.exists():
         try:
-            existing = json.loads(CONFIG.read_text())
+            existing = json.loads(_read_existing_config(CONFIG))
+            if not isinstance(existing, dict):
+                raise ValueError("configuration root must be a JSON object")
             print(f"[=] Config exists ({CONFIG})")
             base = default_config()
             changed = False
@@ -213,22 +277,20 @@ def init_config() -> None:
                     existing[k] = v
                     changed = True
             if changed:
-                CONFIG.write_text(json.dumps(existing, indent=2))
-                try:
-                    os.chmod(CONFIG, 0o600)
-                except Exception:
-                    pass
-                print("[+] Config merged with new defaults (0600)")
+                _atomic_write_config(CONFIG, existing)
+                print("[+] Config merged with new defaults (0600; atomic replace)")
             return
         except Exception as e:
-            print(f"[!] Config unreadable ({e}) — rewriting defaults")
-    cfg = default_config()
-    CONFIG.write_text(json.dumps(cfg, indent=2))
+            # The atomic writer leaves the original file intact on pre-replace failures.
+            print(f"[!] Config unreadable or update failed ({e}) — refusing to overwrite {CONFIG}")
+            print("[!] Restore a valid backup or repair the file manually, then rerun setup.")
+            raise SystemExit(1)
     try:
-        os.chmod(CONFIG, 0o600)
-    except Exception:
-        pass
-    print(f"[+] Wrote default config → {CONFIG}")
+        _atomic_write_config(CONFIG, default_config())
+    except Exception as e:
+        print(f"[!] Could not safely create config ({e}) — no partial config was installed")
+        raise SystemExit(1)
+    print(f"[+] Wrote default config atomically → {CONFIG}")
 
 
 def main() -> None:
