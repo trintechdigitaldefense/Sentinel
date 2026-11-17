@@ -1739,13 +1739,34 @@ def _generate_dashboard_pdfs(action: str = "pdf-report") -> dict:
 
 
 
+def _safe_dashboard_bind(requested_bind: str) -> str:
+    """Only expose the dashboard backend on a loopback interface.
+
+    Remote access must terminate TLS in a separately managed reverse proxy
+    on the same host; dashboard.allow_public_bind is intentionally ignored.
+    """
+    if requested_bind in ("127.0.0.1", "::1", "localhost"):
+        return requested_bind
+    return "127.0.0.1"
+
+
+def _validate_remote_dashboard_config(dash: dict) -> None:
+    """Fail closed if remote access is declared without Secure session cookies."""
+    if dash.get("remote_access") and not dash.get("cookie_secure"):
+        raise RuntimeError(
+            "dashboard.remote_access requires dashboard.cookie_secure=true; "
+            "configure a trusted local TLS reverse proxy before remote access"
+        )
+
+
 def start_dashboard(port: int | None = None, bind: str | None = None):
     token, cfg_port, dash = ensure_token()
     port = int(port or cfg_port or DEFAULT_PORT)
-    bind = bind or dash.get("bind") or "127.0.0.1"
-    if bind in ("0.0.0.0", "::", "*") and not dash.get("allow_public_bind"):
-        print("[!] Refusing public bind without dashboard.allow_public_bind=true — using 127.0.0.1")
-        bind = "127.0.0.1"
+    requested_bind = bind or dash.get("bind") or "127.0.0.1"
+    _validate_remote_dashboard_config(dash)
+    bind = _safe_dashboard_bind(str(requested_bind))
+    if bind != requested_bind:
+        print("[!] Non-loopback dashboard bind refused; using 127.0.0.1. Use a local TLS reverse proxy for remote access.")
     _Handler.token = token
     # Set dashboard.cookie_secure=true when HTTPS is terminated by a trusted proxy.
     # This is intentionally explicit; untrusted forwarding headers are not consulted.
