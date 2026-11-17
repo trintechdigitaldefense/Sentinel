@@ -215,7 +215,7 @@ def init_config() -> None:
                     existing[k] = v
                     changed = True
             if changed:
-                CONFIG.write_text(json.dumps(existing, indent=2) + "\\n", encoding="utf-8")
+                CONFIG.write_text(json.dumps(existing, indent=2) + "\n", encoding="utf-8")
                 try:
                     os.chmod(CONFIG, 0o600)
                 except Exception:
