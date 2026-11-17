@@ -911,7 +911,7 @@ async function runAction(name) {{
     }}
     if (!r.ok || (j && j.ok === false)) {{
       const err = (j && (j.error || j.message)) || ("HTTP " + r.status);
-      if (out) out.textContent = "FAILED: " + err + "\n\n" + text.slice(0, 1500);
+      if (out) out.textContent = "FAILED: " + err + "\\n\\n" + text.slice(0, 1500);
       alert("Action failed: " + err);
       return;
     }}
