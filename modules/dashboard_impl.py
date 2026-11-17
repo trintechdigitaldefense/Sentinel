@@ -418,7 +418,7 @@ def _html(token: str, data: dict) -> str:
     for it in open_crit[:20]:
         aid = esc(it.get("id"))
         ack_cell = (
-            f"<button class='btn btn-sm' onclick=\"ackCritical('{aid}')\">ACK</button>"
+            f'<button class="btn btn-sm" data-alert-id="{aid}">ACK</button>'
             if control
             else "<span class='muted'>view-only</span>"
         )
@@ -875,6 +875,11 @@ async function ackAllCritical() {{
   if (!r.ok || !j.ok) {{ alert("Failed: " + (j.error || r.status)); return; }}
   location.reload();
 }}
+
+document.addEventListener("click", function(event) {{
+  const button = event.target.closest("button[data-alert-id]");
+  if (button) ackCritical(button.getAttribute("data-alert-id"));
+}});
 function openPdf(kind) {{
   const k = (kind || "client").toLowerCase();
   const url = (k === "tech" || k === "technical")
