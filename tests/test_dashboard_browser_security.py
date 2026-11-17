@@ -14,6 +14,7 @@ def dashboard_server(monkeypatch):
 
     dashboard._Handler.token = "browser-test-token"
     dashboard._Handler.allow_control = True
+    dashboard._Handler.secure_cookie = False
     monkeypatch.setattr(
         dashboard,
         "collect_full",
