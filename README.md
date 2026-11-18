@@ -50,7 +50,7 @@ python3 sentinel.py service-status      # confirm always-on
 | SSH brute-force blocking | Implemented · **auto_block off by default** | Opt-in autonomy |
 | Multi-channel alerts | Implemented · automated tests | Persistent finding state, delivery deduplication, quiet hours, offline retry queue |
 | Critical alert persistence | Implemented · tested | Survive restarts until ACK |
-| Local dashboard | Implemented · authz tests | Loopback + view-only defaults; token auth |
+| Local dashboard | Implemented · automated security tests | Loopback-only backend; cookie-session CSRF checks; atomic runtime config writes; nonce-based CSP; remote access requires a separately verified same-host TLS proxy |
 | Doctor / go-live | Implemented | Install-health — not a production certification |
 | SIEM / Splunk HEC | Implemented · tested (partial) | Optional; disabled until configured |
 | Cases / evidence packs | Implemented | Hash = post-export integrity, not legal CoC alone — see [docs/EVIDENCE_HASH.md](docs/EVIDENCE_HASH.md) |
@@ -132,6 +132,10 @@ Supported: **Python 3.10+**, Linux (primary). Termux/Android containers may lack
 
 ---
 
+## Dashboard security hardening (PR #19)
+
+Merged to `main` as `bc40fe6d5012c061fbdab13544ba3cbf5078dc1d` on 2026-11-18. The change adds Origin/Host validation for cookie-authenticated POST requests, atomic runtime dashboard configuration writes, loopback-only dashboard binding with explicit secure-cookie configuration for remote proxy use, and nonce-based CSP without `unsafe-inline` in script/style directives. PR-head CI previously passed 295 tests on Python 3.10 and 3.12. **Post-merge CI on the merge commit has not yet been evidenced.** Remote TLS remains an operator deployment task and is not enabled or verified by this code change.
+
 ## Security defaults (current)
 
 | Control | Default |
@@ -161,7 +165,7 @@ python scripts/firewall_smoke.py
 Details: [docs/TESTING.md](docs/TESTING.md).  
 CI runs compile-all, future-import guard, ruff, firewall smoke, pytest on PRs to `main`.
 
-**Post-merge verification on `main` at `e80c09b` (2026-11-17):** `python3 -m pytest -q` → **242 passed**, with one ReportLab/Python deprecation warning, on Python 3.12. GitHub Actions for PR #9 also passed on Python 3.10 and 3.12. These are automated checks; they are not live firewall, SIEM, WhatsApp, or customer-host validation.
+**Historical verification (PR #9, 2026-11-17):** `python3 -m pytest -q` → **242 passed**, with one ReportLab/Python deprecation warning, on Python 3.12. This is not post-PR #19 verification. PR #19 is merged; fresh GitHub Actions validation on the resulting `main` commit and controlled operational checks are still required.
 
 ---
 
