@@ -1,77 +1,83 @@
 # SENTINEL release checklist
 
-**Current reviewed revision:** `933343c108d8e3d1cb42cfe9fc59378449896534` (`main`; PRs #14, #13, and #12 merged)  
-**Updated:** 2026-11-17  
-**Product status:** **pilot candidate**; no production release, certification, or deployment approval is declared by this checklist.
+**Current reviewed change:** PR #19 merged to `main` on 2026-11-18  
+**Merge commit:** `bc40fe6d5012c061fbdab13544ba3cbf5078dc1d`  
+**Product status:** **pilot candidate**. This checklist does not declare a production release, certification, or deployment approval.
 
-Legend: **PASS** = current evidence recorded · **PARTIAL** = automated/static evidence only · **OPEN** = evidence or owner decision still required.
+Legend: **PASS** = evidence recorded · **PARTIAL** = automated/static evidence only · **OPEN** = required evidence or owner decision remains.
 
-## Security-hardening milestone — 2026-11-17
+## Security-hardening milestone — PR #19
 
-**Milestone outcome: SUCCESSFUL SECURITY-HARDENING MILESTONE.** The recent merged changes strengthen dashboard authentication and output handling, installer configuration safety, and offline alert-queue reliability. This milestone records progress; it is **not** a production-readiness declaration.
+PR #19 implements the four dashboard/deployment hardening work items:
 
-| Change | Record |
-|---|---|
-| PR #14 — offline queue overflow handling | Merged; rejects new queue entries at capacity rather than discarding older unconfirmed alerts. Merge commit: `7f20f544da56733da61824c8bdd7ffc9d08d8218`. |
-| PR #13 — installer configuration preservation | Merged; adds guarded reads and atomic installer configuration writes with regression coverage. Merge commit: `91518fa75f877fb6b876add5260e4fd5771d5652`. |
-| PR #12 — dashboard authentication and XSS hardening | Merged; improves viewer/admin separation, session handling, safe rendering, and security headers, with browser regression coverage. Merge commit: `933343c108d8e3d1cb42cfe9fc59378449896534`. |
-| Combined-main regression suite | User-confirmed on exact `main` revision above: `python3 -m pytest -q` → **263 passed, 1 skipped, 1 warning in 72.81s**. The warning is a ReportLab deprecation warning involving `ast.NameConstant`; no test failed. |
-
-The test result is automated regression evidence. It does not establish live deployment safety, real alert delivery, customer-host behavior, remote TLS configuration, or independent security approval.
-
-## Remaining dashboard and deployment security work
-
-The following four items remain **OPEN** and are tracked separately:
-
-| Item | Status | Tracking |
+| Item | Merged implementation | Remaining acceptance evidence |
 |---|---|---|
-| Add CSRF Origin/Host validation to cookie-authenticated state-changing dashboard requests | **OPEN** | [#15 — dashboard Origin/Host validation](https://github.com/trintechdigitaldefense/Sentinel/issues/15) |
-| Implement atomic runtime dashboard configuration writes | **OPEN** | [#16 — atomic runtime configuration writes](https://github.com/trintechdigitaldefense/Sentinel/issues/16) |
-| Require and verify properly configured TLS for remote dashboard access | **OPEN** | [#17 — remote dashboard TLS](https://github.com/trintechdigitaldefense/Sentinel/issues/17) |
-| Reduce CSP reliance on `'unsafe-inline'` | **OPEN** | [#18 — CSP hardening](https://github.com/trintechdigitaldefense/Sentinel/issues/18) |
+| #15 — CSRF Origin/Host validation | Same-origin and Host validation for cookie-authenticated POST requests; rejects invalid origins before reading request bodies. | Independent review confirmation should be recorded in GitHub; controlled host/browser checks must show same-origin success and cross-origin/Host mismatch rejection without state mutation. |
+| #16 — atomic runtime configuration writes | Same-directory temporary file, restrictive mode, fsync/replace, guarded reads and rejection of symlink/special-file paths. | Controlled host checks for ownership, permissions, failure preservation and concurrent update behavior. |
+| #17 — remote dashboard TLS | Backend forced to literal `127.0.0.1`; remote access requires explicit `remote_access=true` and `cookie_secure=true`; TLS reverse-proxy guide added. | **OPEN:** actual proxy, certificate, TLS protocol, Host handling, cookie attributes, port exposure and rollback must be verified on the target host. |
+| #18 — CSP hardening | Nonce-based script/style blocks; inline event/style attributes removed from active template; `unsafe-inline` removed from script/style policy. | Independent review record and supported-browser regression verification on the deployed build. |
 
-Closing these issues requires implementation and regression evidence. Before Sentinel's status is advanced, a reviewer independent of the implementation must verify the changes and evidence; issue closure or passing automated tests alone is not sufficient.
+PR-head GitHub Actions run **44149308038** passed on Python 3.10 and 3.12, with Ruff, Python compilation, firewall dry-run smoke and **295 pytest tests** on each version. This is PR-head CI evidence; it is **not** a post-merge run on merge commit `bc40fe6`. The GitHub connector currently reports no combined status checks for the merge commit. Do not mark post-merge CI as passed until a successful run is visible on the resulting `main` revision.
+
+The owner reports that an independent reviewer approved PR #19. The available PR review API did not return a submitted review, so retain the reviewer’s approval as owner-reported until it is recorded or otherwise independently evidenced.
 
 ## Current release gates
 
-| Gate | Status | Current evidence / remaining work |
+| Gate | Status | Evidence / remaining work |
 |---|---|---|
-| PRs #14, #13, and #12 merged | **PASS** | Merge commits recorded in the milestone table above; current `main` is `933343c108d8e3d1cb42cfe9fc59378449896534`. |
-| Combined-main local regression suite | **PASS** | Python 3.12: 263 passed, 1 skipped, 1 ReportLab deprecation warning; user-confirmed on exact current `main`. |
-| Offline queue capacity handling | **PASS** (automated) | Queue overflow rejects the new entry and preserves existing unconfirmed entries; live restart/soak evidence remains separate. |
-| Installer configuration preservation | **PASS** (automated/static) | Symlink/special-file rejection and atomic installer writes have regression coverage; still validate upgrades on supported target platforms. |
-| Dashboard authentication and XSS hardening | **PARTIAL** | PR #12 merged with browser regression coverage and security headers. CSRF validation remains OPEN (#15), CSP still needs hardening (#18), and remote-access TLS must be verified (#17). |
-| CSRF Origin/Host validation | **OPEN** | Tracked in [#15](https://github.com/trintechdigitaldefense/Sentinel/issues/15). |
-| Runtime dashboard configuration writes | **OPEN** | Runtime `_save_cfg()` still needs atomic-write protection; tracked in [#16](https://github.com/trintechdigitaldefense/Sentinel/issues/16). |
-| Remote dashboard TLS configuration | **OPEN** | Remote access must use a properly configured TLS reverse proxy and secure session cookies; tracked in [#17](https://github.com/trintechdigitaldefense/Sentinel/issues/17). |
-| Content Security Policy hardening | **OPEN** | Reduce/remove `'unsafe-inline'` with browser regressions; tracked in [#18](https://github.com/trintechdigitaldefense/Sentinel/issues/18). |
-| Independent verification of remaining security work | **OPEN** | An independent reviewer must verify implementation, test evidence, and deployment requirements before status promotion. |
-| Firewall dry-run behavior | **PARTIAL** | Dry-run/contract tests exist; no live apply validation on a disposable VM is recorded here. |
-| Live alert channel delivery and receipt | **OPEN** | No real recipient, WhatsApp, webhook, syslog, or SIEM delivery test is claimed. |
-| Offline queue across real host restart / power loss | **PARTIAL** | Automated persistence/queue tests exist; field restart/soak evidence is still needed. |
+| PR #19 merged | **PASS** | Merge commit `bc40fe6d5012c061fbdab13544ba3cbf5078dc1d`. |
+| PR-head regression CI | **PASS** | Run 44149308038; 295 tests passed on Python 3.10 and 3.12. |
+| Post-merge CI on resulting main | **OPEN** | No run/status evidence currently visible for the merge commit. |
+| CSRF implementation | **PASS** (PR-head automated) | New tests cover same-origin, cross-origin, Host mismatch, missing/null/malformed Origin, HTTPS proxy scheme, Bearer requests and rejection before body processing. |
+| Runtime config atomicity | **PASS** (PR-head automated) | Tests cover permissions, replace failure, symlinks, dangling symlinks, FIFO, malformed JSON, preservation and temp cleanup. |
+| Dashboard loopback/TLS guard | **PARTIAL** | Automated config/bind tests and deployment guide exist; real reverse proxy/certificate is not configured or verified. |
+| CSP hardening | **PASS** (PR-head automated) | Browser security tests assert nonce-bearing script/style tags, no inline handlers and no `unsafe-inline`. Target-browser operational check remains. |
+| Independent security review | **PARTIAL** | Owner reports approval; approval is not currently visible as a GitHub review submission. |
+| Firewall dry-run behavior | **PARTIAL** | Automated smoke/contract tests; no live apply validation on a disposable VM is recorded. |
+| Live alert channel delivery and receipt | **OPEN** | No real recipient, WhatsApp, webhook, syslog or SIEM delivery test is claimed. Requires separately approved test endpoint/recipient. |
+| Offline queue across real host restart / power loss | **PARTIAL** | Automated persistence/queue tests exist; field restart/soak evidence remains. |
 | Detection coverage and false-positive rate | **OPEN** | Requires representative pilot telemetry and operator review. |
-| Current security audit / residual-risk review | **PARTIAL** | `SECURITY_AUDIT.md` is a historical audit snapshot; complete a fresh review against current `main`. |
-| Secrets and deployment configuration review | **OPEN** | Recheck target-specific secrets, credentials, network exposure, and access controls before each pilot. |
-| Operational validation, owner sign-off, and rollback rehearsal | **OPEN** | Record the approved pilot scope, complete operational checks, and rehearse rollback. |
+| Current security audit / residual-risk review | **OPEN** | Historical `SECURITY_AUDIT.md` is not a fresh audit of merged main. Revalidate findings against current code. |
+| Secrets and deployment configuration review | **OPEN** | Recheck target-specific secrets, credentials, network exposure and access controls before each pilot. |
+| Install, upgrade, backup and rollback rehearsal | **OPEN** | Validate on a disposable supported host; preserve existing `~/.sentinel` data and trusted persistence baselines. |
+| Operational owner sign-off | **OPEN** | Record approved pilot scope, maintenance window, escalation contacts, evidence and rollback owner. |
 
-## Required before a customer pilot
+## Controlled operational validation plan
 
-- [ ] Review the current code and historical findings in [SECURITY_AUDIT.md](SECURITY_AUDIT.md); record disposition of each remaining risk.
-- [ ] Complete issues [#15](https://github.com/trintechdigitaldefense/Sentinel/issues/15), [#16](https://github.com/trintechdigitaldefense/Sentinel/issues/16), [#17](https://github.com/trintechdigitaldefense/Sentinel/issues/17), and [#18](https://github.com/trintechdigitaldefense/Sentinel/issues/18).
-- [ ] Obtain independent review of the four security changes and their test evidence.
-- [ ] Validate install, upgrade, backup, and rollback on a disposable supported host.
-- [ ] Run `doctor`, confirm intended baselines/canaries, and observe a supervised hunt cycle.
-- [ ] Verify alert routing with an explicitly approved test endpoint/recipient; record delivery and queue retry evidence.
-- [ ] Validate firewall behavior in dry-run first; live apply only with explicit customer approval and console recovery.
-- [ ] Confirm dashboard bind/authentication, operator roles, secrets handling, and network exposure; use verified TLS for remote access.
-- [ ] Document pilot owner, scope, maintenance window, escalation contacts, and rollback procedure.
+Perform these checks only on an isolated, disposable test host or a specifically approved pilot host. Do not alter a customer network or production configuration as part of repository validation.
+
+1. **Baseline and backup:** record OS/Python versions, current commit, configuration permissions, service state, listening sockets and disk space. Back up only the required config and test fixtures; do not overwrite or reset `~/.sentinel`.
+2. **Install/upgrade:** test clean installation and fast-forward upgrade from a representative supported version. Confirm user data and configuration are preserved. Rehearse rollback.
+3. **Dashboard local boundary:** verify the service listens only on `127.0.0.1`; confirm it is not reachable from another host. Verify default viewer role and token/session behavior.
+4. **CSRF:** verify same-origin cookie-authenticated POST works; cross-origin, missing/null/malformed Origin and Host mismatch are rejected before state changes. Verify valid Bearer API behavior remains as designed.
+5. **Runtime configuration:** verify resulting config is a regular file with mode `0600`; induce a safe write/replace failure in a disposable fixture and confirm the prior valid config remains intact.
+6. **TLS proxy (only if remote access is explicitly in scope):** verify same-host proxy, valid hostname certificate, TLS 1.2/1.3, HTTP redirect/rejection, unknown Host rejection, loopback-only backend, Secure/HttpOnly/SameSite=Strict cookie, and no secrets in proxy logs. Confirm certificate renewal and rollback ownership.
+7. **CSP/browser:** exercise login, dashboard controls, reports, telemetry and error states in supported browsers; inspect console/network errors and verify representative injected markup remains inert.
+8. **Monitoring/alerts:** run a supervised hunt cycle and inspect logs, alert persistence and queue retry behavior. Use only a separately approved test recipient/endpoint for delivery tests.
+9. **Firewall:** verify dry-run output first. Do not apply live firewall rules without separate explicit approval and console recovery access.
+10. **Evidence and rollback:** capture sanitized command output, timestamps, versions and outcomes; redact tokens, credentials, client identifiers and private network details. Rehearse rollback and record owner sign-off.
+
+## Required before production approval
+
+- [ ] Post-merge CI passes on the exact current `main` commit.
+- [ ] Independent reviewer approval is recorded and any review threads are resolved.
+- [ ] Current security audit and residual risks are reviewed against merged code.
+- [ ] Controlled install/upgrade, configuration preservation and rollback pass on a disposable supported host.
+- [ ] Dashboard CSRF, config atomicity, loopback boundary and CSP/browser checks pass.
+- [ ] If remote dashboard access is required, TLS proxy/certificate/Host/cookie/network checks pass; otherwise remote access remains disabled.
+- [ ] Supervised hunt, alert persistence, approved alert delivery and queue recovery evidence are recorded.
+- [ ] Firewall remains dry-run unless a separate live-change approval is given.
+- [ ] Detection coverage and false-positive limitations are documented for the intended pilot scope.
+- [ ] Secrets, access control, owner, escalation and rollback plan are reviewed.
+- [ ] Owner signs off on the specific deployment scope and accepts residual risk.
 
 ## Release / marketing guardrails
 
-- Do not describe Sentinel as certified, vulnerability-free, or production-ready based only on automated tests.
+- Do not describe Sentinel as certified, vulnerability-free or production-ready based only on automated tests.
+- PR-head CI is not post-merge CI; post-merge CI is not field validation.
 - A passing queue test does not establish third-party message receipt.
 - A dry-run firewall test does not establish that live rules are safe on a customer's host.
-- The security-hardening milestone and documentation update do not create a release tag, publish a package, authorize deployment, or approve production use.
-- Keep Sentinel classified as a **pilot candidate** until the four remaining security items and operational validation are complete and independently verified.
+- The TLS guide and `cookie_secure=true` setting do not prove that a reverse proxy or certificate is correctly deployed.
+- Do not publish a production release or change Sentinel's status until all required gates are evidenced and owner-approved.
 
 **Owner sign-off / date:** __________________
