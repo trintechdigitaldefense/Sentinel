@@ -36,6 +36,9 @@ def test_control_mode_cannot_enable_when_config_false(tmp_path, monkeypatch):
         def _auth_ok(self):
             return True
 
+        def _csrf_ok(self):
+            return True
+
         def _read_json_body(self):
             return {"allow_control": True}
 
@@ -72,6 +75,9 @@ def test_control_mode_can_disable_when_enabled(monkeypatch):
         def _auth_ok(self):
             return True
 
+        def _csrf_ok(self):
+            return True
+
         def _read_json_body(self):
             return {"allow_control": False}
 
@@ -100,6 +106,9 @@ def test_post_action_denied_when_view_only(monkeypatch):
         sent = None
 
         def _auth_ok(self):
+            return True
+
+        def _csrf_ok(self):
             return True
 
         def _read_json_body(self):

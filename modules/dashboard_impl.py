@@ -7,8 +7,10 @@ import json
 import os
 import secrets
 import socket
+import stat
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -39,13 +41,63 @@ def _cfg() -> dict:
 
 
 def _save_cfg(cfg: dict) -> None:
+    """Safely persist runtime config using a same-directory atomic replacement."""
+    if not isinstance(cfg, dict):
+        raise ValueError("configuration root must be a JSON object")
     p = _home() / "config.json"
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(cfg, indent=2, default=str))
+
+    # Refuse symlinks, FIFOs, devices, and malformed existing files rather than
+    # silently replacing data that the dashboard could not safely read.
     try:
-        os.chmod(p, 0o600)
-    except Exception as e:
-        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+        before = p.lstat()
+    except FileNotFoundError:
+        before = None
+    if before is not None:
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("configuration path must be a regular non-symlink file")
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(str(p), flags)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise ValueError("configuration path is not a regular file")
+            with os.fdopen(fd, "r", encoding="utf-8") as stream:
+                fd = -1
+                existing = json.load(stream)
+            if not isinstance(existing, dict):
+                raise ValueError("existing configuration root must be a JSON object")
+        finally:
+            if fd >= 0:
+                os.close(fd)
+
+    payload = json.dumps(cfg, indent=2, default=str) + "\n"
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{p.name}.", suffix=".tmp", dir=str(p.parent)
+    )
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            fd = -1
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_name, p)
+        try:
+            dir_fd = os.open(str(p.parent), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            # Some filesystems/platforms do not support directory fsync.
+            pass
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        try:
+            os.unlink(temp_name)
+        except FileNotFoundError:
+            pass
 
 
 
@@ -500,40 +552,40 @@ def _html(token: str, data: dict) -> str:
     <div class="action-group">
       <div class="action-label">Reports for the client</div>
       <div class="actions">
-        <a class="btn btn-pdf" id="btn-pdf-report" href="/api/report/pdf?type=client" target="_blank" rel="noopener" onclick="openPdf('client'); return true;">📄 Client report (easy to read)</a>
-        <a class="btn secondary" href="/api/report/technical" target="_blank" rel="noopener" onclick="openPdf('technical'); return true;">🔧 Technical report (for IT)</a>
+        <a class="btn btn-pdf" id="btn-pdf-report" href="/api/report/pdf?type=client" target="_blank" rel="noopener" >📄 Client report (easy to read)</a>
+        <a class="btn secondary" href="/api/report/technical" target="_blank" rel="noopener" >🔧 Technical report (for IT)</a>
       </div>
     </div>
 
     <div class="action-group">
       <div class="action-label">Check the system</div>
       <div class="actions">
-        <button class="btn" onclick="runAction('refresh')">🔄 Refresh this page data</button>
-        <button class="btn secondary" onclick="runAction('doctor')">🩺 Health check (doctor)</button>
-        <button class="btn secondary" onclick="runAction('service-status')">⚙️ Service status</button>
-        <button class="btn secondary" onclick="runAction('go-live-status')">🚀 Go-live status</button>
-        <button class="btn secondary" onclick="runAction('visibility')">👁️ Scan visibility</button>
+        <button class="btn" data-action="refresh">🔄 Refresh this page data</button>
+        <button class="btn secondary" data-action="doctor">🩺 Health check (doctor)</button>
+        <button class="btn secondary" data-action="service-status">⚙️ Service status</button>
+        <button class="btn secondary" data-action="go-live-status">🚀 Go-live status</button>
+        <button class="btn secondary" data-action="visibility">👁️ Scan visibility</button>
       </div>
     </div>
 
     <div class="action-group">
       <div class="action-label">Alerts &amp; quiet hours</div>
       <div class="actions">
-        <button class="btn secondary" onclick="runAction('quiet-on')"> Quiet mode ON</button>
-        <button class="btn secondary" onclick="runAction('quiet-off')"> Quiet mode OFF</button>
-        <button class="btn secondary" onclick="ackAllCritical()">✅ Clear all critical alerts</button>
-        <button class="btn secondary" onclick="runAction('ops')">📊 Refresh ops numbers</button>
+        <button class="btn secondary" data-action="quiet-on"> Quiet mode ON</button>
+        <button class="btn secondary" data-action="quiet-off"> Quiet mode OFF</button>
+        <button class="btn secondary" data-ack-all="true">✅ Clear all critical alerts</button>
+        <button class="btn secondary" data-action="ops">📊 Refresh ops numbers</button>
       </div>
     </div>
 
     <div class="action-group">
       <div class="action-label">Field tools</div>
       <div class="actions">
-        <button class="btn secondary" onclick="runAction('field-soak')">Field-soak check</button>
-        <button class="btn secondary" onclick="runAction('multi-host')">Multi-host status</button>
-        <button class="btn secondary" onclick="runAction('field-evidence')">Build field evidence</button>
-        <button class="btn secondary" onclick="runAction('fleet-scan')">Fleet scan</button>
-        <button class="btn secondary" onclick="runAction('ssh-status')">SSH block status</button>
+        <button class="btn secondary" data-action="field-soak">Field-soak check</button>
+        <button class="btn secondary" data-action="multi-host">Multi-host status</button>
+        <button class="btn secondary" data-action="field-evidence">Build field evidence</button>
+        <button class="btn secondary" data-action="fleet-scan">Fleet scan</button>
+        <button class="btn secondary" data-action="ssh-status">SSH block status</button>
       </div>
     </div>
 
@@ -684,6 +736,11 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
 #rt-live {{ font-weight:600; }}
 #rt-live.pulse {{ animation: pulse 1.2s infinite; }}
 @keyframes pulse {{ 0%{{opacity:1}} 50%{{opacity:.45}} 100%{{opacity:1}} }}
+.muted-controls {{ margin-left:.35rem; font-size:.75rem; }}
+.metric-critical {{ color:var(--crit); }}
+.metric-good {{ color:var(--good); }}
+.metric-warn {{ color:var(--warn); }}
+.fleet-json {{ max-height:240px; overflow:auto; font-size:11px; }}
 
 </style>
 </head>
@@ -711,10 +768,10 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
     · Quiet <span class="badge {'warn' if quiet_on else 'off'}">{'ON' if quiet_on else 'OFF'}</span>
     · <span id="ctrl-label" data-control="{str(control).lower()}">{'CONTROL' if control else 'VIEW-ONLY'}</span>
     <label class="switch" title="Enable or disable dashboard controls">
-      <input type="checkbox" id="ctrl-toggle" {'checked' if control else ''} onchange="toggleControl(this.checked)"/>
+      <input type="checkbox" id="ctrl-toggle" {'checked' if control else ''} data-control-toggle="true"/>
       <span class="slider"></span>
     </label>
-    <span class="muted" style="margin-left:.35rem;font-size:.75rem">{'Controls on' if control else 'Controls off'}</span>
+    <span class="muted muted-controls">{'Controls on' if control else 'Controls off'}</span>
   </div>
 </header>
 <div class="wrap">
@@ -746,16 +803,16 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
       {rt_rows}
     </table>
     <div class="actions">
-      <button class="btn secondary" onclick="runAction('realtime-scan')">Re-scan now</button>
+      <button class="btn secondary" data-action="realtime-scan">Re-scan now</button>
       <a class="btn secondary" href="/api/realtime">Realtime JSON</a>
     </div>
   </div>
   <div class="grid" id="overview">
     <div class="card"><h2>Protection cycles</h2><div class="metric">{esc(hunt.get('cycles', 0))}</div>
       <div class="muted">last {esc(hunt.get('last_cycle_sec', '—'))}s · ok={esc(hunt.get('last_ok'))}</div></div>
-    <div class="card"><h2>Critical alerts</h2><div class="metric" style="color:var(--crit)">{esc(crit.get('open_count', 0))}</div>
+    <div class="card"><h2>Critical alerts</h2><div class="metric metric-critical">{esc(crit.get('open_count', 0))}</div>
       <div class="muted">need a human to clear</div></div>
-    <div class="card" id="fw-metric"><h2>Firewall plane</h2><div class="metric" style="color:{('var(--good)' if (data.get('firewall') or {}).get('running') or (data.get('firewall') or {}).get('armed') else 'var(--warn)')}">{esc("RUNNING" if (data.get("firewall") or {}).get("running") or (data.get("firewall") or {}).get("armed") else "OFF")}</div>
+    <div class="card" id="fw-metric"><h2>Firewall plane</h2><div class="metric {'metric-good' if (data.get('firewall') or {}).get('running') or (data.get('firewall') or {}).get('armed') else 'metric-warn'}">{esc("RUNNING" if (data.get("firewall") or {}).get("running") or (data.get("firewall") or {}).get("armed") else "OFF")}</div>
       <div class="muted">{esc((data.get("firewall") or {}).get("mode") or (data.get("firewall") or {}).get("backend") or "—")} · blocks {esc((data.get("firewall") or {}).get("managed_ips") or 0)}</div></div>
     <div class="card"><h2>All alerts</h2><div class="metric">{esc(data.get('alert_total', 0))}</div>
       <div class="muted">offline q {esc(ops.get('offline_queue', 0))}</div></div>
@@ -821,10 +878,10 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
     <h2>📄 PDF reports</h2>
     <p class="muted">Tap a button to open the report immediately in this browser. You can download from the viewer.</p>
     <div class="actions">
-      <a class="btn btn-pdf" href="/api/report/pdf?type=client" target="_blank" rel="noopener" onclick="openPdf('client'); return true;">Generate &amp; view client PDF</a>
-      <a class="btn secondary" href="/api/report/technical" target="_blank" rel="noopener" onclick="openPdf('technical'); return true;">Technical PDF</a>
-      <button class="btn secondary" type="button" onclick="openPdf('client')">📄 Open client PDF</button>
-      <button class="btn secondary" type="button" onclick="openPdf('technical')">🔧 Open technical PDF</button>
+      <a class="btn btn-pdf" href="/api/report/pdf?type=client" target="_blank" rel="noopener" >Generate &amp; view client PDF</a>
+      <a class="btn secondary" href="/api/report/technical" target="_blank" rel="noopener" >Technical PDF</a>
+      <button class="btn secondary" type="button" data-open-pdf="client">📄 Open client PDF</button>
+      <button class="btn secondary" type="button" data-open-pdf="technical">🔧 Open technical PDF</button>
     </div>
   </div>
 
@@ -833,7 +890,7 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
     <h2>Network fleet</h2>
     <p class="muted">All discovered devices on the client network. Local host gets canary files; other hosts need a Sentinel agent for file canaries. High-severity items can wait in operator review before client-critical flags.</p>
     <div class="meta">Hosts: {esc(fleet.get('count', 0))} · Scan: {esc(fleet.get('scan_method'))} · Local canaries: {esc(fleet.get('canary_planted'))} · Agent canaries pending: {esc(fleet.get('canary_pending_agent'))} · Review queue: {esc(fleet.get('pending_review', 0))}</div>
-    <pre style="max-height:240px;overflow:auto;font-size:11px">{esc(fleet_json)}</pre>
+    <pre class="fleet-json">{esc(fleet_json)}</pre>
   </div>
 
 {control_panel}
@@ -877,8 +934,21 @@ async function ackAllCritical() {{
 }}
 
 document.addEventListener("click", function(event) {{
-  const button = event.target.closest("button[data-alert-id]");
-  if (button) ackCritical(button.getAttribute("data-alert-id"));
+  const target = event.target.closest("[data-alert-id], [data-action], [data-open-pdf], [data-ack-all]");
+  if (!target) return;
+  if (target.hasAttribute("data-alert-id")) {{
+    ackCritical(target.getAttribute("data-alert-id"));
+  }} else if (target.hasAttribute("data-action")) {{
+    runAction(target.getAttribute("data-action"));
+  }} else if (target.hasAttribute("data-open-pdf")) {{
+    openPdf(target.getAttribute("data-open-pdf"));
+  }} else if (target.hasAttribute("data-ack-all")) {{
+    ackAllCritical();
+  }}
+}});
+document.addEventListener("change", function(event) {{
+  const toggle = event.target.closest("[data-control-toggle]");
+  if (toggle) toggleControl(toggle.checked);
 }});
 function openPdf(kind) {{
   const k = (kind || "client").toLowerCase();
@@ -1146,8 +1216,87 @@ class _Handler(BaseHTTPRequestHandler):
                 return True
         return False
 
+    def _csrf_ok(self) -> bool:
+        """Require a same-origin Origin header for session-cookie-authenticated POSTs.
+
+        Bearer-authenticated API clients are not exposed to browser cookie CSRF.
+        The expected scheme is derived only from the explicit secure-cookie
+        deployment setting; arbitrary forwarded headers are never trusted.
+        """
+        auth = self.headers.get("Authorization") or ""
+        if auth.startswith("Bearer ") and self.token and secrets.compare_digest(
+            auth[7:].strip(), self.token
+        ):
+            return True
+
+        cookie = self.headers.get("Cookie") or ""
+        session_cookie = False
+        for part in cookie.split(";"):
+            key, sep, value = part.strip().partition("=")
+            if sep and key == "sentinel_token" and self.token and secrets.compare_digest(
+                value.strip(), self.token
+            ):
+                session_cookie = True
+                break
+        if not session_cookie:
+            return True
+
+        origin = self.headers.get("Origin")
+        host = self.headers.get("Host")
+        if not origin or not host or origin.strip().lower() == "null":
+            return False
+        if any(ch.isspace() for ch in host) or any(ch in host for ch in (",", "@", "/", "\\")):
+            return False
+        if origin.rstrip().endswith(":") or host.strip().endswith(":"):
+            return False
+        try:
+            parsed_origin = urlparse(origin)
+            parsed_host = urlparse("//" + host.strip())
+            expected_scheme = "https" if self.secure_cookie else "http"
+            if parsed_origin.scheme.lower() != expected_scheme:
+                return False
+            if (
+                not parsed_origin.hostname
+                or parsed_origin.username is not None
+                or parsed_origin.password is not None
+                or parsed_origin.path not in ("", "/")
+                or parsed_origin.params
+                or parsed_origin.query
+                or parsed_origin.fragment
+            ):
+                return False
+            if (
+                not parsed_host.hostname
+                or parsed_host.username is not None
+                or parsed_host.password is not None
+                or parsed_host.path
+                or parsed_host.query
+                or parsed_host.fragment
+            ):
+                return False
+            origin_host = parsed_origin.hostname.rstrip(".").encode("idna").decode("ascii").lower()
+            request_host = parsed_host.hostname.rstrip(".").encode("idna").decode("ascii").lower()
+            origin_port = parsed_origin.port
+            request_port = parsed_host.port
+            if origin_port is None:
+                origin_port = 443 if expected_scheme == "https" else 80
+            if request_port is None:
+                request_port = 443 if expected_scheme == "https" else 80
+            if origin_port == 0 or request_port == 0:
+                return False
+            return origin_host == request_host and origin_port == request_port
+        except (UnicodeError, ValueError):
+            return False
+
 
     def _send(self, code: int, body: bytes, ctype: str = "text/html; charset=utf-8", extra_headers: dict | None = None):
+        nonce = None
+        if ctype.startswith("text/html"):
+            nonce = secrets.token_urlsafe(18)
+            nonce_bytes = nonce.encode("ascii")
+            body = body.replace(b"<style>", b'<style nonce="' + nonce_bytes + b'">')
+            body = body.replace(b"<script>", b'<script nonce="' + nonce_bytes + b'">')
+        nonce_source = f" 'nonce-{nonce}'" if nonce else ""
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
@@ -1160,8 +1309,10 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; "
-            "form-action 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
-            "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-src 'self'",
+            "form-action 'self'; img-src 'self' data:; "
+            f"style-src 'self'{nonce_source}; style-src-attr 'none'; "
+            f"script-src 'self'{nonce_source}; script-src-attr 'none'; "
+            "connect-src 'self'; frame-src 'self'",
         )
         if extra_headers:
             for k, v in extra_headers.items():
@@ -1360,6 +1511,9 @@ class _Handler(BaseHTTPRequestHandler):
             return
         if not self._auth_ok():
             self._send(401, b'{"ok":false,"error":"unauthorized"}', "application/json")
+            return
+        if not self._csrf_ok():
+            self._send(403, b'{"ok":false,"error":"cross-origin request rejected"}', "application/json")
             return
         body_in = self._read_json_body()
 
@@ -1620,13 +1774,42 @@ def _generate_dashboard_pdfs(action: str = "pdf-report") -> dict:
 
 
 
+def _safe_dashboard_bind(requested_bind: str) -> str:
+    """Only expose the dashboard backend on a loopback interface.
+
+    Remote access must terminate TLS in a separately managed reverse proxy
+    on the same host; dashboard.allow_public_bind is intentionally ignored.
+    """
+    if requested_bind == "127.0.0.1":
+        return requested_bind
+    return "127.0.0.1"
+
+
+def _validate_remote_dashboard_config(dash: dict) -> None:
+    """Fail closed on ambiguous remote-access and secure-cookie configuration."""
+    for key in ("remote_access", "cookie_secure"):
+        if key in dash and not isinstance(dash[key], bool):
+            raise RuntimeError(f"dashboard.{key} must be a boolean")
+    if dash.get("remote_access") is True and dash.get("cookie_secure") is not True:
+        raise RuntimeError(
+            "dashboard.remote_access requires dashboard.cookie_secure=true; "
+            "configure a trusted local TLS reverse proxy before remote access"
+        )
+    if dash.get("cookie_secure") is True and dash.get("remote_access") is not True:
+        raise RuntimeError(
+            "dashboard.cookie_secure requires dashboard.remote_access=true; "
+            "the dashboard backend does not provide direct HTTPS"
+        )
+
+
 def start_dashboard(port: int | None = None, bind: str | None = None):
     token, cfg_port, dash = ensure_token()
     port = int(port or cfg_port or DEFAULT_PORT)
-    bind = bind or dash.get("bind") or "127.0.0.1"
-    if bind in ("0.0.0.0", "::", "*") and not dash.get("allow_public_bind"):
-        print("[!] Refusing public bind without dashboard.allow_public_bind=true — using 127.0.0.1")
-        bind = "127.0.0.1"
+    requested_bind = bind or dash.get("bind") or "127.0.0.1"
+    _validate_remote_dashboard_config(dash)
+    bind = _safe_dashboard_bind(str(requested_bind))
+    if bind != requested_bind:
+        print("[!] Non-loopback dashboard bind refused; using 127.0.0.1. Use a local TLS reverse proxy for remote access.")
     _Handler.token = token
     # Set dashboard.cookie_secure=true when HTTPS is terminated by a trusted proxy.
     # This is intentionally explicit; untrusted forwarding headers are not consulted.

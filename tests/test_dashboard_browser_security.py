@@ -14,6 +14,7 @@ def dashboard_server(monkeypatch):
 
     dashboard._Handler.token = "browser-test-token"
     dashboard._Handler.allow_control = True
+    dashboard._Handler.secure_cookie = False
     monkeypatch.setattr(
         dashboard,
         "collect_full",
@@ -134,7 +135,16 @@ def test_browser_login_xss_report_links_and_security_headers(dashboard_server):
         assert headers["x-content-type-options"] == "nosniff"
         assert headers["referrer-policy"] == "no-referrer"
         assert headers["x-frame-options"] == "SAMEORIGIN"
-        assert "frame-ancestors 'self'" in headers["content-security-policy"]
+        policy = headers["content-security-policy"]
+        assert "frame-ancestors 'self'" in policy
+        assert "script-src 'self' 'nonce-" in policy
+        assert "style-src 'self' 'nonce-" in policy
+        assert "script-src-attr 'none'" in policy
+        assert "style-src-attr 'none'" in policy
+        assert "'unsafe-inline'" not in policy
+        assert page.locator("script[nonce]").count() == 1
+        assert page.locator("style[nonce]").count() == 1
+        assert page.locator("[onclick], [onchange]").count() == 0
 
         unauth_context.close()
         context.close()

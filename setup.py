@@ -191,6 +191,8 @@ def default_config() -> dict:
             "username": "admin",
             "password": "",
             "allow_control": False,
+            "remote_access": False,
+            "cookie_secure": False,
         },
         "central": {
             "enabled": False,
