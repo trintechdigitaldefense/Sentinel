@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — dashboard security hardening (2026-11-18)
+
+- PR #19 merged to `main` as `bc40fe6d5012c061fbdab13544ba3cbf5078dc1d`.
+- Added Origin/Host checks for cookie-authenticated state-changing dashboard requests.
+- Replaced runtime dashboard config writes with guarded atomic updates and restrictive permissions.
+- Restricted dashboard backend binding to `127.0.0.1`; documented same-host TLS reverse-proxy requirements for remote access.
+- Hardened active dashboard CSP with per-response nonces and removed `unsafe-inline` from script/style directives.
+- PR-head CI run 44149308038 passed 295 tests on Python 3.10 and 3.12. Post-merge CI and controlled host validation remain outstanding; no production release or deployment is implied.
+
+
 ## Unreleased — post-merge alert reliability (2026-11-17)
 
 - PR #9 merged to `main` as `e80c09b`: reliable active-finding alert deduplication and delivery retry handling.
