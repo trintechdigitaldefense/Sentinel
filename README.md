@@ -15,6 +15,15 @@
 
 **Status:** pilot candidate (v3.16.21) on main — **not** a certified production release until [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) gates are evidenced and owner-approved.
 
+## Operating model: supervised automated monitoring
+
+Sentinel is a **supervised automated monitoring tool**. Its hunt and monitoring functions can run continuously on a designated, supported always-on host, while an authorised human operator remains responsible for reviewing alerts, validating findings, and deciding on response.
+
+- Automated monitoring and alerting do not make an alert proof of compromise.
+- Sentinel does not replace an operator, incident-response service, or staffed 24/7 SOC.
+- Potentially disruptive response remains constrained by configuration and explicit approval. SSH automatic blocking is off by default; firewall changes remain dry-run until confirmed.
+- A running service means the monitoring process is active; it does not guarantee that an operator is continuously available or that every third-party alert channel is reachable.
+- The pilot agreement should define monitoring hours, alert recipients, review/acknowledgement targets, escalation contacts, permitted response actions, and maintenance responsibilities.
 
 ## Deployment model (SMB pilot)
 
@@ -29,19 +38,18 @@ python3 sentinel.py                     # menu → 1 continuous protection
 python3 sentinel.py service-status      # confirm always-on
 ```
 
-**Weekly / biweekly supervision:** `doctor`, client PDF, review critical alerts, confirm canaries.
+**Operator supervision:** set an agreed review cadence (weekly/biweekly is a baseline for routine review, with critical alerts escalated promptly); run `doctor`, review critical alerts, check alert delivery/queue health, and confirm canaries. The service can monitor continuously, but the operator-response commitment must be defined separately.
 
 **False positives:**  
 `python3 sentinel.py suppress-add SUSPICIOUS_PROCESS "pattern"`  
 `python3 sentinel.py suppress`
-
 
 ---
 
 ## What Sentinel does
 
 | Capability | Implementation status | Notes |
-|------------|----------------------|--------|
+|------------|----------------------|-------|
 | FIM (baseline + check) | Implemented · tested (partial) | Mode/owner/SUID; realtime needs `inotify-tools` |
 | Persistence hunting | Implemented · tested (partial) | Cron, systemd, keys, LD_PRELOAD surfaces |
 | Reverse-shell / behavioral | Implemented · tested (partial) | Heuristics — not proof of compromise alone |
@@ -161,7 +169,9 @@ python scripts/firewall_smoke.py
 Details: [docs/TESTING.md](docs/TESTING.md).  
 CI runs compile-all, future-import guard, ruff, firewall smoke, pytest on PRs to `main`.
 
-**Post-merge verification on `main` at `e80c09b` (2026-11-17):** `python3 -m pytest -q` → **242 passed**, with one ReportLab/Python deprecation warning, on Python 3.12. GitHub Actions for PR #9 also passed on Python 3.10 and 3.12. These are automated checks; they are not live firewall, SIEM, WhatsApp, or customer-host validation.
+**PR #21 PDF-serving security verification (2026-11-20):** 310 passed, 1 skipped in the full local suite; Python 3.10 and 3.12 GitHub Actions checks passed on the PR commit. This covers the regression suite for PDF path, file, and directory symlink handling. It is not live deployment validation or production certification.
+
+Earlier post-merge verification on `main` at `e80c09b` (2026-11-17): `python3 -m pytest -q` → **242 passed**, with one ReportLab/Python deprecation warning, on Python 3.12. GitHub Actions for PR #9 also passed on Python 3.10 and 3.12. These are historical automated checks; they are not live firewall, SIEM, WhatsApp, or customer-host validation.
 
 ---
 
@@ -186,6 +196,7 @@ CI runs compile-all, future-import guard, ruff, firewall smoke, pytest on PRs to
 - Realtime FIM is reduced without `inotifywait` (`visibility_status().incomplete`).
 - Query-string dashboard tokens can leak via logs/Referer (prefer Bearer; tracked as H-04).
 - Live firewall **apply** and third-party SIEM delivery are not fully exercised in CI.
+- Dashboard CSRF Origin/Host validation, atomic runtime configuration writes, remote-dashboard TLS verification, and tighter CSP remain open in issues [#15](https://github.com/trintechdigitaldefense/Sentinel/issues/15)–[#18](https://github.com/trintechdigitaldefense/Sentinel/issues/18).
 - Doctor “install OK” is **not** a production certification.
 
 ---
