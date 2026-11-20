@@ -1,21 +1,47 @@
 # SENTINEL release checklist
 
-**Current reviewed revision:** `933343c108d8e3d1cb42cfe9fc59378449896534` (`main`; PRs #14, #13, and #12 merged)  
-**Updated:** 2026-11-17  
+**Historical checklist baseline:** 2026-11-17 (PRs #14, #13, and #12 merged). The entries below preserve the evidence recorded at that time; the 2026-11-20 addendum at the top is the latest status update and supersedes older branch-head/test-count snapshots where they differ.  
 **Product status:** **pilot candidate**; no production release, certification, or deployment approval is declared by this checklist.
+
+## Latest status addendum — 2026-11-20
+
+**Operating model:** Sentinel is a **supervised automated monitoring tool**. Continuous monitoring may run on a supported always-on host, but alert triage, finding validation, escalation, and response decisions remain under an authorised human operator. Service uptime is not a promise of staffed 24/7 response. This is the intended product model, not an unresolved autonomy defect.
+
+**PR #21 — dashboard PDF-serving hardening: MERGED**
+- Target: `main`; merge commit: `d639b9d8beb17c64ad4904af281f81096feff4fe`.
+- Hardened approved PDF reads against filename traversal, unsafe response-header filenames, symlinked PDF files, symlinked `data` / `reports` directories, non-regular files, and generated-report paths outside the approved reports directory.
+- Added regression tests for symlinked directory components and generated-report paths.
+- Validation on the PR commit: full local suite **310 passed, 1 skipped**; Ruff critical checks and Python compilation passed; GitHub Actions passed on Python 3.10 and 3.12.
+- Scope limitation: this verifies the PDF-serving change and automated regression behavior. It is not a live remote-dashboard penetration test, independent audit, production certification, or customer-host validation.
+
+**Open dashboard/deployment security work**
+| Issue | Priority | Status | Next action |
+|---|---|---|---|
+| [#15 — Origin/Host validation for state-changing requests](https://github.com/trintechdigitaldefense/Sentinel/issues/15) | High | **OPEN** | Implement CSRF checks and prove rejected cross-origin requests do not mutate state |
+| [#16 — atomic runtime configuration writes](https://github.com/trintechdigitaldefense/Sentinel/issues/16) | High | **OPEN** | Preserve existing valid config across symlink, special-file, and write/replace failures |
+| [#17 — remote dashboard TLS requirements](https://github.com/trintechdigitaldefense/Sentinel/issues/17) | High | **OPEN** | Define trusted-proxy/TLS setup and verify secure cookies; remote dashboard access remains unapproved |
+| [#18 — CSP hardening](https://github.com/trintechdigitaldefense/Sentinel/issues/18) | Medium | **OPEN** | Reduce `unsafe-inline` and add browser regression tests |
+
+**Next engineering priority:** Issue #15, because it protects state-changing dashboard routes against cross-origin browser requests. Issues #16–#18 remain required security work and must not be treated as closed by PR #21.
+
+**Current gate interpretation**
+- PDF serving hardening: **PASS — automated regression evidence on PR #21**.
+- Dashboard CSRF, atomic runtime config writes, remote TLS, and CSP: **OPEN**.
+- Live firewall apply, real third-party alert delivery/receipt, restart/soak behavior, detection coverage/false-positive rate, independent review, and operational pilot sign-off: **OPEN or PARTIAL** as described below.
+- Product status remains **pilot candidate**. No release tag, customer deployment approval, or production certification is created by PR #21 or this documentation update.
 
 Legend: **PASS** = current evidence recorded · **PARTIAL** = automated/static evidence only · **OPEN** = evidence or owner decision still required.
 
-## Security-hardening milestone — 2026-11-17
+## Historical security-hardening milestone — 2026-11-17
 
-**Milestone outcome: SUCCESSFUL SECURITY-HARDENING MILESTONE.** The recent merged changes strengthen dashboard authentication and output handling, installer configuration safety, and offline alert-queue reliability. This milestone records progress; it is **not** a production-readiness declaration.
+The 2026-11-17 milestone recorded merged changes to dashboard authentication/output handling, installer configuration safety, and offline alert-queue reliability. It was not a production-readiness declaration.
 
 | Change | Record |
 |---|---|
 | PR #14 — offline queue overflow handling | Merged; rejects new queue entries at capacity rather than discarding older unconfirmed alerts. Merge commit: `7f20f544da56733da61824c8bdd7ffc9d08d8218`. |
 | PR #13 — installer configuration preservation | Merged; adds guarded reads and atomic installer configuration writes with regression coverage. Merge commit: `91518fa75f877fb6b876add5260e4fd5771d5652`. |
 | PR #12 — dashboard authentication and XSS hardening | Merged; improves viewer/admin separation, session handling, safe rendering, and security headers, with browser regression coverage. Merge commit: `933343c108d8e3d1cb42cfe9fc59378449896534`. |
-| Combined-main regression suite | User-confirmed on exact `main` revision above: `python3 -m pytest -q` → **263 passed, 1 skipped, 1 warning in 72.81s**. The warning is a ReportLab deprecation warning involving `ast.NameConstant`; no test failed. |
+| Combined-main regression suite | User-confirmed on the historical revision above: `python3 -m pytest -q` → **263 passed, 1 skipped, 1 warning in 72.81s**. This is historical evidence, not the PR #21 test count. |
 
 The test result is automated regression evidence. It does not establish live deployment safety, real alert delivery, customer-host behavior, remote TLS configuration, or independent security approval.
 
@@ -36,11 +62,7 @@ Closing these issues requires implementation and regression evidence. Before Sen
 
 | Gate | Status | Current evidence / remaining work |
 |---|---|---|
-| PRs #14, #13, and #12 merged | **PASS** | Merge commits recorded in the milestone table above; current `main` is `933343c108d8e3d1cb42cfe9fc59378449896534`. |
-| Combined-main local regression suite | **PASS** | Python 3.12: 263 passed, 1 skipped, 1 ReportLab deprecation warning; user-confirmed on exact current `main`. |
-| Offline queue capacity handling | **PASS** (automated) | Queue overflow rejects the new entry and preserves existing unconfirmed entries; live restart/soak evidence remains separate. |
-| Installer configuration preservation | **PASS** (automated/static) | Symlink/special-file rejection and atomic installer writes have regression coverage; still validate upgrades on supported target platforms. |
-| Dashboard authentication and XSS hardening | **PARTIAL** | PR #12 merged with browser regression coverage and security headers. CSRF validation remains OPEN (#15), CSP still needs hardening (#18), and remote-access TLS must be verified (#17). |
+| PR #21 PDF-serving hardening | **PASS** (automated) | Merge commit recorded above; 310 passed, 1 skipped locally and Python 3.10/3.12 CI passed on the PR commit. |
 | CSRF Origin/Host validation | **OPEN** | Tracked in [#15](https://github.com/trintechdigitaldefense/Sentinel/issues/15). |
 | Runtime dashboard configuration writes | **OPEN** | Runtime `_save_cfg()` still needs atomic-write protection; tracked in [#16](https://github.com/trintechdigitaldefense/Sentinel/issues/16). |
 | Remote dashboard TLS configuration | **OPEN** | Remote access must use a properly configured TLS reverse proxy and secure session cookies; tracked in [#17](https://github.com/trintechdigitaldefense/Sentinel/issues/17). |
@@ -65,12 +87,14 @@ Closing these issues requires implementation and regression evidence. Before Sen
 - [ ] Validate firewall behavior in dry-run first; live apply only with explicit customer approval and console recovery.
 - [ ] Confirm dashboard bind/authentication, operator roles, secrets handling, and network exposure; use verified TLS for remote access.
 - [ ] Document pilot owner, scope, maintenance window, escalation contacts, and rollback procedure.
+- [ ] Agree monitoring coverage, operator review cadence, alert acknowledgement targets, and escalation/response responsibilities with the pilot customer.
 
 ## Release / marketing guardrails
 
 - Do not describe Sentinel as certified, vulnerability-free, or production-ready based only on automated tests.
 - A passing queue test does not establish third-party message receipt.
 - A dry-run firewall test does not establish that live rules are safe on a customer's host.
+- Continuous monitoring capability does not imply a staffed 24/7 response service or autonomous incident decision-making.
 - The security-hardening milestone and documentation update do not create a release tag, publish a package, authorize deployment, or approve production use.
 - Keep Sentinel classified as a **pilot candidate** until the four remaining security items and operational validation are complete and independently verified.
 
