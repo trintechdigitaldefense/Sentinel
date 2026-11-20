@@ -93,42 +93,41 @@
 
 - autosubnet skips docker/veth, clamps width, uses subnet_guard
 - Learned suppressions applied in send_alert (non-critical)
-- CLI: autosubnet, suppress-add, suppress
 - README pilot deployment + docs/PILOT_DEPLOY.md
 
 ## 3.16.11 — CLI/menu polish
 
-- Fix agent-key status handling
-- Fleet menu uses pure numbers
+- Fix `agent-key status` (subcommand was treated as agent id)
+- Fleet menu uses pure numbers (no 3a/3b)
 - Doctor service check uses always_on status
 - Clearer enroll_status when not enrolled
 
 ## 3.16.10 — always-on, RBAC, agent enroll UX
 
 - Option 1 installs always-on hunt (systemd or background) so protection continues after menu exit
-- service-stop / richer service-status via modules.always_on
-- Dashboard control uses RBAC (allow_control + role=admin)
-- agent-key issues per-agent API keys with enroll hint
+- `service-stop` / richer `service-status` via modules.always_on
+- Dashboard control uses RBAC (`allow_control` + role=admin)
+- `agent-key` issues per-agent API keys with enroll hint
 
 ## 3.16.9 — reliability gap fixes
 
 - Doctor auto-sanitizes overly wide scan_subnets when possible
-- Critical modules: silent except: pass → debug logging (dashboard, central, fleet, reports, agents)
+- Critical modules: silent `except: pass` → debug logging (dashboard, central, fleet, reports, agents)
 - Version badges aligned to 3.16.9
 
 ## 3.16.8 — gap fixes (defaults, central auth, docs)
 
-- Safe default scan subnet: office /24 only (no /8 or /12)
-- Dashboard allow_control defaults to false (opt-in controls)
+- Safe default scan subnet: office `/24` only (no `/8` or `/12`)
+- Dashboard `allow_control` defaults to **false** (opt-in controls)
 - Continuous protect runs subnet guard before discovery
-- Central accepts shared token or per-agent API keys
-- Optional central TLS via agent.tls_cert / agent.tls_key
+- Central accepts shared token **or** per-agent API keys (`agent_keys`)
+- Optional central TLS via `agent.tls_cert` / `agent.tls_key`
 - README / release checklist version aligned to 3.16.8
 
-### Reports & dashboard
 
+### Reports & dashboard
 - Enhanced client PDF (logo, verdict badge, protection table, TrinTech contact)
-- Dashboard logo + /api/assets/logo + one-click GET PDF
+- Dashboard logo + `/api/assets/logo` + one-click GET PDF
 - Overview & cheatsheet doc
 
 # Changelog
@@ -137,9 +136,10 @@
 
 ### Milestone 7 — residual risk mitigations
 - Dashboard: Bearer + cookie auth preferred (query token deprecated)
-- Fix ruff F821 bp in ransomware_tripwire (CI green path)
+- Fix ruff F821 `bp` in ransomware_tripwire (CI green path)
 - Realtime heuristic confidence + disclaimer
 - Tests: alert chaos smoke, firewall dry-run contract, auth bearer/cookie
+
 
 ## [3.14.6] — 2026-10-26
 
@@ -152,6 +152,7 @@
 - INSTALL.md / SECURITY.md / VERIFY.md aligned with non-destructive defaults
 - Cross-links to SECURITY_AUDIT, RELEASE_CHECKLIST, EVIDENCE_HASH
 
+
 ## [3.14.5] — 2026-10-26
 
 ### Milestone 4 — defensive module hardening
@@ -161,12 +162,14 @@
 - fim_realtime.visibility_status() for incomplete coverage
 - tests: self_defense, fim visibility, tripwire
 
+
 ## [3.14.4] — 2026-10-26
 
 ### Milestone 3 — CI and regression tests
 - Compile-all + future-import guard in CI
 - test_install_safe.py; expanded dashboard authz tests
 - docs/TESTING.md
+
 
 ## [3.14.3] — 2026-10-26
 
@@ -177,48 +180,57 @@
 - H-03: doctor no longer prints CLIENT-READY
 - tests: test_dashboard_authz.py; 120 passed in audit environment
 
-## 3.14.2 — 2026-10-26
+
+## [3.14.2] — 2026-10-26
 
 ### Install path — no more stale trees
-- Historical installer behavior and recovery notes are retained in this changelog for context; consult current INSTALL.md for the safe path.
+- `install.sh` hard-resets to `origin/main` (use `SENTINEL_KEEP_LOCAL=1` to opt out)
+- `setup.py` detects dirty/behind git and resets unless `SENTINEL_KEEP_LOCAL=1`
+- Config merge always `chmod 0600`
 
-## 3.14.1 — 2026-10-26
 
-### Critical crash + security defaults
-- Fix NameError true → True in init_config
+## [3.14.1] — 2026-10-26
+
+### Critical crash + security defaults (improvement brief)
+- Fix NameError `true` → `True` in init_config
 - auto_block default False; config.json 0600; progressive SSH bans
 - Dashboard loopback + viewer + allow_control False by default
 - Doctor: config perms + default password; log silent excepts
 - docs/EVIDENCE_HASH.md
 
-## 3.14.0 — 2026-10-25
+
+## [3.14.0] — 2026-10-25
 
 ### Real-time threat detection (expanded)
 - Detectors: reverse-shell cmdline, behavioral, risky ports, deleted exe, LD_PRELOAD, canary missing/empty, open criticals
 - Hunt cycle emits alerts + critical store on hits
-- CLI monitor / dashboard LIVE panel / menu item 21
+- CLI `monitor` / dashboard LIVE panel / menu item
 
-## 3.13.4 — 2026-10-25
+
+## [3.13.4] — 2026-10-25
 
 ### Real-time threat level color coding
 - CLI monitor: CLEAR green · WATCH cyan · ELEVATED yellow · HIGH red · CRITICAL magenta
-- Severity lines colorized; dashboard badges/rows match
+- Severity lines colorized; dashboard badges/rows match (elev/info/bad)
 
-## 3.13.3 — 2026-10-25
+
+## [3.13.3] — 2026-10-25
 
 ### CLI monitor interval options
-- monitor --interval N / -i N (min 3s)
-- Presets: fast (5), normal (10), slow (30), hunt (60), idle (120)
-- --once, --json, --quiet, --emit, --help
+- `monitor --interval N` / `-i N` (min 3s)
+- Presets: `fast` (5), `normal` (10), `slow` (30), `hunt` (60), `idle` (120)
+- `--once`, `--json`, `--quiet`, `--emit`, `--help`
 
-## 3.13.2 — 2026-10-25
+
+## [3.13.2] — 2026-10-25
 
 ### Real-time monitoring + restored controls toggle
-- Dashboard live poll of /api/realtime?scan=1 (8–12s) without full page reload
-- Restored controls switch (on/off) with reliable token API
-- CLI continuous monitor: python3 sentinel.py monitor (or realtime-monitor)
+- Dashboard **live poll** of `/api/realtime?scan=1` (8–12s) without full page reload
+- Restored **controls switch** (on/off) with reliable token API
+- CLI continuous monitor: `python3 sentinel.py monitor` (or `realtime-monitor`)
 
-## 3.13.1 — 2026-10-25
+
+## [3.13.1] — 2026-10-25
 
 ### Real-time threats + dashboard control toggle
 - modules/realtime_threat.py — RS cmdline, behavioral, risky ports, criticals
@@ -226,119 +238,213 @@
 - Control Enable/Disable toggle (POST /api/control-mode)
 - CLI: python3 sentinel.py realtime
 
-## 3.13.0 — 2026-10-25
+
+## [3.13.0] — 2026-10-25
 
 ### Full dashboard surface
 - Wired: hunt, critical, alerts, visibility, SIEM, firewall, SSH blocks, blocklist, cases, go-live, service, quiet
 - Control actions: doctor, ops, quiet on/off, field-soak, visibility, service-status, critical ACK
-- APIs: /api/status, /api/critical, /api/go-live, /api/ops, /api/visibility, POST /api/action
+- APIs: `/api/status`, `/api/critical`, `/api/go-live`, `/api/ops`, `/api/visibility`, `POST /api/action`
 
-## 3.12.1 — 2026-10-25
+## [3.12.1] — 2026-10-25
 
 ### Dashboard
-- Critical alert ACK / ACK all from the UI (control mode)
-- Go-live status panel from last go-live report
-- API: GET /api/critical, GET /api/go-live, POST /api/critical/ack, POST /api/critical/ack-all
-- View-only mode respects dashboard.allow_control: false
+- Critical alert **ACK / ACK all** from the UI (control mode)
+- **Go-live status** panel from last `go-live` report
+- API: `GET /api/critical`, `GET /api/go-live`, `POST /api/critical/ack`, `POST /api/critical/ack-all`
+- View-only mode respects `dashboard.allow_control: false`
 
-## 3.12.0 — 2026-10-25
+## [3.12.0] — 2026-10-25
 
 ### Host operational setup
-- python3 sentinel.py go-live — one-shot baselines (FIM/SUID/persistence), canaries, alert ship channel, heartbeat
-- --service optionally installs always-on hunt
+- `python3 sentinel.py go-live` — one-shot baselines (FIM/SUID/persistence), canaries, alert ship channel, heartbeat
+- `--service` optionally installs always-on hunt
 - docs/GO_LIVE.md; menu item 21
 
-## 3.11.1 — 2026-10-25
+## [3.11.1] — 2026-10-25
 
 ### Fixes
-- field-soak: call threat_sim.run([...]) with a scenario list
-- phase2: self-contained module
+- field-soak: call `threat_sim.run([...])` with a scenario **list** (was iterating string chars)
+- phase2: self-contained module (no missing phase2_a/b ImportError)
 - dashboard version aligned to 3.11.1
 
-## 3.11.0 — 2026-10-25
+## [3.11.0] — 2026-10-25
 
 ### Pilot readiness freeze
-- field-soak command + docs/FIELD_SOAK.md
+- `field-soak` command + docs/FIELD_SOAK.md (canary, sim, WhatsApp/Splunk channel check)
 - docs/SALES_PACK.md — one-page runbook + fixed pilot pricing guide
+- README version badge stabilized to 3.11.0; menu notes field soak
 - Explicit product focus: no feature sprawl until pilots complete
 
-## 3.10.2 — 2026-10-25
+## [3.10.2] — 2026-10-25
 
 ### Splunk HEC integration
-- Full HEC configure/health/batch/flush helpers in modules/siem.py
-- CLI: siem splunk-configure, siem splunk env|health|flush
+- Full HEC configure/health/batch/flush helpers in `modules/siem.py`
+- CLI: `siem splunk-configure`, `siem splunk env|health|flush`
+- Env: `SPLUNK_HEC_URL`, `SPLUNK_HEC_TOKEN`, `SPLUNK_HEC_INDEX`
+- docs/SPLUNK.md
 
-## 3.10.0 — 2026-10-25
+## [3.10.0] — 2026-10-25
 
 ### SIEM / centralized logging
-- modules/siem.py — syslog, CEF, Splunk HEC, webhook, JSONL ship file
-- Wired into AlertRouter + send_alert when alerting.siem.enabled
-- CLI: siem status|test|cef-sample
+- `modules/siem.py` — syslog (UDP/TCP), CEF, Splunk HEC, webhook, JSONL ship file
+- Wired into AlertRouter + send_alert when `alerting.siem.enabled`
+- CLI: `siem status|test|cef-sample`
+- docs/SIEM.md
 
-## 3.9.1 — 2026-10-25
+## [3.9.1] — 2026-10-25
 
 ### Persistent critical alerts
-- modules/critical_alerts.py — open critical events stored until operator ACK
-- Quiet hours / hygiene cannot suppress critical types
-- Hunt loop re-surfaces unacked criticals every loop
-- CLI: critical status|ack|ack-all|resurface
+- `modules/critical_alerts.py` — open critical events stored until operator ACK
+- Quiet hours / hygiene **cannot suppress** critical types
+- Hunt cycle re-surfaces unacked criticals every loop
+- CLI: `critical status|ack <id>|ack-all|resurface`
+- Ops status shows open critical count
 
-## 3.9.0 — 2026-10-25
+## [3.9.0] — 2026-10-25
 
 ### Hunt loop, alerts, ops
-- modules/hunt_cycle.py — structured cycle: heartbeat → FIM/process/SSH/outbound/users/cron → persistence → visibility → sensors → maintenance
-- Per-check isolation + hunt_metrics.json
-- send_alert routes through AlertRouter (dedup, channels, offline queue)
-- modules/ops_status.py + CLI ops
+- `modules/hunt_cycle.py` — structured cycle: heartbeat → FIM/process/SSH/outbound/users/cron → persistence → visibility → sensors → maintenance
+- Per-check isolation + `hunt_metrics.json` (timing, errors, alert types)
+- `send_alert` routes through AlertRouter (dedup, channels, offline queue) with severity map
+- `modules/ops_status.py` + CLI `ops` — hunt health, alerts, service, blocks, visibility
+- Menu 12 = Ops status
 
-## 3.8.0 — 2026-10-25
+## [3.8.0] — 2026-10-25
 
 ### Visibility (devices / processes / FIM / persistence)
-- modules/visibility.py — unified inventory: ARP devices, process snapshot, FIM, SUID, persistence
+- `modules/visibility.py` — unified inventory: ARP devices, process snapshot, FIM, SUID, persistence
 - Network scan falls back to ARP when nmap missing/timeout
 - Hunt loop refreshes device + process inventory each cycle
+- CLI: `visibility` · `visibility devices` · `visibility processes`
+- Detection menu: Full visibility inventory
 
-## 3.6.1 — 2026-10-25
+## [3.6.1] — 2026-10-25
 
 ### Menu + CLI wiring
-- Interactive menu expanded: Detection, Firewall, Ops submenus
-- Wired firewall / fw and cases CLI into sentinel.py
+- Interactive menu expanded: Detection, Firewall, Ops submenus; Pilot + Doctor on main
+- Wired `firewall` / `fw` and `cases` CLI into sentinel.py (were missing)
+- Help text lists firewall, cases, pilot, sim
 
-## 3.5.2 — 2026-10-25
+## [3.5.2] — 2026-10-25
 
 ### Pilot validation workflow
 - Full phased pilot: preflight → baselines → deception → detection → service
-- Go/No-Go checklist and ~/.sentinel/data/pilot_report.json
+- Go/No-Go checklist + `~/.sentinel/data/pilot_report.json`
+- `sentinel pilot --fix` creates missing persistence/SUID baselines
+- docs/PILOT.md on-site runbook
 
-## 3.5.0 — 2026-10-25
+## [3.5.0] — 2026-10-25
 
 ### Product hygiene
-- README feature matrix, CLI table, architecture
+- README rewrite: feature matrix, menu preview, full CLI table, architecture
 - docs/THREAT_MODEL.md — SMB-focused control mapping
 - CI: ruff critical checks, module compile, firewall smoke, pytest
+- tests/test_persistence_behavioral.py — persistence, SUID, behavioral, lockout
 
-## 3.4.0 — 2026-10-25
+## [3.4.0] — 2026-10-25
 
 ### Persistence expansion + behavioral shells + self-FIM
-- persistence_hunt: systemd timers/sockets, authorized_keys drift, LD_PRELOAD create/change, profile.d, rc files
-- behavioral_shell: deleted /proc/pid/exe, TTY+TCP established, web-server→shell parent anomaly
-- Self-FIM: tracks core modules + setup.py
-- CLI: sentinel persistence-baseline, sentinel persistence, sentinel behavioral
+- **persistence_hunt**: systemd timers/sockets, authorized_keys drift, LD_PRELOAD create/change, profile.d, rc files
+- **behavioral_shell**: deleted `/proc/pid/exe`, TTY+TCP established, web-server→shell parent anomaly
+- **Self-FIM**: tracks core modules + setup.py; full-tree git updates refresh baseline; partial module change alerts
+- CLI: `sentinel persistence-baseline` · `sentinel persistence` · `sentinel behavioral`
 
-## 3.3.1 — 2026-10-25
+## [3.3.1] — 2026-10-25
 
 ### FIM / detection quality
-- Mode + ownership tracking on every baselined file
-- SUID/SGID inventory (modules/fim_suid.py)
-- Real-time FIM (modules/fim_realtime.py)
-- CLI: sentinel suid, sentinel watch
+- **Mode + ownership tracking** on every baselined file (FIM_MODE_CHANGE, FIM_OWNER_CHANGE)
+- **SUID/SGID inventory** (`modules/fim_suid.py`): NEW_SUID, REMOVED_SUID, SUID_META_CHANGE
+- **Real-time FIM** (`modules/fim_realtime.py`): single multi-path inotifywait process; polling fallback
+- CLI: `python3 sentinel.py suid` · `python3 sentinel.py watch`
+- `sentinel integrity` builds both content baseline and SUID inventory
 
-## 3.3.0 — 2026-10-24
+## [3.3.0] — 2026-10-24
 
 ### Firewall (Phase 13.2)
-- Lockout guard and IPv6 support
+- **Lockout guard**: refuses to block current/recent SSH operator IPs; `protect-operator` before hardening profiles
+- **IPv6**: iptables path uses `ip6tables` for v6 targets; nft already dual-stack via `inet`
 - Firewall actions logged into case system when available
-- CLI: firewall protect-operator, firewall operator-ips
+- CLI: `firewall protect-operator`, `firewall operator-ips`
 
 ### Alerting
-- Failed multi-channel delivery auto-enqueues to offline queue
+- Failed multi-channel delivery auto-enqueues to offline queue (flush via `sentinel offline flush`)
+
+
+# Changelog
+
+## [3.14.7] — 2026-10-26
+
+### Milestone 7 — residual risk mitigations
+- Dashboard: Bearer + cookie auth preferred (query token deprecated)
+- Fix ruff F821 `bp` in ransomware_tripwire (CI green path)
+- Realtime heuristic confidence + disclaimer
+- Tests: alert chaos smoke, firewall dry-run contract, auth bearer/cookie
+
+
+## [3.14.6] — 2026-10-26
+
+### Milestone 6 — release candidate packaging
+- docs/RELEASE_CANDIDATE.md + checklist evidence
+- Acceptance pytest 131 passed (local RC env)
+
+### Milestone 5 — docs and product presentation
+- README: pilot-candidate status, truthful feature matrix, safe install
+- INSTALL.md / SECURITY.md / VERIFY.md aligned with non-destructive defaults
+- Cross-links to SECURITY_AUDIT, RELEASE_CHECKLIST, EVIDENCE_HASH
+
+
+## [3.14.5] — 2026-10-26
+
+### Milestone 4 — defensive module hardening
+- self_defense: atomic baseline write + 0600
+- alerting: no silent alert-log failure; atomic dedup + 0600
+- ransomware_tripwire / honeyauth: logged failures
+- fim_realtime.visibility_status() for incomplete coverage
+- tests: self_defense, fim visibility, tripwire
+
+
+## [3.14.4] — 2026-10-26
+
+### Milestone 3 — CI and regression tests
+- Compile-all + future-import guard in CI
+- test_install_safe.py; expanded dashboard authz tests
+- docs/TESTING.md
+
+
+## [3.14.3] — 2026-10-26
+
+### Production-readiness Milestone 2 (hardening branch)
+- Fix C-01: future import order (agent_keys, critical_alerts, visibility, webview)
+- Fix C-02: install/setup non-destructive by default; SENTINEL_RECOVER_SYNC=1 for recovery
+- H-01/H-02: dashboard control-mode cannot enable controls via token; class default False
+- H-03: doctor no longer prints CLIENT-READY
+- tests: test_dashboard_authz.py; 120 passed in audit environment
+
+
+## 3.7.1 — 2026-10-24
+
+### Phase 13.1 — Host Firewall enhanced
+- CIDR blocks, apply-managed, enable/disable, lab_lockdown profile
+- max_blocks safety, richer status/doctor
+- response_actions.block_ip routes through modules.firewall
+- setup.py + apply_firewall_cli wiring
+- Cheatsheet PDF/MD refreshed
+
+## 3.7.0 — 2026-10-24
+
+### Phase 13 — Host Firewall Control Plane
+- modules/firewall.py nft/iptables host FW manager
+
+## 3.6.0 — 2026-10-24
+
+### Phase 12 — Foundations
+- tenants, policy auto_response, UEBA-lite
+
+## 3.5.1 — 2026-10-24
+
+Dual-connector pilot wire
+
+## 3.0.0 — 2026-10-15
+
+Plain source tree, multi-channel alerting, central server, Windows agent.
