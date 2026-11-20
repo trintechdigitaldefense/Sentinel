@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — supervised monitoring documentation and PDF serving hardening (2026-11-20)
+
+- PR #21 merged to `main` as `d639b9d8beb17c64ad4904af281f81096feff4fe`: dashboard PDF serving rejects unsafe filenames, symlinked files/directories, and paths outside approved report locations.
+- Added regression coverage for symlinked `data` and `reports` directories and generated-report paths.
+- Validation on the PR commit: full local suite **310 passed, 1 skipped**; GitHub Actions passed on Python 3.10 and 3.12.
+- Clarified Sentinel's operating model as supervised automated monitoring: continuous monitoring can run on a supported always-on host, while an authorised operator reviews alerts and controls response.
+- No product version bump, release tag, production certification, or deployment approval is implied.
+- Dashboard CSRF Origin/Host validation (#15), atomic runtime configuration writes (#16), remote-dashboard TLS verification (#17), and CSP hardening (#18) remain open.
+
 ## Unreleased — post-merge alert reliability (2026-11-17)
 
 - PR #9 merged to `main` as `e80c09b`: reliable active-finding alert deduplication and delivery retry handling.
