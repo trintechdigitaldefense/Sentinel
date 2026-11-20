@@ -1194,6 +1194,82 @@ def _login_html() -> str:
 </html>"""
 
 
+def _read_approved_pdf(name: str, roots=None) -> bytes | None:
+    """Read a regular PDF directly from an approved directory without following symlinks."""
+    if (
+        not name
+        or Path(name).name != name
+        or "/" in name
+        or "\\" in name
+        or not name.endswith(".pdf")
+        or not all(char.isascii() and (char.isalnum() or char in "._ -") for char in name)
+    ):
+        return None
+
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY
+    file_flags = os.O_RDONLY | os.O_NOFOLLOW
+    file_flags |= getattr(os, "O_CLOEXEC", 0)
+    file_flags |= getattr(os, "O_NONBLOCK", 0)
+
+    for root in roots if roots is not None else (_reports_dir(), _data()):
+        dir_fd = None
+        file_fd = None
+        try:
+            approved_root = root.resolve(strict=True)
+            dir_fd = os.open(approved_root, flags)
+            info = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
+
+            if not stat.S_ISREG(info.st_mode):
+                continue
+
+            file_fd = os.open(name, file_flags, dir_fd=dir_fd)
+            opened_info = os.fstat(file_fd)
+
+            if not stat.S_ISREG(opened_info.st_mode):
+                continue
+
+            if (info.st_dev, info.st_ino) != (
+                opened_info.st_dev,
+                opened_info.st_ino,
+            ):
+                continue
+
+            with os.fdopen(file_fd, "rb") as stream:
+                file_fd = None
+                return stream.read()
+
+        except (OSError, RuntimeError, ValueError):
+            continue
+        finally:
+            if file_fd is not None:
+                os.close(file_fd)
+            if dir_fd is not None:
+                os.close(dir_fd)
+
+    return None
+
+
+def _read_generated_report(path: Path) -> tuple[str, bytes] | None:
+    """Read a generated PDF only when directly inside the reports directory."""
+    try:
+        reports = _reports_dir().resolve(strict=True)
+        candidate = Path(path)
+
+        if not candidate.is_absolute() or candidate.suffix != ".pdf":
+            return None
+
+        if not candidate.name or candidate.parent.resolve(strict=True) != reports:
+            return None
+
+        body = _read_approved_pdf(candidate.name, roots=(reports,))
+        if body is None:
+            return None
+
+        return candidate.name, body
+    except (OSError, RuntimeError, ValueError, TypeError):
+        return None
+
+
 class _Handler(BaseHTTPRequestHandler):
     token = ""
     allow_control = False  # safe class default
@@ -1397,23 +1473,24 @@ class _Handler(BaseHTTPRequestHandler):
                     cname = (_cfg().get("dashboard") or {}).get("client_name") or _cfg().get("client_name")
                     result = generate_client_pdf(out_path=out_path, client_name=cname)
                 if not result.get("ok"):
-                    self._send(500, json.dumps({"ok": False, "error": result.get("error") or "generate failed"}).encode(), "application/json")
+                    self._send(500, b'{"ok":false,"error":"PDF generation failed"}', "application/json")
                     return
                 path_out = Path(str(result.get("path") or out_path))
-                if not path_out.is_file():
-                    self._send(500, b'{"ok":false,"error":"pdf missing after generate"}', "application/json")
+                safe_report = _read_generated_report(path_out)
+                if safe_report is None:
+                    self._send(404, b'{"ok":false,"error":"report not found"}', "application/json")
                     return
-                body = path_out.read_bytes()
+                report_name, body = safe_report
                 extra = {
-                    "Content-Disposition": f'inline; filename="{path_out.name}"',
+                    "Content-Disposition": f'inline; filename="{report_name}"',
                     "Cache-Control": "no-store",
-                    "X-Sentinel-Report": path_out.name,
+                    "X-Sentinel-Report": report_name,
                     "X-Sentinel-Report-Type": kind,
                 }
                 self._send(200, body, "application/pdf", extra_headers=extra)
             except Exception as e:
                 logging.getLogger("sentinel").exception("GET report pdf")
-                self._send(500, json.dumps({"ok": False, "error": str(e)}).encode(), "application/json")
+                self._send(500, b'{"ok":false,"error":"PDF request failed"}', "application/json")
             return
 
 
@@ -1428,50 +1505,52 @@ class _Handler(BaseHTTPRequestHandler):
                     out_path = reports / f"Sentinel_Technical_{ts}.pdf"
                     result2 = generate_client_pdf(out_path=out_path)
                     if not result2.get("ok"):
-                        self._send(500, json.dumps({"ok": False, "error": result.get("error") or result2.get("error")}).encode(), "application/json")
+                        self._send(500, b'{"ok":false,"error":"Technical PDF generation failed"}', "application/json")
                         return
                     path_out = Path(str(result2.get("path") or out_path))
                 else:
                     # pick first generated path
                     gens = result.get("generated") or []
                     path_out = Path((gens[0] or {}).get("path") or result.get("path") or "")
-                if not path_out.is_file():
+                safe_report = _read_generated_report(path_out)
+                if safe_report is None:
                     self._send(404, b'{"ok":false,"error":"technical pdf not found"}', "application/json")
                     return
-                body = path_out.read_bytes()
+                report_name, body = safe_report
                 extra = {
-                    "Content-Disposition": f'inline; filename="{path_out.name}"',
+                    "Content-Disposition": f'inline; filename="{report_name}"',
                     "Cache-Control": "no-store",
                 }
                 self._send(200, body, "application/pdf", extra_headers=extra)
             except Exception as e:
                 logging.getLogger("sentinel").exception("GET tech pdf")
-                self._send(500, json.dumps({"ok": False, "error": str(e)}).encode(), "application/json")
+                self._send(500, b'{"ok":false,"error":"PDF request failed"}', "application/json")
             return
 
         if path in ("/api/report/download", "/api/reports/download"):
             q = parse_qs(urlparse(self.path).query)
             name = (q.get("name") or [""])[0]
-            # path traversal guard
-            name = Path(name).name
-            if not name or not name.endswith(".pdf"):
-                self._send(400, b'{"ok":false,"error":"name required (.pdf)"}', "application/json")
+
+            # Reject traversal rather than silently reducing it to a basename.
+            if (
+                not name
+                or Path(name).name != name
+                or "/" in name
+                or "\\" in name
+                or not name.endswith(".pdf")
+                or not all(
+                    char.isascii() and (char.isalnum() or char in "._ -")
+                    for char in name
+                )
+            ):
+                self._send(400, b'{"ok":false,"error":"invalid PDF filename"}', "application/json")
                 return
-            # search reports dir then data dir
-            candidates = [
-                _reports_dir() / name,
-                _data() / name,
-                _data() / "reports" / name,
-            ]
-            target = next((c for c in candidates if c.is_file()), None)
-            if not target:
+
+            body = _read_approved_pdf(name)
+            if body is None:
                 self._send(404, b'{"ok":false,"error":"report not found"}', "application/json")
                 return
-            try:
-                body = target.read_bytes()
-            except Exception as e:
-                self._send(500, json.dumps({"ok": False, "error": str(e)}).encode(), "application/json")
-                return
+
             extra = {
                 "Content-Disposition": f'inline; filename="{name}"',
                 "Cache-Control": "no-store",
