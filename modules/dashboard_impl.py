@@ -1194,6 +1194,33 @@ def _login_html() -> str:
 </html>"""
 
 
+def _open_directory_no_symlinks(path: Path) -> int:
+    """Open an absolute directory path without following any symlink component."""
+    raw_path = os.fspath(path)
+    if not os.path.isabs(raw_path):
+        raise ValueError("approved directory must be an absolute path")
+
+    parts = raw_path.split("/")
+    if ".." in parts:
+        raise ValueError("parent traversal is not allowed in approved directories")
+
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+    flags |= getattr(os, "O_CLOEXEC", 0)
+
+    dir_fd = os.open("/", flags)
+    try:
+        for part in parts:
+            if part in ("", "."):
+                continue
+            next_fd = os.open(part, flags, dir_fd=dir_fd)
+            os.close(dir_fd)
+            dir_fd = next_fd
+        return dir_fd
+    except Exception:
+        os.close(dir_fd)
+        raise
+
+
 def _read_approved_pdf(name: str, roots=None) -> bytes | None:
     """Read a regular PDF directly from an approved directory without following symlinks."""
     if (
@@ -1202,11 +1229,13 @@ def _read_approved_pdf(name: str, roots=None) -> bytes | None:
         or "/" in name
         or "\\" in name
         or not name.endswith(".pdf")
-        or not all(char.isascii() and (char.isalnum() or char in "._ -") for char in name)
+        or not all(
+            char.isascii() and (char.isalnum() or char in "._ -")
+            for char in name
+        )
     ):
         return None
 
-    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_DIRECTORY
     file_flags = os.O_RDONLY | os.O_NOFOLLOW
     file_flags |= getattr(os, "O_CLOEXEC", 0)
     file_flags |= getattr(os, "O_NONBLOCK", 0)
@@ -1215,8 +1244,7 @@ def _read_approved_pdf(name: str, roots=None) -> bytes | None:
         dir_fd = None
         file_fd = None
         try:
-            approved_root = root.resolve(strict=True)
-            dir_fd = os.open(approved_root, flags)
+            dir_fd = _open_directory_no_symlinks(root)
             info = os.stat(name, dir_fd=dir_fd, follow_symlinks=False)
 
             if not stat.S_ISREG(info.st_mode):
@@ -1238,7 +1266,7 @@ def _read_approved_pdf(name: str, roots=None) -> bytes | None:
                 file_fd = None
                 return stream.read()
 
-        except (OSError, RuntimeError, ValueError):
+        except (OSError, RuntimeError, ValueError, TypeError):
             continue
         finally:
             if file_fd is not None:
@@ -1252,13 +1280,16 @@ def _read_approved_pdf(name: str, roots=None) -> bytes | None:
 def _read_generated_report(path: Path) -> tuple[str, bytes] | None:
     """Read a generated PDF only when directly inside the reports directory."""
     try:
-        reports = _reports_dir().resolve(strict=True)
+        reports = Path(_reports_dir())
         candidate = Path(path)
 
-        if not candidate.is_absolute() or candidate.suffix != ".pdf":
-            return None
-
-        if not candidate.name or candidate.parent.resolve(strict=True) != reports:
+        if (
+            not reports.is_absolute()
+            or not candidate.is_absolute()
+            or candidate.suffix != ".pdf"
+            or not candidate.name
+            or candidate.parent != reports
+        ):
             return None
 
         body = _read_approved_pdf(candidate.name, roots=(reports,))

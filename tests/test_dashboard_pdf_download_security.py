@@ -203,3 +203,40 @@ def test_pdf_download_rejects_unsafe_header_filename(
     run_download(handler, monkeypatch, tmp_path, reports)
 
     assert handler.status == 400
+
+
+
+def test_pdf_download_rejects_symlinked_reports_directory(monkeypatch, tmp_path):
+    data = tmp_path / "data"
+    data.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    secret = outside / "secret.pdf"
+    secret.write_bytes(b"%PDF-1.4 PRIVATE OUTSIDE FILE")
+
+    reports_link = data / "reports"
+    reports_link.symlink_to(outside, target_is_directory=True)
+
+    monkeypatch.setattr(dashboard, "_data", lambda: data)
+    monkeypatch.setattr(dashboard, "_reports_dir", lambda: reports_link)
+
+    assert dashboard._read_approved_pdf("secret.pdf", roots=(reports_link,)) is None
+    assert dashboard._read_generated_report(reports_link / "secret.pdf") is None
+
+
+def test_pdf_download_rejects_symlinked_data_directory(monkeypatch, tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    reports = outside / "reports"
+    reports.mkdir()
+    secret = reports / "secret.pdf"
+    secret.write_bytes(b"%PDF-1.4 PRIVATE OUTSIDE FILE")
+
+    data_link = tmp_path / "data"
+    data_link.symlink_to(outside, target_is_directory=True)
+
+    monkeypatch.setattr(dashboard, "_data", lambda: data_link)
+    monkeypatch.setattr(dashboard, "_reports_dir", lambda: data_link / "reports")
+
+    assert dashboard._read_approved_pdf("secret.pdf", roots=(data_link / "reports",)) is None
+    assert dashboard._read_generated_report(data_link / "reports" / "secret.pdf") is None
