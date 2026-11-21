@@ -55,7 +55,7 @@ jobs:
           docker run -d --name sentinel-systemd-test --privileged \
             --cgroupns=host --tmpfs /run --tmpfs /run/lock \
             -v /sys/fs/cgroup:/sys/fs/cgroup:rw \
-            ubuntu:24.04 /sbin/init
+            -e container=docker ubuntu:24.04 bash -lc 'apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y systemd systemd-sysv dbus && exec /sbin/init'
           for i in $(seq 1 30); do
             if docker exec sentinel-systemd-test systemctl is-system-running 2>/dev/null | grep -Eq 'running|degraded'; then
               break
