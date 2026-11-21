@@ -2,6 +2,7 @@ from modules.central_agent import CentralAgentHandler
 
 def test_token_ok_accepts_shared(monkeypatch):
     class H(CentralAgentHandler):
+        allow_shared_token = True
         def __init__(self):
             self.headers = {"X-Sentinel-Token": "shared-secret-token-value"}
             self.client_address = ("127.0.0.1", 1)
@@ -10,6 +11,7 @@ def test_token_ok_accepts_shared(monkeypatch):
 
 def test_token_ok_rejects_wrong(monkeypatch):
     class H(CentralAgentHandler):
+        allow_shared_token = True
         def __init__(self):
             self.headers = {"X-Sentinel-Token": "wrong"}
             self.client_address = ("127.0.0.1", 1)
@@ -30,3 +32,11 @@ def test_token_ok_accepts_agent_key(monkeypatch, tmp_path):
             self.client_address = ("127.0.0.1", 1)
     monkeypatch.setattr("modules.central_agent.expected_token", lambda: "other-shared")
     assert H()._token_ok() is True
+
+
+def test_issue_key_rejects_empty_master_credentials(tmp_path, monkeypatch):
+    monkeypatch.setenv("SENTINEL_CENTRAL_DIR", str(tmp_path))
+    from modules.agent_keys import issue_key
+    assert issue_key("agent-empty", "", "") == {
+        "ok": False, "error": "invalid master key"
+    }
