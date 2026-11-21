@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — dashboard request validation and repository status refresh (2026-11-21)
+
+- PR #23 merged to `main` as `54b2797b95d2108220ada85efba36246656bb6a9`: strengthened dashboard Origin/Host validation for cookie-authenticated state-changing requests and added browser-security regression coverage.
+- PR #22 merged the supervised-monitoring operating-model clarification and release-readiness documentation update.
+- PR #19 contains the broader dashboard hardening implementation: runtime configuration write protections, loopback binding/TLS configuration guards, and nonce-based CSP.
+- PR #23 GitHub Actions passed on the PR head: **347 tests on Python 3.10 and 347 on Python 3.12**. This is PR-head evidence; no post-merge CI result is claimed here.
+- Issues [#15](https://github.com/trintechdigitaldefense/Sentinel/issues/15)–[#18](https://github.com/trintechdigitaldefense/Sentinel/issues/18) remain open pending independent review and their documented acceptance evidence. Merged implementation does not automatically close them.
+- No version bump, release tag, production certification, or deployment approval is implied. Sentinel remains a pilot candidate.
+
 ## Unreleased — supervised monitoring documentation and PDF serving hardening (2026-11-20)
 
 - PR #21 merged to `main` as `d639b9d8beb17c64ad4904af281f81096feff4fe`: dashboard PDF serving rejects unsafe filenames, symlinked files/directories, and paths outside approved report locations.
