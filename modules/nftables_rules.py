@@ -13,6 +13,7 @@ Requires root + nft. Dry-run unless confirm=True.
 """
 from __future__ import annotations
 
+import ipaddress
 import logging
 import os
 import shutil
@@ -59,29 +60,47 @@ def build_ruleset(
     deny_ports=None,
     policy_accept=True,
 ):
-    ops = operator_ips or []
-    deny_ports = deny_ports or [
-        (135, "tcp"), (139, "tcp"), (445, "tcp"), (3389, "tcp"),
-        (23, "tcp"), (21, "tcp"),
-    ]
+    ops = operator_ips if operator_ips is not None else []
+    if deny_ports is None:
+        deny_ports = [
+            (135, "tcp"), (139, "tcp"), (445, "tcp"), (3389, "tcp"),
+            (23, "tcp"), (21, "tcp"),
+        ]
     op_rules = []
-    for ip in ops:
-        ip = (ip or "").strip()
-        if not ip:
-            continue
-        if ":" in ip:
-            op_rules.append("    ip6 saddr %s accept comment \"operator\"" % ip)
+    for raw_ip in ops:
+        try:
+            address = ipaddress.ip_address(str(raw_ip).strip())
+        except ValueError as exc:
+            raise ValueError(f"invalid operator IP address: {raw_ip!r}") from exc
+        if address.version == 6:
+            op_rules.append('    ip6 saddr %s accept comment "operator"' % address)
         else:
-            op_rules.append("    ip saddr %s accept comment \"operator\"" % ip)
+            op_rules.append('    ip saddr %s accept comment "operator"' % address)
 
     deny_lines = []
-    for port, proto in deny_ports:
+    for item in deny_ports:
+        try:
+            port, proto = item
+            port = int(port)
+            proto = str(proto).lower()
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"invalid deny-port entry: {item!r}") from exc
+        if isinstance(item[0], bool) or not 1 <= port <= 65535:
+            raise ValueError(f"deny port must be between 1 and 65535: {item!r}")
+        if proto not in ("tcp", "udp"):
+            raise ValueError(f"deny protocol must be tcp or udp: {item!r}")
         deny_lines.append(
-            "    %s dport %d drop comment \"sentinel-deny-%d\"" % (proto, int(port), int(port))
+            '    %s dport %d drop comment "sentinel-deny-%d"' % (proto, port, port)
         )
 
     ssh_rules = []
     if rate_limit_ssh and ssh_port:
+        try:
+            ssh_port = int(ssh_port)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("SSH port must be an integer from 1 to 65535") from exc
+        if not 1 <= ssh_port <= 65535:
+            raise ValueError("SSH port must be an integer from 1 to 65535")
         ssh_rules.append(
             "    tcp dport %d ct state new limit rate 10/minute burst 20 packets accept comment \"ssh-rate\"" % int(ssh_port)
         )
@@ -96,8 +115,6 @@ def build_ruleset(
 
     body = """# Sentinel host firewall — generated ruleset
 # Safe default policy: %s
-
-flush table inet sentinel
 
 table inet sentinel {
   set bad_hosts {
@@ -146,12 +163,15 @@ def apply_base_ruleset(
 ):
     if not available():
         return {"ok": False, "error": "nft not found — apt install nftables"}
-    rules = build_ruleset(
-        ssh_port=ssh_port,
-        rate_limit_ssh=rate_limit_ssh,
-        operator_ips=operator_ips,
-        deny_ports=deny_ports,
-    )
+    try:
+        rules = build_ruleset(
+            ssh_port=ssh_port,
+            rate_limit_ssh=rate_limit_ssh,
+            operator_ips=operator_ips,
+            deny_ports=deny_ports,
+        )
+    except (TypeError, ValueError) as exc:
+        return {"ok": False, "error": str(exc), "applied": False}
     if not confirm:
         return {
             "ok": True,
@@ -164,25 +184,61 @@ def apply_base_ruleset(
     if not is_root():
         return {"ok": False, "error": "root required — run with sudo"}
 
-    with tempfile.NamedTemporaryFile("w", suffix=".nft", delete=False) as f:
-        f.write(rules)
-        path = f.name
-    try:
-        r = _run(["nft", "-f", path])
-        verify = _run(["nft", "list", "table", "inet", "sentinel"])
-        return {
-            "ok": bool(r.get("ok")),
-            "applied": bool(r.get("ok")),
-            "backend": "nft",
-            "detail": r,
-            "verify_ok": bool(verify.get("ok")),
-            "verify_snippet": (verify.get("stdout") or "")[:600],
-        }
-    finally:
+    previous = _run(["nft", "list", "table", "inet", "sentinel"])
+    had_previous = bool(previous.get("ok"))
+    transaction = ("delete table inet sentinel\n" if had_previous else "") + rules
+
+    def _apply_text(contents):
+        with tempfile.NamedTemporaryFile("w", suffix=".nft", delete=False) as f:
+            f.write(contents)
+            path = f.name
         try:
-            Path(path).unlink(missing_ok=True)
-        except Exception:
-            pass
+            return _run(["nft", "-f", path])
+        finally:
+            try:
+                Path(path).unlink(missing_ok=True)
+            except Exception:
+                pass
+
+    applied = _apply_text(transaction)
+    if not applied.get("ok"):
+        return {
+            "ok": False,
+            "applied": False,
+            "backend": "nft",
+            "detail": applied,
+            "previous_table_preserved": had_previous,
+            "rollback_ok": True if had_previous else None,
+        }
+
+    verify = _run(["nft", "list", "table", "inet", "sentinel"])
+    if verify.get("ok"):
+        return {
+            "ok": True,
+            "applied": True,
+            "backend": "nft",
+            "detail": applied,
+            "verify_ok": True,
+            "verify_snippet": (verify.get("stdout") or "")[:600],
+            "rollback_ok": None,
+        }
+
+    if had_previous:
+        rollback_text = "delete table inet sentinel\n" + (previous.get("stdout") or "") + "\n"
+        rollback = _apply_text(rollback_text)
+    else:
+        rollback = _run(["nft", "delete", "table", "inet", "sentinel"])
+    return {
+        "ok": False,
+        "applied": False,
+        "backend": "nft",
+        "detail": applied,
+        "verify_ok": False,
+        "verify_detail": verify,
+        "rollback_ok": bool(rollback.get("ok")),
+        "rollback_detail": rollback,
+        "previous_table_preserved": had_previous,
+    }
 
 
 def ensure_table():
@@ -199,9 +255,10 @@ def add_to_bad_hosts(ip, timeout_sec=3600):
         return {"ok": False, "error": "nft not found"}
     if not is_root():
         return {"ok": False, "error": "root required"}
-    ip = (ip or "").strip()
-    if not ip:
-        return {"ok": False, "error": "empty ip"}
+    try:
+        ip = str(ipaddress.ip_address(str(ip).strip()))
+    except ValueError:
+        return {"ok": False, "error": "invalid IP address"}
     prep = ensure_table()
     if not prep.get("ok") and not prep.get("exists"):
         # still try add

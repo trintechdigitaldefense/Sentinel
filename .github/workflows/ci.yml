@@ -10,6 +10,41 @@ permissions:
   contents: read
 
 jobs:
+  firewall-live-isolated:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Apply, verify and roll back nftables inside an isolated container
+        run: |
+          docker run --rm --cap-add=NET_ADMIN \
+            -e SENTINEL_ISOLATED_NFT_TEST=1 \
+            -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
+            ubuntu:24.04 bash -euxo pipefail -c '
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip nftables
+              python3 -m venv /opt/sentinel-test-venv
+              /opt/sentinel-test-venv/bin/pip install pytest
+              /opt/sentinel-test-venv/bin/pytest -q tests/test_firewall_nft_integration.py
+            '
+  ssh-lockout-live:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7.0.1
+
+      - name: Install isolated SSH and firewall test tools
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y nftables openssh-server openssh-client iproute2
+          python -m venv .venv
+          .venv/bin/python -m pip install --upgrade pip
+          .venv/bin/pip install pytest
+          .venv/bin/pip install -r requirements.txt
+
+      - name: Verify a real SSH session survives firewall apply, reapply and rollback
+        run: |
+          sudo env PATH="$PATH:$PWD/.venv/bin" SENTINEL_ISOLATED_SSH_TEST=1 .venv/bin/pytest -q tests/test_firewall_ssh_continuity.py
+
   lint-test:
     runs-on: ubuntu-latest
     strategy:
