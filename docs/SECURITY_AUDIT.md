@@ -1,4 +1,14 @@
-> **Historical snapshot notice (updated 2026-11-17):** This audit describes revision `27a353f` from 2026-10-26. It is not a fresh audit of current `main`. Subsequent changes, including PR #9 (merged as `e80c09b5a1cc461ed7d598cea9c1c5b2ec0c58ae`), changed relevant code and tests. Do not treat every finding below as a verified current-state finding or assume it is fully closed; revalidate each item against current code. Current release gates are tracked in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+> **Historical audit — not a current-state assessment (reviewed 2026-11-21):** The detailed findings below were recorded against revision `27a353f` on 2026-10-26. They must not be read as verified findings on current `main`. Since that snapshot, subsequent work has merged through PRs #12–#14, #19, #21–#23, including installer/configuration safety, dashboard authentication and output handling, dashboard request-origin protections, runtime configuration writes, loopback/TLS guards, CSP hardening, PDF path handling, and alert queue protections. This header records repository history only; it does **not** certify that every historical finding is fixed or independently verified. Re-audit current code and use [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) for current evidence gates.
+
+## Current review note — 2026-11-21
+
+- This document remains a **historical audit snapshot**, not a fresh audit of current `main`.
+- Several original findings were addressed by later merged changes, but their present-day effectiveness must be checked against current code and tests before marking them closed.
+- Dashboard/deployment tracking issues [#15](https://github.com/trintechdigitaldefense/Sentinel/issues/15)–[#18](https://github.com/trintechdigitaldefense/Sentinel/issues/18) remain open pending independent review and acceptance evidence, even though implementation work has merged through PRs #19 and #23.
+- The PR #23 head passed 347 tests on Python 3.10 and 347 on Python 3.12. This is PR-head CI evidence, not a fresh full audit or a post-merge current-main result.
+- Do not use this historical report alone to make a production-readiness or customer-deployment decision.
+
+---
 
 # SENTINEL Security & Production-Readiness Audit
 
