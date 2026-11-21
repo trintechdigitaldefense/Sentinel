@@ -1,16 +1,18 @@
-# SENTINEL Fresh Security & Operational Readiness Audit
+# SENTINEL Security & Operational Readiness Audit — historical snapshot plus current-main revalidation
 
-**Audit date:** 2026-11-17  
-**Reviewed baseline:** `main` at `a9fac56fef73c7344bb4af92a6053124b7894caa` (PR #10 merge)  
+**Original audit date:** 2026-11-17  
+**Current-main revalidation:** 2026-11-21  
+**Current revalidation baseline:** `main` at `769b91d5e3ee97a4a82672c88438327474784c8d` (PR #24 merge)  
+**Original reviewed baseline:** `main` at `a9fac56fef73c7344bb4af92a6053124b7894caa` (PR #10 merge); this remains the baseline for the historical findings below.  
 **Review branch:** `security/readiness-audit-2026-11`  
 **Scope:** Static source and test review of dashboard security, installer safety, alert delivery/queue reliability, and firewall validation readiness.  
 **Execution limits:** Repository source and test files were inspected through GitHub. No repository checkout was executed in an isolated local runtime during this review. No live dashboard, recipient, firewall, host-restart, or customer test was run. Findings below are source/test-evidence findings, not claims of successful exploit reproduction.
 
 ## Executive assessment
 
-Sentinel is **not cleared for unrestricted production deployment or an unsupervised customer pilot** by this review. The 242-test local result supplied by the project owner and the successful post-merge CI are useful regression evidence, but they do not establish browser security, real message receipt, safe firewall application on customer hosts, or recovery after real power loss.
+The 2026-11-17 findings below are a historical snapshot of baseline `a9fac56`. They must not be read as current-main findings without the revalidation section near the end of this document. Sentinel remains **not cleared for unrestricted production deployment or an unsupervised customer pilot**. The 2026-11-21 source/test revalidation found that several historical code findings have since been addressed on current `main`; however, operational verification, external independent review, and other residual gates remain open.
 
-Two high-priority dashboard issues are confirmed by source inspection: a viewer-token control-mode privilege escalation when control is already enabled in configuration, and unsafe insertion of live threat fields into HTML with `innerHTML`. Additional token-handling and installer configuration-preservation gaps require remediation or explicit risk acceptance.
+The current-main revalidation was a read-only GitHub source and test inspection. No local test suite was executed by this reviewer, no reverse proxy/certificate or live recipient was exercised, no firewall rules were applied, and no host restart/power-loss drill was run. Test files and CI records are evidence to inspect, not a claim that those tests were executed during this revalidation.
 
 ## Findings
 
@@ -132,9 +134,51 @@ Two high-priority dashboard issues are confirmed by source inspection: a viewer-
 5. Complete firewall disposable-VM validation only with explicit owner approval.
 6. Re-run full CI and local test suite; obtain independent review of each remediation PR.
 
+## Current-main revalidation — 2026-11-21
+
+**Baseline inspected:** `769b91d5e3ee97a4a82672c88438327474784c8d`.  
+**Method:** read-only inspection of current source, test files, release checklist, and PR #8/#11 metadata. No code execution or live operational testing was performed in this revalidation.
+
+### Historical finding disposition on current main
+
+| Historical finding | Current-main observation | Revalidation status |
+|---|---|---|
+| SNT-DA-01 — viewer token can promote viewer to administrator | Current `/api/control-mode` logic requires both locally provisioned `allow_control=true` and `role=admin`; it does not promote a viewer. `tests/test_dashboard_authz_priority2.py` includes a viewer-token regression test. | **Addressed in source/test coverage; independent review still required.** |
+| SNT-DA-02 — live threat refresh uses unsafe `innerHTML` | Current `renderThreats` creates DOM elements and assigns telemetry with `textContent`. Browser-security tests exercise HTML-like payloads. | **Addressed in source/test coverage; independent browser review still required.** |
+| SNT-DA-03 — query-string dashboard token and token-bearing links | Current `_auth_ok` accepts Bearer headers and session cookies only; tests assert query-string authentication fails and rendered HTML does not embed the access token. Sign-in submits the token by POST and sets a session cookie. | **Addressed in source/test coverage.** Secure cookie remains explicitly enabled only for configured HTTPS/reverse-proxy mode; this is intentional for loopback HTTP. |
+| SNT-IN-01 — setup overwrites invalid config | Current `setup.py::init_config` refuses symlinks, malformed/unreadable config and failed updates; it uses an atomic writer. `tests/test_setup_safe_config.py` covers invalid-config preservation. | **Addressed in source/test coverage; filesystem edge cases still merit independent verification.** |
+| SNT-IN-02 — installer tests do not execute the upgrade script end-to-end | Current `tests/test_install_upgrade_e2e.py` executes `install.sh` against an isolated local Git fixture and covers fast-forward, dirty-file, untracked-file and local-divergence cases. | **Partially addressed.** Review remaining branch/recovery/error paths and confirm no test targets a real operator checkout. |
+| SNT-AL-01 — offline queue silently evicts oldest entries at 500 | Current `offline_enqueue` rejects a new item at capacity and preserves existing rows. `tests/test_offline_queue.py` covers 499/500 boundaries and preservation. | **Addressed in source/test coverage.** |
+| SNT-AL-02 — transport acceptance is not recipient receipt | SMTP/API handoff and UDP syslog cannot establish human receipt or acknowledgement. No end-to-end recipient receipt proof was inspected. | **Open limitation.** Keep delivery language precise and test only with an approved recipient/endpoint. |
+| SNT-AL-03 — restart/power-loss recovery is not proven | Current queue tests cover failure retention, retries, malformed entries and concurrent additions. No current-main test proving process-kill, host-restart, power-loss or storage-failure recovery was identified in the reviewed test inventory. | **Open.** Requires controlled isolated recovery drills. |
+| SNT-FW-01 — live firewall apply/rollback was not validated | Current main includes dry-run/contract tests. PR #8 proposes isolated live nftables and SSH continuity jobs, but PR #8 remains unmerged and its evidence does not apply to current main. | **Open on current main.** Do not infer live-firewall safety from PR #8. |
+
+### Issues #15–#18 acceptance status
+
+| Issue | Current evidence inspected | Remaining acceptance |
+|---|---|---|
+| [#15 — Origin/Host and CSRF](https://github.com/trintechdigitaldefense/Sentinel/issues/15) | Current origin/host validator; cookie-authenticated POST checks; tests for same-origin, mismatched, missing/null/malformed/duplicate headers; browser regression coverage. | Independent reviewer must verify all state-changing routes and demonstrate rejected requests do not mutate state. |
+| [#16 — atomic runtime config writes](https://github.com/trintechdigitaldefense/Sentinel/issues/16) | Same-directory temporary file, restrictive mode, fsync/replace and cleanup; tests for replace failure, malformed config, symlink, dangling symlink and FIFO. | Independent reviewer must verify failure preservation, permission behavior, and concurrent-update behavior on supported hosts. |
+| [#17 — remote dashboard TLS](https://github.com/trintechdigitaldefense/Sentinel/issues/17) | Loopback-only backend guard; remote-access config requires secure cookie and explicit trusted hosts; deployment guide contains reverse-proxy verification checklist. | Actual target-host certificate, HTTPS-only access, proxy trust/Host behavior, Secure cookie, port exposure and rollback must be checked. Source/config tests are not live TLS evidence. |
+| [#18 — CSP hardening](https://github.com/trintechdigitaldefense/Sentinel/issues/18) | Current CSP uses nonces and disallows inline script/style attributes; browser test asserts no `unsafe-inline`, no inline event handlers and safe telemetry/report rendering. | Independent browser/security review must verify the complete supported workflow and representative injection cases under supported browsers. |
+
+**Independence note:** The GitHub review record inspected for PR #8 is a COMMENT authored by the repository owner account, not an approval by an independent maintainer. PR #11 has no submitted reviews. No independent reviewer approval for issues #15–#18 was found in the repository records inspected. This revalidation therefore does **not** satisfy the independent-review acceptance criteria.
+
+### Additional current-main finding: central agent transport
+
+Current `modules/central_agent.py` binds the listener to `0.0.0.0`. TLS is optional; when TLS setup fails, the code logs an error and continues with plain HTTP. Current `modules/remote_agent.py` defaults the central URL to `http://<host>:8743` and stores/uses a shared token. This is a separate agent-transport boundary from the dashboard TLS issue #17. It is not safe to present current-main remote-agent transport as protected on untrusted networks. PR #8 proposes HTTPS, per-agent expiring credentials and fail-closed behavior, but it is not merged. The pilot deployment documentation should warn operators not to use the legacy transport remotely until a separately reviewed remediation is merged and validated.
+
+### Current disposition
+
+- Keep issues #15–#18 **OPEN** until the independent review and operational acceptance evidence specified in each issue is recorded.
+- Keep Sentinel classified as a **pilot candidate**. Do not claim production certification, safe remote agent transport, or 24/7 staffed response.
+- Treat PR #8 live firewall/systemd CI as proposed-branch evidence only, not current-main evidence.
+- Re-run full CI on the exact current main SHA and record the workflow result. The current-main status lookup returned no status records/workflow runs for the PR #24 merge commit.
+- Complete isolated process-restart/storage-failure and disposable-host firewall validation only under a separately approved test plan.
+
 ## Final disposition
 
-**Status: NOT CLEARED for unrestricted production or unsupervised customer pilot.**  
+**Status: NOT CLEARED for unrestricted production or unsupervised customer pilot (revalidated against current main on 2026-11-21).**  
 **Suitable next stage:** isolated remediation and controlled evaluation, with no customer production changes.  
 **Not performed:** live customer testing, real recipient delivery, firewall apply, deployment, release, package publication, or merge to `main`.
 
