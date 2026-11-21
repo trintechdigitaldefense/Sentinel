@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # © 2026 TrinTech Digital Defense — authorized defensive use only
-"""SENTINEL installer — dependency check + config init + cases wire.
+"""SENTINEL installer — dependency check and safe config initialization.
 
 Usage:
   python3 setup.py
@@ -8,9 +8,9 @@ Usage:
 """
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
-import py_compile
 import stat
 import sys
 import tempfile
@@ -88,7 +88,8 @@ def check_engine() -> bool:
         print(f"[!] Missing {ENGINE}")
         return False
     try:
-        py_compile.compile(str(ENGINE), doraise=True)
+        source = ENGINE.read_text(encoding="utf-8")
+        compile(source, str(ENGINE), "exec")
     except Exception as e:
         print(f"[!] sentinel.py does not compile: {e}")
         return False
@@ -96,48 +97,17 @@ def check_engine() -> bool:
     return True
 
 
-def apply_cases_wire() -> None:
-    """Wire menu / send_alert / cases command into sentinel.py if needed."""
-    script = ROOT / "scripts" / "apply_cases_wire.py"
-    if not script.exists():
-        print("[=] cases wire script not present — skip")
-        return
-    try:
-        import runpy
-
-        runpy.run_path(str(script), run_name="__main__")
-    except SystemExit as e:
-        if e.code not in (0, None):
-            print(f"[!] cases wire exit {e.code}")
-    except Exception as e:
-        print(f"[!] cases wire: {e}")
-
-
-def apply_dashboard_cases() -> None:
-    """Inject open-cases UI into dashboard.html if needed."""
-    script = ROOT / "scripts" / "apply_dashboard_cases.py"
-    if not script.exists():
-        print("[=] dashboard cases script not present — skip")
-        return
-    try:
-        import runpy
-
-        runpy.run_path(str(script), run_name="__main__")
-    except SystemExit as e:
-        if e.code not in (0, None):
-            print(f"[!] dashboard cases exit {e.code}")
-    except Exception as e:
-        print(f"[!] dashboard cases: {e}")
-
-
 def check_deps() -> None:
     print("\n[*] Dependency check")
     print(f"    Python {sys.version.split()[0]}")
     for name, why in OPTIONAL.items():
         try:
-            __import__(name)
+            available = importlib.util.find_spec(name) is not None
+        except (ImportError, ModuleNotFoundError, ValueError):
+            available = False
+        if available:
             print(f"  [+] {name} — {why}")
-        except ImportError:
+        else:
             print(f"  [!] {name} missing — optional ({why}). pip install {name}")
 
 
@@ -307,12 +277,16 @@ def main() -> None:
     if "--check" in sys.argv:
         print("\n[=] Check-only mode — no writes")
         return
-    apply_cases_wire()
-    apply_dashboard_cases()
-    check_engine()
     init_dirs()
     init_config()
-    # Refresh self-integrity after install/wires so next run is clean
+    try:
+        from modules.siem import enable_defaults
+        siem_enabled = os.environ.get("SENTINEL_SIEM", "").lower() in ("1", "true", "yes")
+        enable_defaults(siem_enabled)
+    except Exception as e:
+        print(f"[!] SIEM defaults could not be initialized safely: {e}")
+        sys.exit(1)
+    # Refresh self-integrity after install so next run is clean
     try:
         si = HOME / "data" / "self_integrity.json"
         if si.exists():
@@ -334,15 +308,6 @@ def main() -> None:
     print("    git pull --ff-only   # or SENTINEL_RECOVER_SYNC=1 only if you intend to discard local changes")
     print()
 
-
-# Ensure SIEM ship-file defaults exist (disabled until enable)
-try:
-    from modules.siem import enable_defaults
-    # only seed config keys; leave enabled=False on first install unless SENTINEL_SIEM=1
-    import os as _os
-    enable_defaults(_os.environ.get("SENTINEL_SIEM", "").lower() in ("1", "true", "yes"))
-except Exception:
-    pass
 
 if __name__ == "__main__":
     main()
