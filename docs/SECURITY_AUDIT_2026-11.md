@@ -2,7 +2,7 @@
 
 **Original audit date:** 2026-11-17  
 **Current-main revalidation:** 2026-11-21  
-**Current revalidation baseline:** `main` at `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44` (PR #24 merge)  
+**Current revalidation baseline:** application/source tree at `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44` (PR #25 merge; docs-only follow-up PRs do not change application code)  
 **Original reviewed baseline:** `main` at `a9fac56fef73c7344bb4af92a6053124b7894caa` (PR #10 merge); this remains the baseline for the historical findings below.  
 **Review branch:** `security/readiness-audit-2026-11`  
 **Scope:** Static source and test review of dashboard security, installer safety, alert delivery/queue reliability, and firewall validation readiness.  
@@ -136,7 +136,7 @@ The current-main revalidation was a read-only GitHub source and test inspection.
 
 ## Current-main revalidation — 2026-11-21
 
-**Baseline inspected:** `769b91d5e3ee97a4a82672c88438327474784c8d`.  
+**Baseline inspected:** `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44`.  
 **Method:** read-only inspection of current source, test files, release checklist, and PR #8/#11 metadata. No code execution or live operational testing was performed in this revalidation.
 
 ### Historical finding disposition on current main
@@ -153,6 +153,16 @@ The current-main revalidation was a read-only GitHub source and test inspection.
 | SNT-AL-03 — restart/power-loss recovery is not proven | Current queue tests cover failure retention, retries, malformed entries and concurrent additions. No current-main test proving process-kill, host-restart, power-loss or storage-failure recovery was identified in the reviewed test inventory. | **Open.** Requires controlled isolated recovery drills. |
 | SNT-FW-01 — live firewall apply/rollback was not validated | Current main includes dry-run/contract tests. PR #8 proposes isolated live nftables and SSH continuity jobs, but PR #8 remains unmerged and its evidence does not apply to current main. | **Open on current main.** Do not infer live-firewall safety from PR #8. |
 
+
+### SNT-IN-03 — setup mutates application source during normal setup
+
+**Severity:** Medium  
+**Area:** Installer integrity / reproducibility  
+**Evidence:** Current `setup.py::main()` calls `apply_cases_wire()` and `apply_dashboard_cases()` during a normal setup run. Those functions execute repository scripts (`scripts/apply_cases_wire.py` and `scripts/apply_dashboard_cases.py`) that wire features by editing application source files. This means setup can modify the checkout rather than limiting itself to dependency checks and configuration initialization. The `--check` path returns before those calls, but `check_engine()` uses `py_compile.compile()` and can create bytecode cache files despite the usage text describing check-only mode as no-write.  
+**Impact:** A setup run may produce untracked/modified source files, make the deployed checkout differ from the reviewed commit, and complicate integrity checks or upgrades.  
+**Remediation:** Remove runtime source rewriting from setup; ship wired application code as reviewed source. Make setup fail clearly if a required wiring step is missing rather than editing source at install time. Ensure check-only mode performs no filesystem writes, including bytecode caches. PR #8 proposes removing source mutation, but that change remains unmerged.  
+**Revalidation status:** **Open on current main.** Verify against a disposable checkout before changing the installer.
+
 ### Issues #15–#18 acceptance status
 
 | Issue | Current evidence inspected | Remaining acceptance |
@@ -166,14 +176,14 @@ The current-main revalidation was a read-only GitHub source and test inspection.
 
 ### Additional current-main finding: central agent transport
 
-Current `modules/central_agent.py` binds the listener to `0.0.0.0`. TLS is optional; when TLS setup fails, the code logs an error and continues with plain HTTP. Current `modules/remote_agent.py` defaults the central URL to `http://<host>:8743` and stores/uses a shared token. This is a separate agent-transport boundary from the dashboard TLS issue #17. It is not safe to present current-main remote-agent transport as protected on untrusted networks. PR #8 proposes HTTPS, per-agent expiring credentials and fail-closed behavior, but it is not merged. The pilot deployment documentation should warn operators not to use the legacy transport remotely until a separately reviewed remediation is merged and validated.
+Current `modules/central_agent.py::start_central` binds the listener to `0.0.0.0`. Although `_maybe_ssl()` exists, `start_central()` constructs and starts the server without calling that helper; therefore the current listener is not wrapped in TLS by this path. Current `modules/remote_agent.py` defaults the central URL to `http://<host>:8743` and stores/uses a shared token. This is a separate agent-transport boundary from dashboard TLS issue #17. Do not start the current central listener on a network-facing host or treat its agent traffic as protected. PR #8 proposes HTTPS, per-agent expiring credentials and fail-closed behavior, but it is not merged.
 
 ### Current disposition
 
 - Keep issues #15–#18 **OPEN** until the independent review and operational acceptance evidence specified in each issue is recorded.
 - Keep Sentinel classified as a **pilot candidate**. Do not claim production certification, safe remote agent transport, or 24/7 staffed response.
 - Treat PR #8 live firewall/systemd CI as proposed-branch evidence only, not current-main evidence.
-- Re-run full CI on the exact current main SHA and record the workflow result. The current-main status lookup returned no status records/workflow runs for the PR #24 merge commit.
+- Re-run full CI on the exact current main SHA and record the workflow result. The current-main status lookup for the application/source baseline returned no post-merge workflow result for commit `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44`.
 - Complete isolated process-restart/storage-failure and disposable-host firewall validation only under a separately approved test plan.
 
 ## Final disposition
