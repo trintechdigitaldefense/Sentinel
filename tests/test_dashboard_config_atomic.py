@@ -72,3 +72,26 @@ def test_save_cfg_refuses_malformed_existing_config_without_overwrite(tmp_path, 
 
     assert config.read_bytes() == original
     assert list(tmp_path.glob(".config.json.*.tmp")) == []
+
+
+def test_save_cfg_file_fsync_failure_preserves_original_and_cleans_temp(
+    tmp_path, monkeypatch
+):
+    """A durability failure must not replace the last valid configuration."""
+    import modules.dashboard_impl as dashboard
+
+    config = tmp_path / "config.json"
+    original = b'{"customer":"preserve-on-fsync-error"}\n'
+    config.write_bytes(original)
+    monkeypatch.setattr(dashboard, "_home", lambda: tmp_path)
+
+    def fail_fsync(_fd):
+        raise OSError("simulated file fsync failure")
+
+    monkeypatch.setattr(dashboard.os, "fsync", fail_fsync)
+
+    with pytest.raises(OSError, match="simulated file fsync failure"):
+        dashboard._save_cfg({"customer": "new"})
+
+    assert config.read_bytes() == original
+    assert list(tmp_path.glob(".config.json.*.tmp")) == []
