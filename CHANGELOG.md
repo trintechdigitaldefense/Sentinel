@@ -2,6 +2,10 @@
 
 ## Unreleased — dashboard request validation and repository status refresh (2026-11-21)
 
+- PR #41: refreshed README with secure multi-host agent requirements, case CLI, SIEM defaults and current CI evidence.
+- PR #40: added a disposable systemd CI job; service install/start/restart/stop/start test passed.
+- PR #39: added regression coverage for firewall-event case creation.
+- PR #36: removed runtime source rewriting and unsafe dashboard injection script; SIEM defaults are least-privilege with atomic config writes.
 - PR #35 merged: case auto-open is wired into alert processing after routing, and `sentinel.py cases ...` is tracked source with regression tests.
 - PR #34 merged: transactional nftables apply/restore, input validation, and isolated live firewall/SSH continuity CI passed.
 - PR #31 merged: central-agent TLS enforcement, per-agent expiring credentials, authenticated identity binding, and strict SSH host-key verification.
