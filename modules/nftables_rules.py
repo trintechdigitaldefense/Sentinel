@@ -60,25 +60,37 @@ def build_ruleset(
     deny_ports=None,
     policy_accept=True,
 ):
-    ops = operator_ips or []
-    deny_ports = deny_ports or [
-        (135, "tcp"), (139, "tcp"), (445, "tcp"), (3389, "tcp"),
-        (23, "tcp"), (21, "tcp"),
-    ]
+    ops = operator_ips if operator_ips is not None else []
+    if deny_ports is None:
+        deny_ports = [
+            (135, "tcp"), (139, "tcp"), (445, "tcp"), (3389, "tcp"),
+            (23, "tcp"), (21, "tcp"),
+        ]
     op_rules = []
-    for ip in ops:
-        ip = (ip or "").strip()
-        if not ip:
-            continue
-        if ":" in ip:
-            op_rules.append("    ip6 saddr %s accept comment \"operator\"" % ip)
+    for raw_ip in ops:
+        try:
+            address = ipaddress.ip_address(str(raw_ip).strip())
+        except ValueError as exc:
+            raise ValueError(f"invalid operator IP address: {raw_ip!r}") from exc
+        if address.version == 6:
+            op_rules.append('    ip6 saddr %s accept comment "operator"' % address)
         else:
-            op_rules.append("    ip saddr %s accept comment \"operator\"" % ip)
+            op_rules.append('    ip saddr %s accept comment "operator"' % address)
 
     deny_lines = []
-    for port, proto in deny_ports:
+    for item in deny_ports:
+        try:
+            port, proto = item
+            port = int(port)
+            proto = str(proto).lower()
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"invalid deny-port entry: {item!r}") from exc
+        if isinstance(item[0], bool) or not 1 <= port <= 65535:
+            raise ValueError(f"deny port must be between 1 and 65535: {item!r}")
+        if proto not in ("tcp", "udp"):
+            raise ValueError(f"deny protocol must be tcp or udp: {item!r}")
         deny_lines.append(
-            "    %s dport %d drop comment \"sentinel-deny-%d\"" % (proto, int(port), int(port))
+            '    %s dport %d drop comment "sentinel-deny-%d"' % (proto, port, port)
         )
 
     ssh_rules = []
