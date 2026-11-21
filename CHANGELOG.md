@@ -2,6 +2,8 @@
 
 ## Unreleased — dashboard request validation and repository status refresh (2026-11-21)
 
+- PR #24 merged to `main` as `769b91d5e3ee97a4a82672c88438327474784c8d`: refreshed repository documentation, security policy, release gates, and historical audit labeling. No product code, release tag, deployment, or certification changed.
+- Current-main status lookup for the PR #24 merge commit returned no workflow runs or status records; post-merge CI is not claimed as verified.
 - PR #23 merged to `main` as `54b2797b95d2108220ada85efba36246656bb6a9`: strengthened dashboard Origin/Host validation for cookie-authenticated state-changing requests and added browser-security regression coverage.
 - PR #22 merged the supervised-monitoring operating-model clarification and release-readiness documentation update.
 - PR #19 contains the broader dashboard hardening implementation: runtime configuration write protections, loopback binding/TLS configuration guards, and nonce-based CSP.
