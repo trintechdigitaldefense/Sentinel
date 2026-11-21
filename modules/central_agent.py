@@ -13,6 +13,7 @@ Strengthened listener used by `sentinel central`:
 from __future__ import annotations
 
 import json
+import ipaddress
 import logging
 import os
 import re
@@ -47,7 +48,11 @@ def _data() -> Path:
 
 def agents_dir() -> Path:
     d = _data() / "agents"
-    d.mkdir(parents=True, exist_ok=True)
+    d.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        os.chmod(d, 0o700)
+    except OSError:
+        pass
     return d
 
 
@@ -76,8 +81,11 @@ def expected_token() -> str:
 def audit(event: str, detail: dict) -> None:
     try:
         row = {"ts": datetime.now().isoformat(), "event": event, **detail}
-        with open(audit_path(), "a") as f:
+        path = audit_path()
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+        with os.fdopen(fd, "a", encoding="utf-8") as f:
             f.write(json.dumps(row, default=str) + "\n")
+        os.chmod(path, 0o600)
     except Exception:
         log.exception("audit write")
 
@@ -156,6 +164,7 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
 
     send_alert_fn: Optional[Callable] = None
     canary_beacon_fn: Optional[Callable] = None
+    allow_shared_token: bool = False
 
     def log_message(self, fmt, *args):
         return
@@ -165,7 +174,8 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
 
     def _token_ok(self) -> bool:
         """Accept shared token OR a valid per-agent API key (MSP mode)."""
-        expected = expected_token()
+        self._agent_id_resolved = None  # type: ignore[attr-defined]
+        expected = expected_token() if self.allow_shared_token else ""
         received = (self.headers.get("X-Sentinel-Token") or "").strip()
         auth = self.headers.get("Authorization") or ""
         if auth.lower().startswith("bearer "):
@@ -290,6 +300,9 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
             length = int(self.headers.get("Content-Length") or 0)
         except Exception:
             length = 0
+        if length < 0:
+            self._json(400, {"error": "invalid_content_length"})
+            return
         if length > MAX_BODY:
             self._json(413, {"error": "payload_too_large", "max": MAX_BODY})
             return
@@ -303,8 +316,19 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
             self._json(400, {"error": f"invalid_json: {e}"})
             return
 
-        if not data.get("ip"):
-            data["ip"] = ip
+        if not isinstance(data.get("canaries"), dict):
+            data["canaries"] = {}
+        if not isinstance(data.get("processes"), list):
+            data["processes"] = []
+
+        # Bind network identity to the socket peer and the authenticated API key.
+        # Never let a payload claim another host IP or agent registry identity.
+        data["ip"] = ip
+        authenticated_agent_id = getattr(self, "_agent_id_resolved", None)
+        if authenticated_agent_id:
+            data["agent_id"] = authenticated_agent_id
+        else:
+            data.pop("agent_id", None)
 
         host_raw = str(data.get("hostname") or data.get("host") or "unknown")
         host = re.sub(r"[^a-zA-Z0-9_-]", "_", host_raw)[:40]
@@ -315,6 +339,8 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
         try:
             fname.write_text(json.dumps(data, indent=2, default=str))
             latest.write_text(json.dumps(data, indent=2, default=str))
+            os.chmod(fname, 0o600)
+            os.chmod(latest, 0o600)
         except Exception:
             log.exception("save agent report")
 
@@ -325,6 +351,11 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
         except Exception as e:
             log.exception("register_agent_checkin")
             reg = {"ok": False, "error": str(e)}
+
+        if not reg.get("ok"):
+            audit("agent_report_store_failed", {"ip": ip, "agent_id": authenticated_agent_id})
+            self._json(500, {"error": "agent_report_registration_failed"})
+            return
 
         # Alert hooks
         sa = self.send_alert_fn
@@ -355,6 +386,7 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
         audit("agent_report", {
             "ip": ip,
             "hostname": host_raw,
+            "agent_id": authenticated_agent_id,
             "canary_count": reg.get("canary_count", 0),
             "registered": reg.get("ok", False),
         })
@@ -368,25 +400,46 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
         })
 
 
+def _handler_for_listener(
+    is_loopback: bool,
+    send_alert_fn: Optional[Callable] = None,
+    canary_beacon_fn: Optional[Callable] = None,
+):
+    """Create an isolated handler policy for each listener instance."""
+    def _beacon(cid, meta):
+        if canary_beacon_fn:
+            canary_beacon_fn(cid, meta)
+
+    return type(
+        "BoundCentralAgentHandler",
+        (CentralAgentHandler,),
+        {
+            "allow_shared_token": bool(is_loopback),
+            "send_alert_fn": send_alert_fn,
+            "canary_beacon_fn": _beacon,
+        },
+    )
+
+
 class _ThreadedCentralServer(ThreadingHTTPServer):
     allow_reuse_address = True
     daemon_threads = True
 
 
-def _maybe_ssl(httpd: ThreadingHTTPServer) -> ThreadingHTTPServer:
-    """Optional TLS if agent.tls_cert + agent.tls_key set in config."""
-    try:
-        cfg = _cfg().get("agent") or {}
-        cert = cfg.get("tls_cert") or ""
-        key = cfg.get("tls_key") or ""
-        if cert and key and Path(cert).is_file() and Path(key).is_file():
-            import ssl
-            ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            ctx.load_cert_chain(certfile=cert, keyfile=key)
-            httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
-            log.info("Central TLS enabled")
-    except Exception:
-        log.exception("TLS setup failed — continuing plain HTTP")
+def _maybe_ssl(httpd: ThreadingHTTPServer, cfg: dict) -> ThreadingHTTPServer:
+    """Enable TLS or fail closed; plaintext is permitted only on loopback."""
+    agent = cfg.get("agent") or {}
+    cert = str(agent.get("tls_cert") or "")
+    key = str(agent.get("tls_key") or "")
+    if bool(cert) != bool(key):
+        raise RuntimeError("Central TLS requires both agent.tls_cert and agent.tls_key")
+    if not cert or not key:
+        raise RuntimeError("TLS certificate and key are required for a network-facing central listener")
+    import ssl
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    ctx.load_cert_chain(certfile=cert, keyfile=key)
+    httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+    log.info("Central TLS enabled")
     return httpd
 
 
@@ -398,25 +451,41 @@ def start_central(
 ) -> socketserver.TCPServer:
     """Start hardened central listener; returns server instance."""
     cfg = _cfg()
-    port = int(port or (cfg.get("agent") or {}).get("port") or DEFAULT_PORT)
+    port = int(port if port is not None else ((cfg.get("agent") or {}).get("port") or DEFAULT_PORT))
+    host = str((cfg.get("agent") or {}).get("bind") or "0.0.0.0")
+    try:
+        is_loopback = ipaddress.ip_address(host).is_loopback
+    except ValueError:
+        is_loopback = host.lower() == "localhost"
     agents_dir()
-    tok = expected_token()
+    tok = expected_token() if is_loopback else ""
     if logger:
         logger.info("Central token ready (%s chars)", len(tok))
 
-    def _beacon(cid, meta):
-        if canary_beacon_fn:
-            canary_beacon_fn(cid, meta)
-
-    # Bind callbacks on class for handler instances
-    CentralAgentHandler.send_alert_fn = send_alert_fn
-    CentralAgentHandler.canary_beacon_fn = _beacon
-
+    handler_class = _handler_for_listener(
+        is_loopback,
+        send_alert_fn=send_alert_fn,
+        canary_beacon_fn=canary_beacon_fn,
+    )
+    server = None
     try:
-        server = _ThreadedCentralServer(("0.0.0.0", port), CentralAgentHandler)
-    except OSError as e:
+        server = _ThreadedCentralServer((host, port), handler_class)
+        if not is_loopback:
+            server = _maybe_ssl(server, cfg)
+        else:
+            # Loopback-only plaintext is retained for local development.
+            tls_cert = (cfg.get("agent") or {}).get("tls_cert")
+            tls_key = (cfg.get("agent") or {}).get("tls_key")
+            if tls_cert or tls_key:
+                server = _maybe_ssl(server, cfg)
+    except Exception as e:
+        if server is not None:
+            try:
+                server.server_close()
+            except Exception:
+                pass
         if logger:
-            logger.error("Central bind failed on %s: %s", port, e)
+            logger.error("Central listener refused to start safely: %s", e)
         raise
 
     t = threading.Thread(target=server.serve_forever, daemon=True, name="sentinel-central")

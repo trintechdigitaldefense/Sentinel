@@ -15,14 +15,19 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import secrets
+import shlex
 import shutil
 import socket
 import subprocess
+import tempfile
 import textwrap
 from datetime import datetime
+import ipaddress
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import urlparse
 
 log = logging.getLogger("sentinel.remote_agent")
 
@@ -42,19 +47,34 @@ def _cfg() -> dict:
     if not p.exists():
         return {}
     try:
-        return json.loads(p.read_text())
-    except Exception:
-        return {}
+        cfg = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(cfg, dict):
+            raise ValueError("configuration root must be a JSON object")
+        return cfg
+    except Exception as exc:
+        raise RuntimeError(f"Sentinel config is unreadable; refusing to replace it: {exc}") from exc
 
 
 def _save_cfg(cfg: dict) -> None:
     p = _home() / "config.json"
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(cfg, indent=2))
+    fd, name = tempfile.mkstemp(prefix=".config.", suffix=".tmp", dir=str(p.parent))
+    tmp = Path(name)
     try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(cfg, stream, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, p)
         os.chmod(p, 0o600)
-    except Exception as e:
-        logging.getLogger('sentinel').debug('%s: %s', __name__, e)
+    except Exception:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
 
 
 
@@ -81,12 +101,16 @@ def central_base_url() -> str:
         ip = socket.gethostbyname(socket.gethostname())
     except Exception:
         ip = "127.0.0.1"
-    return f"http://{ip}:{port}"
+    return f"https://{ip}:{port}"
 
 
 def bundles_dir() -> Path:
     d = _data() / "agent_bundles"
-    d.mkdir(parents=True, exist_ok=True)
+    d.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        os.chmod(d, 0o700)
+    except OSError:
+        pass
     return d
 
 
@@ -99,13 +123,34 @@ def load_agents() -> dict:
     if not p.exists():
         return {"agents": {}}
     try:
-        return json.loads(p.read_text())
-    except Exception:
-        return {"agents": {}}
+        db = json.loads(p.read_text(encoding="utf-8"))
+        if not isinstance(db, dict) or not isinstance(db.get("agents", {}), dict):
+            raise ValueError("agent registry must contain an agents object")
+        return db
+    except Exception as exc:
+        raise RuntimeError(f"remote agent registry is unreadable; refusing to reset it: {exc}") from exc
 
 
 def save_agents(db: dict) -> None:
-    agents_registry_path().write_text(json.dumps(db, indent=2, default=str))
+    p = agents_registry_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    fd, name = tempfile.mkstemp(prefix=".remote_agents.", suffix=".tmp", dir=str(p.parent))
+    tmp = Path(name)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(db, stream, indent=2, default=str)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(tmp, p)
+        os.chmod(p, 0o600)
+    except Exception:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
 
 
 def register_agent_checkin(payload: dict) -> dict:
@@ -113,8 +158,10 @@ def register_agent_checkin(payload: dict) -> dict:
     db = load_agents()
     host = payload.get("hostname") or payload.get("host") or "unknown"
     ip = payload.get("ip") or ""
-    key = ip or host
+    authenticated_agent_id = payload.get("agent_id")
+    key = str(authenticated_agent_id or ip or host)
     entry = {
+        "agent_id": authenticated_agent_id,
         "hostname": host,
         "ip": ip,
         "last_seen": datetime.now().isoformat(),
@@ -161,21 +208,66 @@ def build_install_bundle(
     label: str = "default",
 ) -> dict:
     """Write install_agent.sh + README for manual or SSH install on a remote host."""
-    token = ensure_agent_token()
     url = (central_url or central_base_url()).rstrip("/")
-    bdir = bundles_dir() / f"bundle_{label}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    bdir.mkdir(parents=True, exist_ok=True)
+    parsed_url = urlparse(url)
+    if not parsed_url.hostname or parsed_url.username or parsed_url.password or parsed_url.query or parsed_url.fragment:
+        raise ValueError("Central URL must have a hostname and must not contain credentials, query, or fragment")
+    try:
+        loopback = ipaddress.ip_address(parsed_url.hostname).is_loopback
+    except ValueError:
+        loopback = parsed_url.hostname.lower() == "localhost"
+    if parsed_url.scheme != "https" and not (parsed_url.scheme == "http" and loopback):
+        raise ValueError("Agent bundles require HTTPS for non-loopback central URLs")
+    central_cfg = _cfg()
+    central_agent_cfg = central_cfg.get("agent") or {}
+    configured_ca = central_agent_cfg.get("tls_ca") or central_agent_cfg.get("tls_cert")
+    source_ca = Path(str(configured_ca)).expanduser() if configured_ca else None
+    if source_ca and not source_ca.is_file():
+        raise RuntimeError(f"Configured central CA/certificate does not exist: {source_ca}")
+    from modules.agent_keys import issue_key
+    agent_id = re.sub(r"[^A-Za-z0-9_.-]", "_", label)[:80] or "agent"
+    bootstrap_secret = secrets.token_urlsafe(32)
+    issued = issue_key(agent_id, bootstrap_secret, bootstrap_secret, ttl_seconds=30 * 24 * 60 * 60)
+    if not issued.get("ok"):
+        raise RuntimeError("Could not issue per-agent credential")
+    token = issued["api_key"]
+    bdir = bundles_dir() / f"bundle_{agent_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{secrets.token_hex(4)}"
+    bdir.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        os.chmod(bdir, 0o700)
+    except OSError:
+        pass
+    token_path = bdir / "agent.key"
+    token_path.write_text(token + "\n", encoding="utf-8")
+    os.chmod(token_path, 0o600)
 
+    # Include a configured private CA/certificate for strict TLS verification.
+    ca_path = None
+    if source_ca:
+        ca_path = bdir / "central-ca.crt"
+        shutil.copyfile(source_ca, ca_path)
+        os.chmod(ca_path, 0o644)
     script = textwrap.dedent(f"""\
     #!/usr/bin/env bash
     # SENTINEL remote agent install - TrinTech Digital Defense
     # Authorized defensive use only. Run on the TARGET host.
     set -euo pipefail
-    CENTRAL_URL="{url}"
-    SHARED_TOKEN="{token}"
+    PYTHON_BIN="${{PYTHON:-python3}}"
+    if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then echo "[!] Python executable not found: $PYTHON_BIN"; exit 1; fi
+    PYTHON_BIN="$(command -v "$PYTHON_BIN")"
+    CENTRAL_URL={shlex.quote(url)}
+    SCRIPT_DIR="$(cd -- "$(dirname -- "${{BASH_SOURCE[0]}}")" && pwd)"
+    TOKEN_FILE="${{SCRIPT_DIR}}/agent.key"
+    CA_FILE="${{SCRIPT_DIR}}/central-ca.crt"
+    SENTINEL_HOME="${{SENTINEL_DIR:-$HOME/.sentinel}}"
+    if [[ ! -f "$TOKEN_FILE" ]]; then
+      echo "[!] Missing agent.key sidecar; keep it beside install_agent.sh"
+      exit 1
+    fi
+    SHARED_TOKEN="$(< "$TOKEN_FILE")"
     INSTALL_DIR="${{INSTALL_DIR:-$HOME/Sentinel}}"
     REPO_URL="${{REPO_URL:-https://github.com/trintechdigitaldefense/Sentinel.git}}"
-    BRANCH="${{BRANCH:-hardening/production-readiness}}"
+    BRANCH="${{BRANCH:-main}}"
 
     echo "[*] Sentinel agent install -> $INSTALL_DIR"
     echo "[*] Central: $CENTRAL_URL"
@@ -194,30 +286,46 @@ def build_install_bundle(
     fi
 
     cd "$INSTALL_DIR"
-    python3 setup.py || true
+    "$PYTHON_BIN" setup.py
 
-    mkdir -p "$HOME/.sentinel"
-    python3 - <<PY
+    mkdir -p "$SENTINEL_HOME"
+    export SENTINEL_DIR="$SENTINEL_HOME"
+    if [[ -f "$CA_FILE" ]]; then
+      install -m 0644 "$CA_FILE" "$SENTINEL_HOME/central-ca.crt"
+      export SENTINEL_TLS_CA="$SENTINEL_HOME/central-ca.crt"
+    fi
+    SENTINEL_AGENT_TOKEN="$SHARED_TOKEN" CENTRAL_URL="$CENTRAL_URL" SENTINEL_TLS_CA="${{SENTINEL_TLS_CA:-}}" "$PYTHON_BIN" - <<'PY'
 import json, os
 from pathlib import Path
-p = Path.home() / ".sentinel" / "config.json"
+p = Path(os.environ.get("SENTINEL_DIR", Path.home() / ".sentinel")) / "config.json"
 cfg = {{}}
 if p.exists():
     try:
         cfg = json.loads(p.read_text())
-    except Exception:
-        cfg = {{}}
+        if not isinstance(cfg, dict):
+            raise ValueError("config root is not an object")
+    except Exception as exc:
+        raise SystemExit(f"Refusing to overwrite invalid config: {{exc}}")
 cfg.setdefault("agent", {{}})
-cfg["agent"]["shared_token"] = "{token}"
-cfg["agent"]["central_url"] = "{url}"
+cfg["agent"]["shared_token"] = os.environ["SENTINEL_AGENT_TOKEN"]
+cfg["agent"]["central_url"] = os.environ["CENTRAL_URL"]
 cfg["agent"]["enabled"] = True
 cfg["agent"]["role"] = "agent"
-p.write_text(json.dumps(cfg, indent=2))
+if os.environ.get("SENTINEL_TLS_CA"):
+    cfg["agent"]["tls_ca"] = os.environ["SENTINEL_TLS_CA"]
+tmp = p.with_suffix(".json.tmp")
+tmp.write_text(json.dumps(cfg, indent=2))
+os.chmod(tmp, 0o600)
+os.replace(tmp, p)
 os.chmod(p, 0o600)
 print("[+] agent config written", p)
 PY
 
-    python3 - <<'PY'
+    if [[ "${{SENTINEL_REMOVE_BUNDLE:-0}}" == "1" ]]; then
+      rm -f "$TOKEN_FILE" "$CA_FILE"
+    fi
+
+    "$PYTHON_BIN" - <<'PY'
 try:
     from modules.remote_agent import agent_plant_canaries
     print(agent_plant_canaries())
@@ -228,13 +336,74 @@ except Exception as e:
 PY
 
     echo "[*] Starting agent (reports to central every 60s)."
-    echo "    Background: nohup python3 sentinel.py agent $CENTRAL_URL >/tmp/sentinel-agent.log 2>&1 &"
-    exec python3 sentinel.py agent "$CENTRAL_URL"
+
+    # Prefer a systemd-managed service when the installer runs as root under systemd.
+    # Containers, development and non-root installs retain foreground mode.
+    if [[ "${{SENTINEL_FORCE_FOREGROUND:-0}}" != "1" \
+          && "$(id -u)" -eq 0 \
+          && -d /run/systemd/system ]] \
+          && command -v systemctl >/dev/null 2>&1; then
+      RUN_USER="$(id -un)"
+      RUN_HOME="$HOME"
+      RUN_SENTINEL_DIR="$SENTINEL_HOME"
+      UNIT_PATH="/etc/systemd/system/sentinel-agent.service"
+      if [[ "$INSTALL_DIR" == *" "* || "$RUN_HOME" == *" "* || "$RUN_SENTINEL_DIR" == *" "* || "$PYTHON_BIN" == *" "* ]]; then
+        echo "[!] Spaces in install/home paths are unsupported for system service installation"
+        exit 1
+      fi
+      cat > "$UNIT_PATH" <<EOF
+    [Unit]
+    Description=Sentinel remote security agent
+    Wants=network-online.target
+    After=network-online.target
+
+    [Service]
+    Type=simple
+    User=$RUN_USER
+    Environment=HOME=$RUN_HOME
+    Environment=PYTHON=$PYTHON_BIN
+    Environment=SENTINEL_DIR=$RUN_SENTINEL_DIR
+    WorkingDirectory=$INSTALL_DIR
+    ExecStart=$PYTHON_BIN $INSTALL_DIR/sentinel.py agent
+    Restart=on-failure
+    RestartSec=5
+    TimeoutStopSec=30
+    KillSignal=SIGTERM
+    UMask=0077
+    NoNewPrivileges=true
+    # Keep the host /tmp and /var/tmp visible to endpoint monitoring.
+    ProtectSystem=full
+    ProtectKernelTunables=true
+    ProtectKernelModules=true
+    ProtectControlGroups=true
+    LockPersonality=true
+    RestrictSUIDSGID=true
+
+    [Install]
+    WantedBy=multi-user.target
+EOF
+      chmod 0644 "$UNIT_PATH"
+      systemctl daemon-reload
+      systemctl enable sentinel-agent.service
+      systemctl restart sentinel-agent.service 2>/dev/null || systemctl start sentinel-agent.service
+      if ! systemctl is-active --quiet sentinel-agent.service; then
+        systemctl --no-pager --full status sentinel-agent.service || true
+        echo "[!] sentinel-agent.service failed to become active"
+        exit 1
+      fi
+      echo "[+] sentinel-agent.service enabled and active"
+      exit 0
+    fi
+
+    if [[ "${{SENTINEL_FORCE_FOREGROUND:-0}}" != "1" ]]; then
+      echo "[=] systemd unavailable or installer is non-root; running agent in foreground"
+    fi
+    exec "$PYTHON_BIN" sentinel.py agent "$CENTRAL_URL"
     """)
     sh_path = bdir / "install_agent.sh"
     sh_path.write_text(script)
     try:
-        os.chmod(sh_path, 0o755)
+        os.chmod(sh_path, 0o700)
     except Exception as e:
         logging.getLogger('sentinel').debug('%s: %s', __name__, e)
 
@@ -243,12 +412,12 @@ PY
     # Sentinel agent bundle - {label}
 
     Central: `{url}`
-    Token is embedded in install_agent.sh (treat as secret).
+    Per-agent API key is stored in agent.key (0600); keep it beside the installer and treat both files as credentials.\n    The key expires after 30 days and must be reissued before expiry.
 
     ## Manual install on a remote Linux host
-    1. Copy install_agent.sh to the host
-    2. bash install_agent.sh
-    3. Leave agent running or use nohup
+    1. Copy install_agent.sh and agent.key together to the host
+    2. Keep agent.key in the same protected directory, then run bash install_agent.sh
+    3. On a root-managed Linux host running systemd, the installer enables `sentinel-agent.service`; otherwise it runs the agent in the foreground
 
     ## SSH push from central (authorized key required)
     ```bash
@@ -264,6 +433,9 @@ PY
         "install_script": str(sh_path),
         "central_url": url,
         "token_set": True,
+        "credential_file": str(token_path),
+        "ca_file": str(ca_path) if ca_path else None,
+        "credential_expires_in_seconds": 30 * 24 * 60 * 60,
         "label": label,
     }
     (bdir / "meta.json").write_text(json.dumps(meta, indent=2))
@@ -312,16 +484,25 @@ def push_via_ssh(
     label = target.replace("@", "_").replace(".", "_")[:40]
     bundle = build_install_bundle(central_url=central_url, label=label)
     script = bundle["install_script"]
-    remote_script = f"/tmp/sentinel_install_agent_{secrets.token_hex(4)}.sh"
+    token_file = bundle["credential_file"]
+    remote_dir = f"/tmp/sentinel_agent_bundle_{secrets.token_hex(6)}"
+    remote_script = f"{remote_dir}/install_agent.sh"
 
-    scp_cmd = ["scp", "-P", str(port), "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes"]
-    ssh_cmd = ["ssh", "-p", str(port), "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes"]
+    scp_cmd = ["scp", "-P", str(port), "-o", "StrictHostKeyChecking=yes", "-o", "BatchMode=yes"]
+    ssh_cmd = ["ssh", "-p", str(port), "-o", "StrictHostKeyChecking=yes", "-o", "BatchMode=yes"]
     if identity:
         scp_cmd.extend(["-i", identity])
         ssh_cmd.extend(["-i", identity])
-    scp_cmd.extend([script, f"{target}:{remote_script}"])
 
     try:
+        mkdir_cmd = ssh_cmd + [target, f"umask 077 && mkdir -m 700 -p {remote_dir}"]
+        prepared = subprocess.run(mkdir_cmd, capture_output=True, text=True, timeout=30)
+        if prepared.returncode != 0:
+            return {"ok": False, "error": "could not prepare protected remote bundle directory", "stderr": (prepared.stderr or "")[:500], "bundle": bundle}
+        transfer_files = [script, token_file]
+        if bundle.get("ca_file"):
+            transfer_files.append(bundle["ca_file"])
+        scp_cmd.extend(transfer_files + [f"{target}:{remote_dir}/"])
         r1 = subprocess.run(scp_cmd, capture_output=True, text=True, timeout=60)
         if r1.returncode != 0:
             return {
@@ -331,7 +512,7 @@ def push_via_ssh(
                 "hint": "Use an authorized key: ssh-copy-id user@host",
                 "bundle": bundle,
             }
-        remote = f"nohup bash {remote_script} >/tmp/sentinel-agent-install.log 2>&1 & echo STARTED:$!"
+        remote = f"chmod 700 {remote_script} && chmod 600 {remote_dir}/agent.key && if [ -f {remote_dir}/central-ca.crt ]; then chmod 644 {remote_dir}/central-ca.crt; fi && (nohup bash -c 'SENTINEL_REMOVE_BUNDLE=1 bash {remote_script}; rc=$?; rm -rf {remote_dir}; exit $rc' >/tmp/sentinel-agent-install.log 2>&1 </dev/null & echo STARTED:$!)"
         r2 = subprocess.run(ssh_cmd + [target, remote], capture_output=True, text=True, timeout=timeout)
         return {
             "ok": r2.returncode == 0,
