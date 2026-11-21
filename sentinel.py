@@ -537,18 +537,6 @@ def send_alert(alert_type, details, logger=None):
         except Exception:
             pass
 
-    # Auto-open a case for configured high-signal engine events.
-    try:
-        from modules.case_hooks import maybe_open_case_from_engine_alert
-
-        maybe_open_case_from_engine_alert(
-            str(alert_type),
-            details if isinstance(details, dict) else {"raw": details},
-        )
-    except Exception:
-        # Case management must not interrupt alert persistence or delivery.
-        pass
-
     # Unified router owns channel delivery, SIEM emission and offline queueing.
     router_result = {}
     try:
@@ -625,6 +613,18 @@ def send_alert(alert_type, details, logger=None):
         pass
 
     # The unified router exclusively owns channel delivery and queueing.
+
+    # Auto-open a case for configured high-signal engine events.
+    try:
+        from modules.case_hooks import maybe_open_case_from_engine_alert
+
+        maybe_open_case_from_engine_alert(
+            str(alert_type),
+            details if isinstance(details, dict) else {"raw": details},
+        )
+    except Exception:
+        # Case management must not interrupt alert persistence or delivery.
+        pass
 
     # Local logging and critical persistence alone do not count as delivery.
     result["ok"] = bool(
