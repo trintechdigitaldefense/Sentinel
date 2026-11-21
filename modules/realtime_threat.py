@@ -451,6 +451,30 @@ def snapshot(
     return out
 
 
+def read_status() -> dict:
+    """Read the latest saved realtime snapshot without running detection."""
+    p = _data() / "realtime_threat.json"
+    try:
+        if p.is_file():
+            saved = json.loads(p.read_text())
+            if isinstance(saved, dict):
+                return saved
+    except Exception as e:
+        logging.getLogger("sentinel").debug("%s: %s", __name__, e)
+
+    return {
+        "ok": False,
+        "level": "UNKNOWN",
+        "score": 0,
+        "threat_count": 0,
+        "threats": [],
+        "recent_high_alerts": [],
+        "realtime": True,
+        "disclaimer": "No valid saved realtime snapshot is available yet.",
+        "detectors": [],
+    }
+
+
 def status() -> dict:
     p = _data() / "realtime_threat.json"
     if p.exists():

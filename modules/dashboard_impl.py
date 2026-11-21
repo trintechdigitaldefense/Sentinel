@@ -341,8 +341,8 @@ def collect_full() -> dict:
         "quiet": quiet,
     }
     try:
-        from modules.realtime_threat import snapshot as _rt_snap
-        out["realtime"] = _rt_snap(emit_alerts=False)
+        from modules.realtime_threat import read_status as _rt_read_status
+        out["realtime"] = _rt_read_status()
     except Exception as e:
         out["realtime"] = {"ok": False, "error": str(e), "level": "UNKNOWN", "threats": []}
 
@@ -552,8 +552,8 @@ def _html(token: str, data: dict) -> str:
     <div class="action-group">
       <div class="action-label">Reports for the client</div>
       <div class="actions">
-        <a class="btn btn-pdf" id="btn-pdf-report" href="/api/report/pdf?type=client" target="_blank" rel="noopener" >📄 Client report (easy to read)</a>
-        <a class="btn secondary" href="/api/report/technical" target="_blank" rel="noopener" >🔧 Technical report (for IT)</a>
+        <button type="button" class="btn btn-pdf" id="btn-pdf-report" data-action="client-report">📄 Client report (easy to read)</button>
+        <button type="button" class="btn secondary" data-action="tech-report">🔧 Technical report (for IT)</button>
       </div>
     </div>
 
@@ -878,8 +878,8 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
     <h2>📄 PDF reports</h2>
     <p class="muted">Tap a button to open the report immediately in this browser. You can download from the viewer.</p>
     <div class="actions">
-      <a class="btn btn-pdf" href="/api/report/pdf?type=client" target="_blank" rel="noopener" >Generate &amp; view client PDF</a>
-      <a class="btn secondary" href="/api/report/technical" target="_blank" rel="noopener" >Technical PDF</a>
+      <button class="btn btn-pdf" type="button" data-action="client-report">Generate &amp; view client PDF</button>
+      <button class="btn secondary" type="button" data-action="tech-report">Technical PDF</button>
       <button class="btn secondary" type="button" data-open-pdf="client">📄 Open client PDF</button>
       <button class="btn secondary" type="button" data-open-pdf="technical">🔧 Open technical PDF</button>
     </div>
@@ -952,14 +952,7 @@ document.addEventListener("change", function(event) {{
 }});
 function openPdf(kind) {{
   const k = (kind || "client").toLowerCase();
-  const url = (k === "tech" || k === "technical")
-    ? "/api/report/technical"
-    : "/api/report/pdf?type=client";
-  const out = document.getElementById("action-out");
-  if (out) out.textContent = "Opening " + k + " PDF…";
-  try {{ window.open(url, "_blank"); }} catch (e) {{
-    if (out) out.textContent = "Pop-up blocked — use the PDF links in the Reports section.";
-  }}
+  runAction((k === "tech" || k === "technical") ? "tech-report" : "client-report");
 }}
 async function runAction(name) {{
 
@@ -1152,10 +1145,14 @@ function renderThreats(rt) {{
 
 async function pollRealtime() {{
   try {{
-    const r = await fetch("/api/realtime?scan=1", {{ headers: authHeaders(false) }});
+    const r = await fetch("/api/action", {{
+      method: "POST",
+      headers: authHeaders(true),
+      body: JSON.stringify({{action: "realtime-scan"}})
+    }});
     if (!r.ok) return;
     const j = await r.json();
-    renderThreats(j);
+    renderThreats(j.realtime || {{}});
   }} catch (e) {{}}
 }}
 
@@ -1531,21 +1528,15 @@ class _Handler(BaseHTTPRequestHandler):
             else:
                 self._send(401, b'{"ok":false,"error":"unauthorized"}', "application/json")
             return
-        report_generation_paths = (
-            "/api/report/pdf",
-            "/api/report/client",
-            "/api/report/generate",
-            "/api/report/tech",
-            "/api/report/technical",
-        )
-        if path in report_generation_paths and not self._csrf_ok():
-            self._send(403, b'{"ok":false,"error":"cross-origin request rejected"}', "application/json")
+        report_generation_paths = ("/api/report/pdf", "/api/report/client", "/api/report/generate", "/api/report/tech", "/api/report/technical")
+        if path in report_generation_paths:
+            self._send(405, b"{\"ok\":false,\"error\":\"method not allowed; use POST\"}", "application/json", extra_headers={"Allow": "POST"})
             return
         if path in ("/api/realtime", "/api/threats"):
             q = parse_qs(urlparse(self.path).query)
-            scan_requested = (q.get("scan") or ["0"])[0] in ("1", "true", "yes")
-            if scan_requested and not self._csrf_ok():
-                self._send(403, b'{"ok":false,"error":"cross-origin request rejected"}', "application/json")
+            scan_requested = (q.get("scan") or ["0"])[0].lower() in ("1", "true", "yes")
+            if scan_requested:
+                self._send(405, b"{\"ok\":false,\"error\":\"method not allowed; use POST\"}", "application/json", extra_headers={"Allow": "POST"})
                 return
         data = collect_full()
         data["control"] = bool(self.allow_control)
@@ -1582,81 +1573,6 @@ class _Handler(BaseHTTPRequestHandler):
             body = logo.read_bytes()
             ctype = "image/png"
             self._send(200, body, ctype, extra_headers={"Cache-Control": "public, max-age=3600"})
-            return
-
-        if path in ("/api/report/pdf", "/api/report/client", "/api/report/generate", "/api/report/tech", "/api/report/technical"):
-            try:
-                qs = parse_qs(urlparse(self.path).query)
-                kind = (qs.get("type") or qs.get("kind") or ["client"])[0].lower()
-                if path.endswith("/tech") or path.endswith("/technical") or kind in ("tech", "technical", "operator"):
-                    kind = "technical"
-                else:
-                    kind = "client"
-                reports = _reports_dir()
-                reports.mkdir(parents=True, exist_ok=True)
-                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                if kind == "technical":
-                    from modules.technical_report import generate_technical_pdf
-                    out_path = reports / f"Sentinel_Technical_{ts}.pdf"
-                    result = generate_technical_pdf(out_path=out_path)
-                else:
-                    from modules.client_report import generate_client_pdf
-                    out_path = reports / f"Client_Report_{ts}.pdf"
-                    cname = (_cfg().get("dashboard") or {}).get("client_name") or _cfg().get("client_name")
-                    result = generate_client_pdf(out_path=out_path, client_name=cname)
-                if not result.get("ok"):
-                    self._send(500, b'{"ok":false,"error":"PDF generation failed"}', "application/json")
-                    return
-                path_out = Path(str(result.get("path") or out_path))
-                safe_report = _read_generated_report(path_out)
-                if safe_report is None:
-                    self._send(404, b'{"ok":false,"error":"report not found"}', "application/json")
-                    return
-                report_name, body = safe_report
-                extra = {
-                    "Content-Disposition": f'inline; filename="{report_name}"',
-                    "Cache-Control": "no-store",
-                    "X-Sentinel-Report": report_name,
-                    "X-Sentinel-Report-Type": kind,
-                }
-                self._send(200, body, "application/pdf", extra_headers=extra)
-            except Exception as e:
-                logging.getLogger("sentinel").exception("GET report pdf")
-                self._send(500, b'{"ok":false,"error":"PDF request failed"}', "application/json")
-            return
-
-
-        if path in ("/api/report/technical", "/api/report/tech"):
-            try:
-                result = _generate_dashboard_pdfs("tech-report")
-                if not result.get("ok"):
-                    # fallback client-style
-                    from modules.client_report import generate_client_pdf
-                    reports = _reports_dir()
-                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    out_path = reports / f"Sentinel_Technical_{ts}.pdf"
-                    result2 = generate_client_pdf(out_path=out_path)
-                    if not result2.get("ok"):
-                        self._send(500, b'{"ok":false,"error":"Technical PDF generation failed"}', "application/json")
-                        return
-                    path_out = Path(str(result2.get("path") or out_path))
-                else:
-                    # pick first generated path
-                    gens = result.get("generated") or []
-                    path_out = Path((gens[0] or {}).get("path") or result.get("path") or "")
-                safe_report = _read_generated_report(path_out)
-                if safe_report is None:
-                    self._send(404, b'{"ok":false,"error":"technical pdf not found"}', "application/json")
-                    return
-                report_name, body = safe_report
-                extra = {
-                    "Content-Disposition": f'inline; filename="{report_name}"',
-                    "Cache-Control": "no-store",
-                }
-                self._send(200, body, "application/pdf", extra_headers=extra)
-            except Exception as e:
-                logging.getLogger("sentinel").exception("GET tech pdf")
-                self._send(500, b'{"ok":false,"error":"PDF request failed"}', "application/json")
             return
 
         if path in ("/api/report/download", "/api/reports/download"):
@@ -1796,13 +1712,14 @@ class _Handler(BaseHTTPRequestHandler):
             # Read-only / report actions — work without allow_control
             safe_actions = {
                 "refresh", "doctor", "ops", "go-live-status", "visibility",
-                "service-status", "realtime-scan", "pdf-report", "client-report",
+                "service-status", "pdf-report", "client-report",
                 "tech-report", "multi-host", "field-evidence", "fleet-scan",
                 "ssh-status", "alerts",
             }
             # Mutating — need allow_control
             control_actions = {
-                "quiet-on", "quiet-off", "field-soak", "deception", "service-install",
+                "quiet-on", "quiet-off", "field-soak", "deception",
+                "service-install", "realtime-scan",
             }
             allowed = {
                 "refresh": ("ops",),
@@ -1913,17 +1830,22 @@ def _generate_dashboard_pdfs(action: str = "pdf-report") -> dict:
     def _rel(path: Path) -> str:
         return f"/api/report/download?name={path.name}"
 
+    def _validated_generated_path(returned, expected: Path) -> Path:
+        path = Path(str(returned or expected))
+        if (reports.is_symlink() or path.is_symlink()
+                or path.name != expected.name
+                or path.parent.resolve() != reports.resolve()
+                or not path.is_file()):
+            raise ValueError("PDF generator returned an unapproved report path")
+        return path
+
     if action in ("pdf-report", "client-report"):
         try:
             from modules.client_report import generate_client_pdf
             client_path = reports / f"Client_Report_{ts}.pdf"
             r = generate_client_pdf(out_path=client_path, client_name=cname)
             if r.get("ok"):
-                path = Path(str(r.get("path") or client_path))
-                if path.is_file() and path.parent.resolve() != reports.resolve():
-                    dest = reports / path.name
-                    dest.write_bytes(path.read_bytes())
-                    path = dest
+                path = _validated_generated_path(r.get("path"), client_path)
                 out["generated"].append({"type": "client", "path": str(path)})
                 out["path"] = str(path)
                 out["download"] = _rel(path)
@@ -1949,11 +1871,7 @@ def _generate_dashboard_pdfs(action: str = "pdf-report") -> dict:
             tech_path = reports / f"Sentinel_Technical_{ts}.pdf"
             r = generate_technical_pdf(out_path=tech_path)
             if r.get("ok"):
-                path = Path(str(r.get("path") or tech_path))
-                if path.is_file() and path.parent.resolve() != reports.resolve():
-                    dest = reports / path.name
-                    dest.write_bytes(path.read_bytes())
-                    path = dest
+                path = _validated_generated_path(r.get("path"), tech_path)
                 out["generated"].append({"type": "technical", "path": str(path)})
                 dl = _rel(path)
                 if dl not in out["downloads"]:

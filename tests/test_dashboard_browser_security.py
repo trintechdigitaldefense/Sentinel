@@ -12,9 +12,10 @@ def dashboard_server(monkeypatch):
     pytest.importorskip("playwright.sync_api")
     import modules.dashboard_impl as dashboard
 
-    dashboard._Handler.token = "browser-test-token"
-    dashboard._Handler.allow_control = True
-    dashboard._Handler.secure_cookie = False
+    monkeypatch.setattr(dashboard._Handler, "token", "browser-test-token")
+    monkeypatch.setattr(dashboard._Handler, "allow_control", True)
+    monkeypatch.setattr(dashboard._Handler, "secure_cookie", False)
+    monkeypatch.setattr(dashboard._Handler, "trusted_hosts", ("127.0.0.1",))
     monkeypatch.setattr(
         dashboard,
         "collect_full",

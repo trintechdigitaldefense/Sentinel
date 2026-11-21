@@ -42,3 +42,75 @@ def test_download_path_traversal_rejected():
     assert name == "passwd"
     name_pdf = Path("../../etc/shadow.pdf").name
     assert name_pdf == "shadow.pdf"
+
+
+def test_client_report_rejects_generator_path_outside_reports(tmp_path, monkeypatch):
+    import modules.dashboard_impl as d
+    monkeypatch.setenv("SENTINEL_DIR", str(tmp_path / ".sentinel"))
+    outside = tmp_path / "outside.pdf"
+    outside.write_bytes(b"%PDF-1.4 PRIVATE")
+
+    def fake_generator(out_path, client_name=None):
+        return {"ok": True, "path": str(outside)}
+
+    with patch("modules.client_report.generate_client_pdf", side_effect=fake_generator):
+        result = d._generate_dashboard_pdfs("client-report")
+
+    assert result.get("ok") is False
+    assert "unapproved report path" in result.get("error", "")
+    assert not (d._reports_dir() / outside.name).exists()
+
+
+def test_client_report_rejects_generator_symlink(tmp_path, monkeypatch):
+    import modules.dashboard_impl as d
+    monkeypatch.setenv("SENTINEL_DIR", str(tmp_path / ".sentinel"))
+    outside = tmp_path / "outside.pdf"
+    outside.write_bytes(b"%PDF-1.4 PRIVATE")
+
+    def fake_generator(out_path, client_name=None):
+        Path(out_path).symlink_to(outside)
+        return {"ok": True, "path": str(out_path)}
+
+    with patch("modules.client_report.generate_client_pdf", side_effect=fake_generator):
+        result = d._generate_dashboard_pdfs("client-report")
+
+    assert result.get("ok") is False
+    assert "unapproved report path" in result.get("error", "")
+    assert outside.read_bytes() == b"%PDF-1.4 PRIVATE"
+
+
+def test_technical_report_rejects_generator_path_outside_reports(tmp_path, monkeypatch):
+    import modules.dashboard_impl as d
+
+    monkeypatch.setenv("SENTINEL_DIR", str(tmp_path / ".sentinel"))
+    outside = tmp_path / "outside-technical.pdf"
+    outside.write_bytes(b"%PDF-1.4 PRIVATE")
+
+    def fake_generator(out_path):
+        return {"ok": True, "path": str(outside)}
+
+    with patch("modules.technical_report.generate_technical_pdf", side_effect=fake_generator):
+        result = d._generate_dashboard_pdfs("tech-report")
+
+    assert result.get("ok") is False
+    assert "unapproved report path" in result.get("error", "")
+    assert not (d._reports_dir() / outside.name).exists()
+
+
+def test_technical_report_rejects_generator_symlink(tmp_path, monkeypatch):
+    import modules.dashboard_impl as d
+
+    monkeypatch.setenv("SENTINEL_DIR", str(tmp_path / ".sentinel"))
+    outside = tmp_path / "outside-technical.pdf"
+    outside.write_bytes(b"%PDF-1.4 PRIVATE")
+
+    def fake_generator(out_path):
+        Path(out_path).symlink_to(outside)
+        return {"ok": True, "path": str(out_path)}
+
+    with patch("modules.technical_report.generate_technical_pdf", side_effect=fake_generator):
+        result = d._generate_dashboard_pdfs("tech-report")
+
+    assert result.get("ok") is False
+    assert "unapproved report path" in result.get("error", "")
+    assert outside.read_bytes() == b"%PDF-1.4 PRIVATE"

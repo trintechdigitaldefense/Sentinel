@@ -371,7 +371,7 @@ def test_session_cookie_rejects_trailing_dot_trusted_hostname(monkeypatch):
         "/api/report/technical",
     ],
 )
-def test_cross_origin_report_get_rejected_before_collection(monkeypatch, tmp_path, route):
+def test_report_generation_get_rejected_before_collection(monkeypatch, tmp_path, route):
     import modules.dashboard_impl as dashboard
     from modules.dashboard_impl import _Handler
 
@@ -408,13 +408,13 @@ def test_cross_origin_report_get_rejected_before_collection(monkeypatch, tmp_pat
     monkeypatch.setattr(dashboard, "collect_full", forbidden_collection)
     handler.do_GET()
 
-    assert handler.sent == 403
-    assert b"cross-origin request rejected" in handler.body
+    assert handler.sent == 405
+    assert b"method not allowed" in handler.body
     assert not reports.exists()
 
 
 @pytest.mark.parametrize("route", ["/api/realtime?scan=1", "/api/threats?scan=1"])
-def test_cross_origin_realtime_scan_get_rejected_before_collection(monkeypatch, route):
+def test_realtime_scan_get_rejected_before_collection(monkeypatch, route):
     import modules.dashboard_impl as dashboard
     from modules.dashboard_impl import _Handler
 
@@ -449,5 +449,5 @@ def test_cross_origin_realtime_scan_get_rejected_before_collection(monkeypatch, 
     monkeypatch.setattr(dashboard, "collect_full", forbidden_collection)
     handler.do_GET()
 
-    assert handler.sent == 403
-    assert b"cross-origin request rejected" in handler.body
+    assert handler.sent == 405
+    assert b"method not allowed" in handler.body
