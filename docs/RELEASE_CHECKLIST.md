@@ -1,6 +1,6 @@
 # SENTINEL release checklist
 
-**Current repository baseline:** `main` at `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44` (PR #25 squash merge, 2026-11-21)  
+**Application/source baseline reviewed:** `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44` (PR #25 merge, 2026-11-21; subsequent documentation-only PRs do not change application code)  
 **Product status:** **pilot candidate**. This checklist does not declare a production release, certification, or deployment approval.
 
 ## Latest repository status — 2026-11-21 (post-PR #24)
