@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # © 2026 TrinTech Digital Defense — authorized defensive use only
-"""SENTINEL installer — dependency check and safe config initialization.
+"""SENTINEL installer — dependency check + config init + cases wire.
 
 Usage:
   python3 setup.py
@@ -95,6 +95,40 @@ def check_engine() -> bool:
         return False
     print(f"[+] Engine OK ({ENGINE.stat().st_size} bytes)")
     return True
+
+
+def apply_cases_wire() -> None:
+    """Wire menu / send_alert / cases command into sentinel.py if needed."""
+    script = ROOT / "scripts" / "apply_cases_wire.py"
+    if not script.exists():
+        print("[=] cases wire script not present — skip")
+        return
+    try:
+        import runpy
+
+        runpy.run_path(str(script), run_name="__main__")
+    except SystemExit as e:
+        if e.code not in (0, None):
+            print(f"[!] cases wire exit {e.code}")
+    except Exception as e:
+        print(f"[!] cases wire: {e}")
+
+
+def apply_dashboard_cases() -> None:
+    """Inject open-cases UI into dashboard.html if needed."""
+    script = ROOT / "scripts" / "apply_dashboard_cases.py"
+    if not script.exists():
+        print("[=] dashboard cases script not present — skip")
+        return
+    try:
+        import runpy
+
+        runpy.run_path(str(script), run_name="__main__")
+    except SystemExit as e:
+        if e.code not in (0, None):
+            print(f"[!] dashboard cases exit {e.code}")
+    except Exception as e:
+        print(f"[!] dashboard cases: {e}")
 
 
 def check_deps() -> None:
@@ -277,6 +311,9 @@ def main() -> None:
     if "--check" in sys.argv:
         print("\n[=] Check-only mode — no writes")
         return
+    apply_cases_wire()
+    apply_dashboard_cases()
+    check_engine()
     init_dirs()
     init_config()
     try:
