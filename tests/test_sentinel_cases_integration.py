@@ -30,6 +30,7 @@ def test_send_alert_auto_opens_case_hook(tmp_path, monkeypatch):
     from modules import alerting, case_hooks, critical_alerts
 
     called = []
+    order = []
     monkeypatch.setattr(
         sentinel,
         "load_config_safe",
@@ -55,6 +56,7 @@ def test_send_alert_auto_opens_case_hook(tmp_path, monkeypatch):
             pass
 
         def send(self, *args, **kwargs):
+            order.append("router")
             return {"sent": True, "queued_offline": False, "suppressed": False, "deduped": False, "channels": ["test"]}
 
     monkeypatch.setattr(alerting, "AlertRouter", FakeRouter)
@@ -62,4 +64,5 @@ def test_send_alert_auto_opens_case_hook(tmp_path, monkeypatch):
 
     assert result["ok"] is True
     assert called == [("CANARY_TRIGGERED", {"canary_id": "case-test-1"})]
+    assert order == ["router", "case"]
     assert (tmp_path / "alerts.jsonl").exists()
