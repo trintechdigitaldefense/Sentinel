@@ -2,7 +2,7 @@
 
 **Original audit date:** 2026-11-17  
 **Current-main revalidation:** 2026-11-21  
-**Current application/security source baseline:** `3388e2bf1c88ac0b33b8cd6535c70a5abff3ba6d` (PR #35 merge; includes PR #31 agent transport and PR #34 firewall changes)  
+**Current application/security source baseline:** `d8bd2caeb39f62d17972891a0f8dd8d4c7a3de50` (PR #35 merge; includes PR #31 agent transport and PR #34 firewall changes)  
 **Current dependency/CI baseline:** `9b105dc32a41a2342a2440dc18b1122c4cdf5672` (PR #27 merge; dependency and workflow changes only)  
 **Original reviewed baseline:** `main` at `a9fac56fef73c7344bb4af92a6053124b7894caa` (PR #10 merge); this remains the baseline for the historical findings below.  
 **Review branch:** `security/readiness-audit-2026-11`  
@@ -183,8 +183,8 @@ PR #31 now applies TLS to non-loopback central-agent listeners and fails closed 
 
 - Keep issues #15–#18 **OPEN** until the independent review and operational acceptance evidence specified in each issue is recorded.
 - Keep Sentinel classified as a **pilot candidate**. PR #31 provides TLS-enforced, per-agent-authenticated central transport in source, but target-host certificate provisioning and service operation still need validation. Do not claim production certification or 24/7 staffed response.
-- Treat PR #34 isolated live nftables and SSH-continuity CI as current-main regression evidence, not customer-host certification. PR #31's real-systemd test remains gated and has not been run in the standard CI job.
-- Re-run full CI on the exact current main SHA and record the workflow result. The current-main status lookup for the application/source baseline `3388e2bf1c88ac0b33b8cd6535c70a5abff3ba6d` returned no post-merge workflow result; PR-head CI is recorded separately in the relevant pull requests.
+- Treat PR #34 isolated live nftables and SSH-continuity CI as current-main regression evidence, not customer-host certification. PR #40 adds a dedicated `agent-systemd-live` job; its disposable Ubuntu/systemd container test passed service installation, start, restart, stop and start. This is CI evidence, not target-host service certification.
+- Re-run full CI on the exact current main SHA and record the workflow result. The current-main status lookup for the application/source baseline `d8bd2caeb39f62d17972891a0f8dd8d4c7a3de50` returned no post-merge workflow result; PR-head CI is recorded separately in the relevant pull requests.
 - Complete controlled process-restart/storage-failure drills and a customer-specific firewall change/rollback plan only under a separately approved test plan.
 
 ## Final disposition
