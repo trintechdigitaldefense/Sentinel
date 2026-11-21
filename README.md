@@ -169,7 +169,9 @@ python scripts/firewall_smoke.py
 Details: [docs/TESTING.md](docs/TESTING.md).  
 CI runs compile-all, future-import guard, ruff, firewall smoke, pytest on PRs to `main`.
 
-**PR #21 PDF-serving security verification (2026-11-20):** 310 passed, 1 skipped in the full local suite; Python 3.10 and 3.12 GitHub Actions checks passed on the PR commit. This covers the regression suite for PDF path, file, and directory symlink handling. It is not live deployment validation or production certification.
+**Latest dashboard security verification (PR #23, 2026-11-21):** GitHub Actions passed on the PR head with **347 tests on Python 3.10 and 347 on Python 3.12**. PR #23 adds/strengthens Origin and Host validation for cookie-authenticated state-changing requests and browser regression coverage. This is PR-head CI evidence; it is not a post-merge CI result, live deployment validation, or production certification.
+
+**Earlier PDF-serving verification (PR #21, 2026-11-20):** 310 passed, 1 skipped in the full local suite; Python 3.10 and 3.12 GitHub Actions checks passed on the PR commit. This covers PDF path, file, and directory symlink handling. It is historical PR-head evidence, not a current-main test result.
 
 Earlier post-merge verification on `main` at `e80c09b` (2026-11-17): `python3 -m pytest -q` → **242 passed**, with one ReportLab/Python deprecation warning, on Python 3.12. GitHub Actions for PR #9 also passed on Python 3.10 and 3.12. These are historical automated checks; they are not live firewall, SIEM, WhatsApp, or customer-host validation.
 
@@ -196,7 +198,9 @@ Earlier post-merge verification on `main` at `e80c09b` (2026-11-17): `python3 -m
 - Realtime FIM is reduced without `inotifywait` (`visibility_status().incomplete`).
 - Query-string dashboard tokens can leak via logs/Referer (prefer Bearer; tracked as H-04).
 - Live firewall **apply** and third-party SIEM delivery are not fully exercised in CI.
-- Dashboard CSRF Origin/Host validation, atomic runtime configuration writes, remote-dashboard TLS verification, and tighter CSP remain open in issues [#15](https://github.com/trintechdigitaldefense/Sentinel/issues/15)–[#18](https://github.com/trintechdigitaldefense/Sentinel/issues/18).
+- Dashboard Origin/Host validation, atomic runtime configuration writes, loopback/TLS configuration guards, and nonce-based CSP hardening have implementation merged through PRs [#19](https://github.com/trintechdigitaldefense/Sentinel/pull/19) and [#23](https://github.com/trintechdigitaldefense/Sentinel/pull/23). Tracking issues [#15](https://github.com/trintechdigitaldefense/Sentinel/issues/15)–[#18](https://github.com/trintechdigitaldefense/Sentinel/issues/18) remain open pending independent review and completion of their acceptance evidence; do not treat them as closed.
+- Actual remote TLS reverse-proxy, certificate, cookie, and network-exposure configuration must be verified on the target host before remote dashboard access is enabled.
+- Post-merge CI on the exact current `main` commit, live firewall apply, real third-party alert delivery/receipt, restart/power-loss recovery, and detection coverage/false-positive rates are not established by PR-head CI.
 - Doctor “install OK” is **not** a production certification.
 
 ---
