@@ -182,10 +182,10 @@ PR #31 now applies TLS to non-loopback central-agent listeners and fails closed 
 ### Current disposition
 
 - Keep issues #15–#18 **OPEN** until the independent review and operational acceptance evidence specified in each issue is recorded.
-- Keep Sentinel classified as a **pilot candidate**. Do not claim production certification, safe remote agent transport, or 24/7 staffed response.
-- Treat PR #8 live firewall/systemd CI as proposed-branch evidence only, not current-main evidence.
-- Re-run full CI on the exact current main SHA and record the workflow result. The current-main status lookup for the application/source baseline returned no post-merge workflow result for commit `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44`.
-- Complete isolated process-restart/storage-failure and disposable-host firewall validation only under a separately approved test plan.
+- Keep Sentinel classified as a **pilot candidate**. PR #31 provides TLS-enforced, per-agent-authenticated central transport in source, but target-host certificate provisioning and service operation still need validation. Do not claim production certification or 24/7 staffed response.
+- Treat PR #34 isolated live nftables and SSH-continuity CI as current-main regression evidence, not customer-host certification. PR #31's real-systemd test remains gated and has not been run in the standard CI job.
+- Re-run full CI on the exact current main SHA and record the workflow result. The current-main status lookup for the application/source baseline `3388e2bf1c88ac0b33b8cd6535c70a5abff3ba6d` returned no post-merge workflow result; PR-head CI is recorded separately in the relevant pull requests.
+- Complete controlled process-restart/storage-failure drills and a customer-specific firewall change/rollback plan only under a separately approved test plan.
 
 ## Final disposition
 
