@@ -1169,7 +1169,7 @@ setTimeout(function(){{ location.href = location.pathname; }}, REFRESH_MS);
 
 
 def _login_html() -> str:
-    """Return a token-entry page; credentials are submitted in the POST body, never the URL."""
+    """Return a token-entry page; credentials are submitted in a same-origin POST body."""
     return """<!doctype html>
 <html lang="en">
 <head>
@@ -1181,12 +1181,42 @@ def _login_html() -> str:
 <main>
   <h1>SENTINEL dashboard</h1>
   <p>Enter the dashboard access token shown by the local Sentinel process.</p>
-  <form method="post" action="/api/session" autocomplete="off">
+  <form id="login-form" method="post" action="/api/session" autocomplete="off">
     <label for="token">Dashboard access token</label>
     <input id="token" name="token" type="password" required autocomplete="current-password">
     <button type="submit">Sign in</button>
+    <p id="login-error" role="alert" aria-live="polite"></p>
   </form>
 </main>
+<script>
+document.getElementById("login-form").addEventListener("submit", async function(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+  const error = document.getElementById("login-error");
+  button.disabled = true;
+  error.textContent = "";
+  try {
+    const body = new URLSearchParams(new FormData(form));
+    const response = await fetch(form.action, {
+      method: "POST",
+      headers: {"Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"},
+      body: body.toString(),
+      credentials: "same-origin"
+    });
+    if (response.ok && response.redirected && new URL(response.url).pathname === "/") {
+      window.location.assign("/");
+      return;
+    }
+    const result = await response.json().catch(() => ({}));
+    error.textContent = result.error || ("Sign-in failed (" + response.status + ")");
+  } catch (errorValue) {
+    error.textContent = "Unable to sign in. Check the connection and try again.";
+  } finally {
+    button.disabled = false;
+  }
+});
+</script>
 </body>
 </html>"""
 
