@@ -2,7 +2,7 @@
 
 **Original audit date:** 2026-11-17  
 **Current-main revalidation:** 2026-11-21  
-**Current application/security source baseline:** `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44` (PR #25 merge)  
+**Current application/security source baseline:** `3388e2bf1c88ac0b33b8cd6535c70a5abff3ba6d` (PR #35 merge; includes PR #31 agent transport and PR #34 firewall changes)  
 **Current dependency/CI baseline:** `9b105dc32a41a2342a2440dc18b1122c4cdf5672` (PR #27 merge; dependency and workflow changes only)  
 **Original reviewed baseline:** `main` at `a9fac56fef73c7344bb4af92a6053124b7894caa` (PR #10 merge); this remains the baseline for the historical findings below.  
 **Review branch:** `security/readiness-audit-2026-11`  
@@ -152,7 +152,7 @@ The current-main revalidation was a read-only GitHub source and test inspection.
 | SNT-AL-01 — offline queue silently evicts oldest entries at 500 | Current `offline_enqueue` rejects a new item at capacity and preserves existing rows. `tests/test_offline_queue.py` covers 499/500 boundaries and preservation. | **Addressed in source/test coverage.** |
 | SNT-AL-02 — transport acceptance is not recipient receipt | SMTP/API handoff and UDP syslog cannot establish human receipt or acknowledgement. No end-to-end recipient receipt proof was inspected. | **Open limitation.** Keep delivery language precise and test only with an approved recipient/endpoint. |
 | SNT-AL-03 — restart/power-loss recovery is not proven | Current queue tests cover failure retention, retries, malformed entries and concurrent additions. No current-main test proving process-kill, host-restart, power-loss or storage-failure recovery was identified in the reviewed test inventory. | **Open.** Requires controlled isolated recovery drills. |
-| SNT-FW-01 — live firewall apply/rollback was not validated | Current main includes dry-run/contract tests. PR #8 proposes isolated live nftables and SSH continuity jobs, but PR #8 remains unmerged and its evidence does not apply to current main. | **Open on current main.** Do not infer live-firewall safety from PR #8. |
+| SNT-FW-01 — live firewall apply/rollback was not validated | PR #34 adds transactional nftables apply/verify/restore, validates operator IPs and deny-port inputs, and reports partial defense-pack failures. Its isolated `firewall-live-isolated` and `ssh-lockout-live` CI jobs both passed. | **Addressed in current-main source and isolated CI.** A customer-specific change/rollback drill remains required before enabling firewall changes on a client host. |
 
 
 ### SNT-IN-03 — setup mutates application source during normal setup
@@ -161,8 +161,8 @@ The current-main revalidation was a read-only GitHub source and test inspection.
 **Area:** Installer integrity / reproducibility  
 **Evidence:** Current `setup.py::main()` calls `apply_cases_wire()` and `apply_dashboard_cases()` during a normal setup run. Those functions execute repository scripts (`scripts/apply_cases_wire.py` and `scripts/apply_dashboard_cases.py`) that wire features by editing application source files. This means setup can modify the checkout rather than limiting itself to dependency checks and configuration initialization. The `--check` path returns before those calls, but `check_engine()` uses `py_compile.compile()` and can create bytecode cache files despite the usage text describing check-only mode as no-write.  
 **Impact:** A setup run may produce untracked/modified source files, make the deployed checkout differ from the reviewed commit, and complicate integrity checks or upgrades.  
-**Remediation:** Remove runtime source rewriting from setup; ship wired application code as reviewed source. Make setup fail clearly if a required wiring step is missing rather than editing source at install time. Ensure check-only mode performs no filesystem writes, including bytecode caches. PR #8 proposes removing source mutation, but that change remains unmerged.  
-**Revalidation status:** **Open on current main.** Verify against a disposable checkout before changing the installer.
+**Remediation:** Remove runtime source rewriting from setup; ship wired application code as reviewed source. Make setup fail clearly if a required wiring step is missing rather than editing source at install time. Ensure check-only mode performs no filesystem writes, including bytecode caches. PR #36 removes the runtime source-wiring calls and deletes the obsolete scripts.  
+**Revalidation status:** **Addressed in PR #36 source changes and regression tests.** Setup no longer executes either source-wiring script; the scripts are removed. Independent verification on a disposable install remains advisable.
 
 ### Issues #15–#18 acceptance status
 
@@ -177,20 +177,20 @@ The current-main revalidation was a read-only GitHub source and test inspection.
 
 ### Additional current-main finding: central agent transport
 
-Current `modules/central_agent.py::start_central` binds the listener to `0.0.0.0`. Although `_maybe_ssl()` exists, `start_central()` constructs and starts the server without calling that helper; therefore the current listener is not wrapped in TLS by this path. Current `modules/remote_agent.py` defaults the central URL to `http://<host>:8743` and stores/uses a shared token. This is a separate agent-transport boundary from dashboard TLS issue #17. Do not start the current central listener on a network-facing host or treat its agent traffic as protected. PR #8 proposes HTTPS, per-agent expiring credentials and fail-closed behavior, but it is not merged.
+PR #31 now applies TLS to non-loopback central-agent listeners and fails closed when certificate/key configuration is missing or invalid. Network listeners reject the legacy shared-token mode and require per-agent credentials; the reporting client requires HTTPS off-loopback and validates the configured CA. Automated SSH enrollment now requires a preverified known-hosts entry. This addresses the source-level transport finding, but certificate provisioning, key rotation/revocation procedures, systemd service behavior and a real target-host deployment still require operational verification. This is separate from dashboard TLS issue #17.
 
 ### Current disposition
 
 - Keep issues #15–#18 **OPEN** until the independent review and operational acceptance evidence specified in each issue is recorded.
-- Keep Sentinel classified as a **pilot candidate**. Do not claim production certification, safe remote agent transport, or 24/7 staffed response.
-- Treat PR #8 live firewall/systemd CI as proposed-branch evidence only, not current-main evidence.
-- Re-run full CI on the exact current main SHA and record the workflow result. The current-main status lookup for the application/source baseline returned no post-merge workflow result for commit `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44`.
-- Complete isolated process-restart/storage-failure and disposable-host firewall validation only under a separately approved test plan.
+- Keep Sentinel classified as a **pilot candidate**. PR #31 provides TLS-enforced, per-agent-authenticated central transport in source, but target-host certificate provisioning and service operation still need validation. Do not claim production certification or 24/7 staffed response.
+- Treat PR #34 isolated live nftables and SSH-continuity CI as current-main regression evidence, not customer-host certification. PR #31's real-systemd test remains gated and has not been run in the standard CI job.
+- Re-run full CI on the exact current main SHA and record the workflow result. The current-main status lookup for the application/source baseline `3388e2bf1c88ac0b33b8cd6535c70a5abff3ba6d` returned no post-merge workflow result; PR-head CI is recorded separately in the relevant pull requests.
+- Complete controlled process-restart/storage-failure drills and a customer-specific firewall change/rollback plan only under a separately approved test plan.
 
 ## Final disposition
 
 **Status: NOT CLEARED for unrestricted production or unsupervised customer pilot (revalidated against current main on 2026-11-21).**  
 **Suitable next stage:** isolated remediation and controlled evaluation, with no customer production changes.  
-**Not performed:** live customer testing, real recipient delivery, firewall apply, deployment, release, package publication, or merge to `main`.
+**Not performed:** live customer testing, real recipient delivery, customer-host firewall apply, deployment, release, or package publication.
 
 This audit records source-level findings and test gaps as of the reviewed baseline. It is not a penetration test, certification, or guarantee that no other vulnerabilities exist.

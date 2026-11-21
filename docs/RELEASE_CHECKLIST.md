@@ -1,6 +1,6 @@
 # SENTINEL release checklist
 
-**Application/security source baseline reviewed:** `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44` (PR #25 merge, 2026-11-21)  
+**Application/security source baseline reviewed:** `3388e2bf1c88ac0b33b8cd6535c70a5abff3ba6d` (PR #35 merge, 2026-11-21)  
 **Dependency/CI baseline:** `9b105dc32a41a2342a2440dc18b1122c4cdf5672` (PR #27 merge, 2026-11-21)  
 **Product status:** **pilot candidate**. This checklist does not declare a production release, certification, or deployment approval.
 
@@ -17,7 +17,10 @@
 | PR #24 — repository documentation refresh | **MERGED** | Refreshes README, changelog, security policy, release checklist and historical audit labeling. |
 | PR #25 — release baseline and agent transport documentation | **MERGED** | Updates the release baseline and documents the legacy HTTP agent transport limitation. |
 | PR #26 — current-main audit revalidation | **MERGED** | Revalidates historical security findings, records issues #15–#18 acceptance status and documents additional setup/agent-transport risks. |
-| PR #27 — dependency and GitHub Actions refresh | **MERGED** | Updates Requests, ReportLab, actions/checkout and actions/setup-python. Merge commit: `9b105dc32a41a2342a2440dc18b1122c4cdf5672`. |
+| PR #27 — dependency and GitHub Actions refresh | **MERGED** | Updates Requests, ReportLab, actions/checkout and actions/setup-python. |
+| PR #31 — agent transport and per-agent credentials | **MERGED** | Enforces HTTPS/TLS for network listeners, per-agent credentials and strict SSH host-key verification. |
+| PR #34 — firewall transaction safety | **MERGED** | Adds nftables validation, transactional restore, and isolated live nftables/SSH continuity CI. |
+| PR #35 — case CLI and alert integration | **MERGED** | Tracks case auto-open and CLI wiring in source rather than relying on setup-time patching. |
 
 ### Automated evidence
 
