@@ -128,3 +128,16 @@ def test_setup_contains_no_runtime_source_wiring():
     assert "apply_dashboard_cases" not in source
     assert "scripts/apply_cases_wire.py" not in source
     assert "scripts/apply_dashboard_cases.py" not in source
+
+
+def test_explicit_siem_enable_does_not_enable_file_shipping_or_dashboard_control(tmp_path, monkeypatch):
+    monkeypatch.setenv("SENTINEL_DIR", str(tmp_path))
+    from modules.siem import enable_defaults
+
+    result = enable_defaults(True)
+    saved = json.loads((tmp_path / "config.json").read_text(encoding="utf-8"))
+    assert result["siem_enabled"] is True
+    assert result["ship_file_enabled"] is False
+    assert saved["alerting"]["siem"]["enabled"] is True
+    assert saved["alerting"]["siem"]["ship_file"]["enabled"] is False
+    assert "dashboard" not in saved
