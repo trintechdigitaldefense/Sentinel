@@ -152,7 +152,7 @@ The current-main revalidation was a read-only GitHub source and test inspection.
 | SNT-AL-01 — offline queue silently evicts oldest entries at 500 | Current `offline_enqueue` rejects a new item at capacity and preserves existing rows. `tests/test_offline_queue.py` covers 499/500 boundaries and preservation. | **Addressed in source/test coverage.** |
 | SNT-AL-02 — transport acceptance is not recipient receipt | SMTP/API handoff and UDP syslog cannot establish human receipt or acknowledgement. No end-to-end recipient receipt proof was inspected. | **Open limitation.** Keep delivery language precise and test only with an approved recipient/endpoint. |
 | SNT-AL-03 — restart/power-loss recovery is not proven | Current queue tests cover failure retention, retries, malformed entries and concurrent additions. No current-main test proving process-kill, host-restart, power-loss or storage-failure recovery was identified in the reviewed test inventory. | **Open.** Requires controlled isolated recovery drills. |
-| SNT-FW-01 — live firewall apply/rollback was not validated | Current main includes dry-run/contract tests. PR #8 proposes isolated live nftables and SSH continuity jobs, but PR #8 remains unmerged and its evidence does not apply to current main. | **Addressed in PR #34 source and isolated CI.** Current main has transactional apply/restore and input validation; both isolated live nftables and SSH continuity jobs passed on PR #34. A customer-specific change/rollback drill is still required before enabling firewall changes on a client host. |
+| SNT-FW-01 — live firewall apply/rollback was not validated | PR #34 adds transactional nftables apply/verify/restore, validates operator IPs and deny-port inputs, and reports partial defense-pack failures. Its isolated `firewall-live-isolated` and `ssh-lockout-live` CI jobs both passed. | **Addressed in current-main source and isolated CI.** A customer-specific change/rollback drill remains required before enabling firewall changes on a client host. |
 
 
 ### SNT-IN-03 — setup mutates application source during normal setup
@@ -191,6 +191,6 @@ PR #31 now applies TLS to non-loopback central-agent listeners and fails closed 
 
 **Status: NOT CLEARED for unrestricted production or unsupervised customer pilot (revalidated against current main on 2026-11-21).**  
 **Suitable next stage:** isolated remediation and controlled evaluation, with no customer production changes.  
-**Not performed:** live customer testing, real recipient delivery, firewall apply, deployment, release, package publication, or merge to `main`.
+**Not performed:** live customer testing, real recipient delivery, customer-host firewall apply, deployment, release, or package publication.
 
 This audit records source-level findings and test gaps as of the reviewed baseline. It is not a penetration test, certification, or guarantee that no other vulnerabilities exist.
