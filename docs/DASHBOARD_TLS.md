@@ -6,6 +6,10 @@ The Sentinel dashboard HTTP server is an application backend, not a public TLS e
 
 For remote browser access, terminate HTTPS on a reverse proxy running on the **same host** and proxy to the loopback-only Sentinel listener. Do not expose port 8792 directly to a LAN or the Internet.
 
+## Local-only dashboard (default)
+
+For a dashboard used only on the Sentinel host, keep `remote_access=false` and `cookie_secure=false` (or omit both settings). The backend remains bound to `127.0.0.1`; the local trusted-host defaults are `localhost` and `127.0.0.1`. Do not expose port 8792 to a LAN or the Internet.
+
 ## Sentinel configuration
 
 In `~/.sentinel/config.json`, configure the dashboard section:
@@ -16,7 +20,8 @@ In `~/.sentinel/config.json`, configure the dashboard section:
     "bind": "127.0.0.1",
     "port": 8792,
     "remote_access": true,
-    "cookie_secure": true
+    "cookie_secure": true,
+    "trusted_hosts": ["sentinel.example.com"]
   }
 }
 ```
@@ -25,6 +30,18 @@ In `~/.sentinel/config.json`, configure the dashboard section:
 - `cookie_secure=true` causes the HttpOnly session cookie to include the `Secure` attribute. It is valid only together with `remote_access=true`; use both only when the browser-facing connection is HTTPS through the trusted local reverse proxy.
 - Sentinel does not trust `X-Forwarded-Proto` or other client-supplied forwarding headers to decide whether a connection is secure.
 - `SameSite=Strict` and HttpOnly remain enabled. The dashboard's Origin/Host check expects HTTPS when `cookie_secure=true`.
+
+### Origin and Host validation
+
+For cookie-authenticated state-changing requests, Sentinel checks the browser-supplied `Origin` against the request `Host`. The scheme must match the dashboard security mode (`http` locally or `https` when `cookie_secure=true`); the normalized hostname and effective port must match, and the Host must be present in the configured trusted-host allowlist.
+
+- In local-only mode, the trusted hosts are `localhost` and `127.0.0.1`.
+- In remote mode, `trusted_hosts` must be a non-empty list of hostnames or IP addresses. Entries must not contain a scheme, path, wildcard, or port. Example: `["sentinel.example.com"]`.
+- Missing, `null`, malformed, duplicate, mismatched, or untrusted Origin/Host values are rejected before the protected request body is processed.
+- Forwarded headers such as `X-Forwarded-Host` and `X-Forwarded-Proto` do not override Origin or Host validation. Configure the reverse proxy to preserve the browser-facing Host header.
+- The `/api/session` login request is also checked before its body is read or a session cookie is issued.
+
+A rejected request must not change protected application state. Verify this with the state-changing dashboard routes, not only with isolated header-validation tests.
 
 The configuration flag is an operator assertion, not cryptographic proof that the reverse proxy is correctly configured. Complete the verification below before enabling remote access.
 
@@ -83,8 +100,13 @@ Before approving remote access:
 - [ ] TLS 1.2 or TLS 1.3 is negotiated; plain HTTP is redirected or rejected for the intended hostname.
 - [ ] Unknown Host values are rejected by the proxy.
 - [ ] `dashboard.remote_access=true` and `dashboard.cookie_secure=true` are set in the protected local config.
+- [ ] `dashboard.trusted_hosts` contains only the intended public hostname or IP addresses; remote mode refuses an empty or invalid allowlist.
+- [ ] The reverse proxy preserves the browser-facing Host header; forwarded Host and Proto headers do not override Sentinel validation.
 - [ ] After login, inspect the `sentinel_token` cookie: it must be HttpOnly, Secure, and SameSite=Strict.
 - [ ] A same-origin HTTPS POST succeeds; a cross-origin or Host-mismatched POST is rejected.
+- [ ] Missing, `null`, malformed, duplicate, and untrusted Origin/Host values are rejected.
+- [ ] Rejected login and state-changing requests do not read protected request bodies or mutate protected application state.
+- [ ] Local-only mode accepts the intended local origins and rejects untrusted Host values.
 - [ ] The proxy does not log credentials, session cookies, or request bodies containing secrets.
 - [ ] Record the proxy configuration, certificate renewal owner, verification date, and rollback procedure.
 

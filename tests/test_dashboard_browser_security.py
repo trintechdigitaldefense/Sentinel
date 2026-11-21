@@ -12,9 +12,10 @@ def dashboard_server(monkeypatch):
     pytest.importorskip("playwright.sync_api")
     import modules.dashboard_impl as dashboard
 
-    dashboard._Handler.token = "browser-test-token"
-    dashboard._Handler.allow_control = True
-    dashboard._Handler.secure_cookie = False
+    monkeypatch.setattr(dashboard._Handler, "token", "browser-test-token")
+    monkeypatch.setattr(dashboard._Handler, "allow_control", True)
+    monkeypatch.setattr(dashboard._Handler, "secure_cookie", False)
+    monkeypatch.setattr(dashboard._Handler, "trusted_hosts", ("127.0.0.1",))
     monkeypatch.setattr(
         dashboard,
         "collect_full",
@@ -72,10 +73,28 @@ def test_browser_login_xss_report_links_and_security_headers(dashboard_server):
         assert page.locator("#token").is_visible()
         assert page.locator("#realtime").count() == 0
 
+        login_requests = []
+        page.on(
+            "request",
+            lambda request: login_requests.append(request)
+            if request.url.endswith("/api/session")
+            else None,
+        )
         page.locator("#token").fill("browser-test-token")
-        page.locator("button[type=submit]").click()
-        page.locator("#realtime table").wait_for()
+        with page.expect_response(lambda response: response.url.endswith("/api/session")) as response_info:
+            page.locator("button[type=submit]").click()
+        login_response = response_info.value
+        assert login_response.status == 303, (
+            f"browser sign-in rejected: HTTP {login_response.status}; "
+            f"response={login_response.text()!r}"
+        )
+        assert login_requests, "browser sign-in did not issue POST /api/session"
+        assert login_requests[-1].all_headers().get("origin") == dashboard_server.rstrip("/"), (
+            "login must send the real same-origin Origin header"
+        )
+        page.locator("#realtime table").wait_for(timeout=5000)
         assert page.url == dashboard_server
+        assert page.locator("#token").count() == 0
         assert "browser-test-token" not in page.content()
         assert page.evaluate("typeof renderThreats") == "function", page_errors
 

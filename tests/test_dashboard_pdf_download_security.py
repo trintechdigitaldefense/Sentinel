@@ -42,6 +42,9 @@ class AuthenticatedFakeHandler(FakeHandler):
     def _auth_ok(self):
         return True
 
+    def _csrf_ok(self):
+        return True
+
 
 def run_download(handler, monkeypatch, tmp_path, reports):
     data = tmp_path / "data"
@@ -128,61 +131,26 @@ def test_pdf_download_rejects_directory_named_pdf(monkeypatch, tmp_path):
     assert handler.status == 404
 
 
-import importlib
 import pytest
 
 
-@pytest.mark.parametrize(
-    "route,module_name,generator_name",
-    [
-        ("/api/report/pdf", "modules.client_report", "generate_client_pdf"),
-        ("/api/report/tech", "modules.technical_report", "generate_technical_pdf"),
-    ],
-)
-@pytest.mark.parametrize("scenario", ["legitimate", "outside", "symlink"])
-def test_generated_pdf_endpoints_enforce_report_directory(
-    monkeypatch, tmp_path, route, module_name, generator_name, scenario
-):
-    reports = tmp_path / "reports"
-    reports.mkdir()
-    outside = tmp_path / "outside.pdf"
-    outside.write_bytes(b"%PDF-1.4 PRIVATE OUTSIDE FILE")
-
-    module = importlib.import_module(module_name)
-
-    def fake_generate(out_path, **kwargs):
-        out_path = Path(out_path)
-        if scenario == "legitimate":
-            out_path.write_bytes(b"%PDF-1.4 legitimate report")
-            result_path = out_path
-        elif scenario == "outside":
-            result_path = outside
-        else:
-            out_path.symlink_to(outside)
-            result_path = out_path
-        return {"ok": True, "path": str(result_path)}
-
-    monkeypatch.setattr(dashboard, "_reports_dir", lambda: reports)
-    monkeypatch.setattr(dashboard, "_data", lambda: tmp_path / "data")
-    monkeypatch.setattr(dashboard, "_cfg", lambda: {})
-    monkeypatch.setattr(
-        module, generator_name, fake_generate
-    )
+@pytest.mark.parametrize("route", ["/api/report/pdf", "/api/report/tech"])
+def test_report_generation_get_requires_post(monkeypatch, tmp_path, route):
+    import modules.dashboard_impl as dashboard
 
     handler = AuthenticatedFakeHandler()
     handler.path = route
     handler.do_GET = dashboard._Handler.do_GET.__get__(handler, type(handler))
 
-    with patch.object(dashboard, "collect_full", return_value={}):
-        handler.do_GET()
+    def forbidden_collection():
+        raise AssertionError("GET must not collect data or generate reports")
 
-    if scenario == "legitimate":
-        assert handler.status == 200
-        assert handler.body.startswith(b"%PDF")
-        assert b"legitimate report" in handler.body
-    else:
-        assert handler.status in (404, 500)
-        assert b"PRIVATE OUTSIDE FILE" not in handler.body
+    monkeypatch.setattr(dashboard, "collect_full", forbidden_collection)
+    handler.do_GET()
+
+    assert handler.status == 405
+    assert b"method not allowed" in handler.body
+
 
 
 @pytest.mark.parametrize(

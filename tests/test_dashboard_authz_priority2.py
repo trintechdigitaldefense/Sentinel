@@ -210,3 +210,71 @@ def test_security_headers_are_set_for_dashboard_responses():
         "Content-Security-Policy",
     ):
         assert header in sender
+
+
+def test_realtime_scan_action_runs_explicit_snapshot(monkeypatch):
+    import modules.dashboard_impl as d
+    import modules.realtime_threat as rt
+
+    cfg = {"dashboard": {"allow_control": True, "role": "admin", "token": "tok"}}
+    monkeypatch.setattr(d, "_cfg", lambda: cfg)
+    expected = {"level": "LOW", "threats": []}
+    calls = []
+    monkeypatch.setattr(rt, "snapshot", lambda **kwargs: calls.append(kwargs) or expected)
+
+    h = _handler(allow_control=True, role="admin", headers={"Authorization": "Bearer tok"}, path="/api/action")
+    h.do_POST = d._Handler.do_POST.__get__(h, type(h))
+    h._read_json_body = lambda: {"action": "realtime-scan"}
+    h.do_POST()
+
+    assert h.sent is not None
+    assert h.sent[0] == 200
+    body = json.loads(h.sent[1].decode())
+    assert body["ok"] is True
+    assert body["realtime"] == expected
+    assert calls == [{"emit_alerts": False}]
+
+
+def test_read_status_missing_or_corrupt_snapshot_never_scans(monkeypatch, tmp_path):
+    import modules.realtime_threat as rt
+
+    monkeypatch.setattr(rt, "_data", lambda: tmp_path)
+    monkeypatch.setattr(
+        rt, "snapshot",
+        lambda **kwargs: pytest.fail("read_status must never trigger detection"),
+    )
+
+    missing = rt.read_status()
+    assert missing["level"] == "UNKNOWN"
+    assert missing["threats"] == []
+    assert missing["ok"] is False
+
+    (tmp_path / "realtime_threat.json").write_text("{invalid json")
+    corrupt = rt.read_status()
+    assert corrupt["level"] == "UNKNOWN"
+    assert corrupt["threats"] == []
+    assert corrupt["ok"] is False
+
+
+
+def test_realtime_scan_action_requires_control(monkeypatch):
+    import modules.dashboard_impl as d
+    import modules.realtime_threat as rt
+
+    cfg = {"dashboard": {"allow_control": False, "role": "viewer", "token": "tok"}}
+    monkeypatch.setattr(d, "_cfg", lambda: cfg)
+    monkeypatch.setattr(
+        rt, "snapshot",
+        lambda **kwargs: pytest.fail("view-only user must not trigger a realtime scan"),
+    )
+
+    h = _handler(allow_control=False, role="viewer",
+                 headers={"Authorization": "Bearer tok"}, path="/api/action")
+    h.do_POST = d._Handler.do_POST.__get__(h, type(h))
+    h._read_json_body = lambda: {"action": "realtime-scan"}
+    h.do_POST()
+
+    assert h.sent is not None
+    assert h.sent[0] == 403
+    body = json.loads(h.sent[1].decode())
+    assert body["error"] == "view-only mode"

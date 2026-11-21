@@ -341,8 +341,8 @@ def collect_full() -> dict:
         "quiet": quiet,
     }
     try:
-        from modules.realtime_threat import snapshot as _rt_snap
-        out["realtime"] = _rt_snap(emit_alerts=False)
+        from modules.realtime_threat import read_status as _rt_read_status
+        out["realtime"] = _rt_read_status()
     except Exception as e:
         out["realtime"] = {"ok": False, "error": str(e), "level": "UNKNOWN", "threats": []}
 
@@ -552,8 +552,8 @@ def _html(token: str, data: dict) -> str:
     <div class="action-group">
       <div class="action-label">Reports for the client</div>
       <div class="actions">
-        <a class="btn btn-pdf" id="btn-pdf-report" href="/api/report/pdf?type=client" target="_blank" rel="noopener" >📄 Client report (easy to read)</a>
-        <a class="btn secondary" href="/api/report/technical" target="_blank" rel="noopener" >🔧 Technical report (for IT)</a>
+        <button type="button" class="btn btn-pdf" id="btn-pdf-report" data-action="client-report">📄 Client report (easy to read)</button>
+        <button type="button" class="btn secondary" data-action="tech-report">🔧 Technical report (for IT)</button>
       </div>
     </div>
 
@@ -878,8 +878,8 @@ footer {{ color:var(--muted); font-size:.75rem; padding:1.5rem; text-align:cente
     <h2>📄 PDF reports</h2>
     <p class="muted">Tap a button to open the report immediately in this browser. You can download from the viewer.</p>
     <div class="actions">
-      <a class="btn btn-pdf" href="/api/report/pdf?type=client" target="_blank" rel="noopener" >Generate &amp; view client PDF</a>
-      <a class="btn secondary" href="/api/report/technical" target="_blank" rel="noopener" >Technical PDF</a>
+      <button class="btn btn-pdf" type="button" data-action="client-report">Generate &amp; view client PDF</button>
+      <button class="btn secondary" type="button" data-action="tech-report">Technical PDF</button>
       <button class="btn secondary" type="button" data-open-pdf="client">📄 Open client PDF</button>
       <button class="btn secondary" type="button" data-open-pdf="technical">🔧 Open technical PDF</button>
     </div>
@@ -952,14 +952,7 @@ document.addEventListener("change", function(event) {{
 }});
 function openPdf(kind) {{
   const k = (kind || "client").toLowerCase();
-  const url = (k === "tech" || k === "technical")
-    ? "/api/report/technical"
-    : "/api/report/pdf?type=client";
-  const out = document.getElementById("action-out");
-  if (out) out.textContent = "Opening " + k + " PDF…";
-  try {{ window.open(url, "_blank"); }} catch (e) {{
-    if (out) out.textContent = "Pop-up blocked — use the PDF links in the Reports section.";
-  }}
+  runAction((k === "tech" || k === "technical") ? "tech-report" : "client-report");
 }}
 async function runAction(name) {{
 
@@ -1152,10 +1145,14 @@ function renderThreats(rt) {{
 
 async function pollRealtime() {{
   try {{
-    const r = await fetch("/api/realtime?scan=1", {{ headers: authHeaders(false) }});
+    const r = await fetch("/api/action", {{
+      method: "POST",
+      headers: authHeaders(true),
+      body: JSON.stringify({{action: "realtime-scan"}})
+    }});
     if (!r.ok) return;
     const j = await r.json();
-    renderThreats(j);
+    renderThreats(j.realtime || {{}});
   }} catch (e) {{}}
 }}
 
@@ -1172,7 +1169,7 @@ setTimeout(function(){{ location.href = location.pathname; }}, REFRESH_MS);
 
 
 def _login_html() -> str:
-    """Return a token-entry page; credentials are submitted in the POST body, never the URL."""
+    """Return a token-entry page; credentials are submitted in a same-origin POST body."""
     return """<!doctype html>
 <html lang="en">
 <head>
@@ -1184,12 +1181,42 @@ def _login_html() -> str:
 <main>
   <h1>SENTINEL dashboard</h1>
   <p>Enter the dashboard access token shown by the local Sentinel process.</p>
-  <form method="post" action="/api/session" autocomplete="off">
+  <form id="login-form" method="post" action="/api/session" autocomplete="off">
     <label for="token">Dashboard access token</label>
     <input id="token" name="token" type="password" required autocomplete="current-password">
     <button type="submit">Sign in</button>
+    <p id="login-error" role="alert" aria-live="polite"></p>
   </form>
 </main>
+<script>
+document.getElementById("login-form").addEventListener("submit", async function(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const button = form.querySelector("button[type=submit]");
+  const error = document.getElementById("login-error");
+  button.disabled = true;
+  error.textContent = "";
+  try {
+    const body = new URLSearchParams(new FormData(form));
+    const response = await fetch(form.action, {
+      method: "POST",
+      headers: {"Content-Type": "application/x-www-form-urlencoded;charset=UTF-8"},
+      body: body.toString(),
+      credentials: "same-origin"
+    });
+    if (response.ok && response.redirected && new URL(response.url).pathname === "/") {
+      window.location.assign("/");
+      return;
+    }
+    const result = await response.json().catch(() => ({}));
+    error.textContent = result.error || ("Sign-in failed (" + response.status + ")");
+  } catch (errorValue) {
+    error.textContent = "Unable to sign in. Check the connection and try again.";
+  } finally {
+    button.disabled = false;
+  }
+});
+</script>
 </body>
 </html>"""
 
@@ -1305,6 +1332,7 @@ class _Handler(BaseHTTPRequestHandler):
     token = ""
     allow_control = False  # safe class default
     secure_cookie = False  # set only when HTTPS is provided directly or by a trusted TLS proxy
+    trusted_hosts = ("localhost", "127.0.0.1")  # local-only default
 
     def log_message(self, fmt, *args):
         pass
@@ -1323,12 +1351,145 @@ class _Handler(BaseHTTPRequestHandler):
                 return True
         return False
 
+    def _origin_host_ok(self) -> bool:
+        """Validate Origin, Host, scheme, port and the configured host allowlist.
+
+        The expected scheme comes only from secure_cookie. Forwarded headers
+        are deliberately ignored; a TLS proxy must preserve the public Host
+        header and be configured explicitly by the operator.
+        """
+        import ipaddress
+        import re
+
+        origin = self.headers.get("Origin")
+        host = self.headers.get("Host")
+
+        if (
+            not isinstance(origin, str)
+            or not isinstance(host, str)
+            or not origin
+            or not host
+            or origin != origin.strip()
+            or host != host.strip()
+            or origin.lower() == "null"
+            or any(ch.isspace() for ch in origin)
+            or any(ch.isspace() for ch in host)
+            or any(ch in host for ch in (",", "@", "/", "\\"))
+            or origin.endswith(":")
+            or host.endswith(":")
+        ):
+            return False
+
+        # Reject duplicate security-sensitive headers when the server exposes them.
+        get_all = getattr(self.headers, "get_all", None)
+        if callable(get_all):
+            for header_name in ("Origin", "Host"):
+                values = get_all(header_name) or []
+                if len(values) != 1:
+                    return False
+
+        expected_scheme = "https" if self.secure_cookie else "http"
+
+        def normalize_host(value: str) -> str | None:
+            try:
+                return ipaddress.ip_address(value).compressed.lower()
+            except ValueError:
+                if value.endswith("."):
+                    return None
+                try:
+                    normalized = value.encode("idna").decode("ascii").lower()
+                except UnicodeError:
+                    return None
+                if (
+                    not normalized
+                    or len(normalized) > 253
+                    or not re.fullmatch(
+                        r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*",
+                        normalized,
+                    )
+                ):
+                    return None
+                return normalized
+
+        try:
+            parsed_origin = urlparse(origin)
+            parsed_host = urlparse("//" + host)
+
+            if parsed_origin.scheme.lower() != expected_scheme:
+                return False
+
+            if "?" in origin or "#" in origin or "?" in host or "#" in host:
+                return False
+
+            if (
+                not parsed_origin.hostname
+                or parsed_origin.username is not None
+                or parsed_origin.password is not None
+                or parsed_origin.path != ""
+                or parsed_origin.params
+                or parsed_origin.query
+                or parsed_origin.fragment
+            ):
+                return False
+
+            if (
+                not parsed_host.hostname
+                or parsed_host.username is not None
+                or parsed_host.password is not None
+                or parsed_host.path
+                or parsed_host.params
+                or parsed_host.query
+                or parsed_host.fragment
+            ):
+                return False
+
+            origin_host = normalize_host(parsed_origin.hostname)
+            request_host = normalize_host(parsed_host.hostname)
+            if not origin_host or not request_host:
+                return False
+
+            origin_port = parsed_origin.port
+            request_port = parsed_host.port
+            default_port = 443 if expected_scheme == "https" else 80
+
+            if origin_port is None:
+                origin_port = default_port
+            if request_port is None:
+                request_port = default_port
+            if origin_port == 0 or request_port == 0:
+                return False
+
+            configured_hosts = getattr(
+                self, "trusted_hosts", _Handler.trusted_hosts
+            )
+            if not isinstance(configured_hosts, (list, tuple, set, frozenset)):
+                return False
+
+            allowed_hosts = set()
+            for configured_host in configured_hosts:
+                if (
+                    not isinstance(configured_host, str)
+                    or not configured_host
+                    or configured_host != configured_host.strip()
+                ):
+                    return False
+                normalized = normalize_host(configured_host)
+                if not normalized:
+                    return False
+                allowed_hosts.add(normalized)
+
+            return (
+                origin_host == request_host
+                and origin_port == request_port
+                and request_host in allowed_hosts
+            )
+        except (UnicodeError, ValueError):
+            return False
+
     def _csrf_ok(self) -> bool:
-        """Require a same-origin Origin header for session-cookie-authenticated POSTs.
+        """Require trusted same-origin checks for session-cookie POST requests.
 
         Bearer-authenticated API clients are not exposed to browser cookie CSRF.
-        The expected scheme is derived only from the explicit secure-cookie
-        deployment setting; arbitrary forwarded headers are never trusted.
         """
         auth = self.headers.get("Authorization") or ""
         if auth.startswith("Bearer ") and self.token and secrets.compare_digest(
@@ -1337,63 +1498,14 @@ class _Handler(BaseHTTPRequestHandler):
             return True
 
         cookie = self.headers.get("Cookie") or ""
-        session_cookie = False
         for part in cookie.split(";"):
             key, sep, value = part.strip().partition("=")
             if sep and key == "sentinel_token" and self.token and secrets.compare_digest(
                 value.strip(), self.token
             ):
-                session_cookie = True
-                break
-        if not session_cookie:
-            return True
+                return _Handler._origin_host_ok(self)
 
-        origin = self.headers.get("Origin")
-        host = self.headers.get("Host")
-        if not origin or not host or origin.strip().lower() == "null":
-            return False
-        if any(ch.isspace() for ch in host) or any(ch in host for ch in (",", "@", "/", "\\")):
-            return False
-        if origin.rstrip().endswith(":") or host.strip().endswith(":"):
-            return False
-        try:
-            parsed_origin = urlparse(origin)
-            parsed_host = urlparse("//" + host.strip())
-            expected_scheme = "https" if self.secure_cookie else "http"
-            if parsed_origin.scheme.lower() != expected_scheme:
-                return False
-            if (
-                not parsed_origin.hostname
-                or parsed_origin.username is not None
-                or parsed_origin.password is not None
-                or parsed_origin.path not in ("", "/")
-                or parsed_origin.params
-                or parsed_origin.query
-                or parsed_origin.fragment
-            ):
-                return False
-            if (
-                not parsed_host.hostname
-                or parsed_host.username is not None
-                or parsed_host.password is not None
-                or parsed_host.path
-                or parsed_host.query
-                or parsed_host.fragment
-            ):
-                return False
-            origin_host = parsed_origin.hostname.rstrip(".").encode("idna").decode("ascii").lower()
-            request_host = parsed_host.hostname.rstrip(".").encode("idna").decode("ascii").lower()
-            origin_port = parsed_origin.port
-            request_port = parsed_host.port
-            if origin_port is None:
-                origin_port = 443 if expected_scheme == "https" else 80
-            if request_port is None:
-                request_port = 443 if expected_scheme == "https" else 80
-            if origin_port == 0 or request_port == 0:
-                return False
-            return origin_host == request_host and origin_port == request_port
-        except (UnicodeError, ValueError):
-            return False
+        return True
 
 
     def _send(self, code: int, body: bytes, ctype: str = "text/html; charset=utf-8", extra_headers: dict | None = None):
@@ -1446,6 +1558,16 @@ class _Handler(BaseHTTPRequestHandler):
             else:
                 self._send(401, b'{"ok":false,"error":"unauthorized"}', "application/json")
             return
+        report_generation_paths = ("/api/report/pdf", "/api/report/client", "/api/report/generate", "/api/report/tech", "/api/report/technical")
+        if path in report_generation_paths:
+            self._send(405, b"{\"ok\":false,\"error\":\"method not allowed; use POST\"}", "application/json", extra_headers={"Allow": "POST"})
+            return
+        if path in ("/api/realtime", "/api/threats"):
+            q = parse_qs(urlparse(self.path).query)
+            scan_requested = (q.get("scan") or ["0"])[0].lower() in ("1", "true", "yes")
+            if scan_requested:
+                self._send(405, b"{\"ok\":false,\"error\":\"method not allowed; use POST\"}", "application/json", extra_headers={"Allow": "POST"})
+                return
         data = collect_full()
         data["control"] = bool(self.allow_control)
         if path in ("/api/critical", "/api/critical/"):
@@ -1481,81 +1603,6 @@ class _Handler(BaseHTTPRequestHandler):
             body = logo.read_bytes()
             ctype = "image/png"
             self._send(200, body, ctype, extra_headers={"Cache-Control": "public, max-age=3600"})
-            return
-
-        if path in ("/api/report/pdf", "/api/report/client", "/api/report/generate", "/api/report/tech", "/api/report/technical"):
-            try:
-                qs = parse_qs(urlparse(self.path).query)
-                kind = (qs.get("type") or qs.get("kind") or ["client"])[0].lower()
-                if path.endswith("/tech") or path.endswith("/technical") or kind in ("tech", "technical", "operator"):
-                    kind = "technical"
-                else:
-                    kind = "client"
-                reports = _reports_dir()
-                reports.mkdir(parents=True, exist_ok=True)
-                ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                if kind == "technical":
-                    from modules.technical_report import generate_technical_pdf
-                    out_path = reports / f"Sentinel_Technical_{ts}.pdf"
-                    result = generate_technical_pdf(out_path=out_path)
-                else:
-                    from modules.client_report import generate_client_pdf
-                    out_path = reports / f"Client_Report_{ts}.pdf"
-                    cname = (_cfg().get("dashboard") or {}).get("client_name") or _cfg().get("client_name")
-                    result = generate_client_pdf(out_path=out_path, client_name=cname)
-                if not result.get("ok"):
-                    self._send(500, b'{"ok":false,"error":"PDF generation failed"}', "application/json")
-                    return
-                path_out = Path(str(result.get("path") or out_path))
-                safe_report = _read_generated_report(path_out)
-                if safe_report is None:
-                    self._send(404, b'{"ok":false,"error":"report not found"}', "application/json")
-                    return
-                report_name, body = safe_report
-                extra = {
-                    "Content-Disposition": f'inline; filename="{report_name}"',
-                    "Cache-Control": "no-store",
-                    "X-Sentinel-Report": report_name,
-                    "X-Sentinel-Report-Type": kind,
-                }
-                self._send(200, body, "application/pdf", extra_headers=extra)
-            except Exception as e:
-                logging.getLogger("sentinel").exception("GET report pdf")
-                self._send(500, b'{"ok":false,"error":"PDF request failed"}', "application/json")
-            return
-
-
-        if path in ("/api/report/technical", "/api/report/tech"):
-            try:
-                result = _generate_dashboard_pdfs("tech-report")
-                if not result.get("ok"):
-                    # fallback client-style
-                    from modules.client_report import generate_client_pdf
-                    reports = _reports_dir()
-                    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    out_path = reports / f"Sentinel_Technical_{ts}.pdf"
-                    result2 = generate_client_pdf(out_path=out_path)
-                    if not result2.get("ok"):
-                        self._send(500, b'{"ok":false,"error":"Technical PDF generation failed"}', "application/json")
-                        return
-                    path_out = Path(str(result2.get("path") or out_path))
-                else:
-                    # pick first generated path
-                    gens = result.get("generated") or []
-                    path_out = Path((gens[0] or {}).get("path") or result.get("path") or "")
-                safe_report = _read_generated_report(path_out)
-                if safe_report is None:
-                    self._send(404, b'{"ok":false,"error":"technical pdf not found"}', "application/json")
-                    return
-                report_name, body = safe_report
-                extra = {
-                    "Content-Disposition": f'inline; filename="{report_name}"',
-                    "Cache-Control": "no-store",
-                }
-                self._send(200, body, "application/pdf", extra_headers=extra)
-            except Exception as e:
-                logging.getLogger("sentinel").exception("GET tech pdf")
-                self._send(500, b'{"ok":false,"error":"PDF request failed"}', "application/json")
             return
 
         if path in ("/api/report/download", "/api/reports/download"):
@@ -1597,6 +1644,9 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         if path == "/api/session":
+            if not self._origin_host_ok():
+                self._send(403, b'{"ok":false,"error":"cross-origin request rejected"}', "application/json")
+                return
             try:
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:
@@ -1692,13 +1742,14 @@ class _Handler(BaseHTTPRequestHandler):
             # Read-only / report actions — work without allow_control
             safe_actions = {
                 "refresh", "doctor", "ops", "go-live-status", "visibility",
-                "service-status", "realtime-scan", "pdf-report", "client-report",
+                "service-status", "pdf-report", "client-report",
                 "tech-report", "multi-host", "field-evidence", "fleet-scan",
                 "ssh-status", "alerts",
             }
             # Mutating — need allow_control
             control_actions = {
-                "quiet-on", "quiet-off", "field-soak", "deception", "service-install",
+                "quiet-on", "quiet-off", "field-soak", "deception",
+                "service-install", "realtime-scan",
             }
             allowed = {
                 "refresh": ("ops",),
@@ -1809,17 +1860,22 @@ def _generate_dashboard_pdfs(action: str = "pdf-report") -> dict:
     def _rel(path: Path) -> str:
         return f"/api/report/download?name={path.name}"
 
+    def _validated_generated_path(returned, expected: Path) -> Path:
+        path = Path(str(returned or expected))
+        if (reports.is_symlink() or path.is_symlink()
+                or path.name != expected.name
+                or path.parent.resolve() != reports.resolve()
+                or not path.is_file()):
+            raise ValueError("PDF generator returned an unapproved report path")
+        return path
+
     if action in ("pdf-report", "client-report"):
         try:
             from modules.client_report import generate_client_pdf
             client_path = reports / f"Client_Report_{ts}.pdf"
             r = generate_client_pdf(out_path=client_path, client_name=cname)
             if r.get("ok"):
-                path = Path(str(r.get("path") or client_path))
-                if path.is_file() and path.parent.resolve() != reports.resolve():
-                    dest = reports / path.name
-                    dest.write_bytes(path.read_bytes())
-                    path = dest
+                path = _validated_generated_path(r.get("path"), client_path)
                 out["generated"].append({"type": "client", "path": str(path)})
                 out["path"] = str(path)
                 out["download"] = _rel(path)
@@ -1845,11 +1901,7 @@ def _generate_dashboard_pdfs(action: str = "pdf-report") -> dict:
             tech_path = reports / f"Sentinel_Technical_{ts}.pdf"
             r = generate_technical_pdf(out_path=tech_path)
             if r.get("ok"):
-                path = Path(str(r.get("path") or tech_path))
-                if path.is_file() and path.parent.resolve() != reports.resolve():
-                    dest = reports / path.name
-                    dest.write_bytes(path.read_bytes())
-                    path = dest
+                path = _validated_generated_path(r.get("path"), tech_path)
                 out["generated"].append({"type": "technical", "path": str(path)})
                 dl = _rel(path)
                 if dl not in out["downloads"]:
@@ -1911,6 +1963,42 @@ def _validate_remote_dashboard_config(dash: dict) -> None:
             "the dashboard backend does not provide direct HTTPS"
         )
 
+    import ipaddress
+    import re
+
+    trusted_hosts = dash.get("trusted_hosts", [])
+    if not isinstance(trusted_hosts, list):
+        raise RuntimeError("dashboard.trusted_hosts must be a list")
+
+    if dash.get("remote_access") is True and not trusted_hosts:
+        raise RuntimeError(
+            "dashboard.remote_access requires dashboard.trusted_hosts"
+        )
+
+    for host in trusted_hosts:
+        if not isinstance(host, str) or not host or host != host.strip():
+            raise RuntimeError("dashboard.trusted_hosts contains an invalid entry")
+        try:
+            ipaddress.ip_address(host)
+            continue
+        except ValueError:
+            pass
+
+        try:
+            normalized = host.encode("idna").decode("ascii").lower()
+        except UnicodeError as exc:
+            raise RuntimeError("dashboard.trusted_hosts contains an invalid hostname") from exc
+
+        if (
+            len(normalized) > 253
+            or normalized.endswith(".")
+            or not re.fullmatch(
+                r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*",
+                normalized,
+            )
+        ):
+            raise RuntimeError("dashboard.trusted_hosts contains an invalid hostname")
+
 
 def start_dashboard(port: int | None = None, bind: str | None = None):
     token, cfg_port, dash = ensure_token()
@@ -1921,6 +2009,10 @@ def start_dashboard(port: int | None = None, bind: str | None = None):
     if bind != requested_bind:
         print("[!] Non-loopback dashboard bind refused; using 127.0.0.1. Use a local TLS reverse proxy for remote access.")
     _Handler.token = token
+    if dash.get("remote_access") is True:
+        _Handler.trusted_hosts = tuple(dash.get("trusted_hosts") or ())
+    else:
+        _Handler.trusted_hosts = ("localhost", "127.0.0.1")
     # Set dashboard.cookie_secure=true when HTTPS is terminated by a trusted proxy.
     # This is intentionally explicit; untrusted forwarding headers are not consulted.
     _Handler.secure_cookie = bool(dash.get("cookie_secure", False))
