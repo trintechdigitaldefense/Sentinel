@@ -451,3 +451,50 @@ def test_realtime_scan_get_rejected_before_collection(monkeypatch, route):
 
     assert handler.sent == 405
     assert b"method not allowed" in handler.body
+
+
+@pytest.mark.parametrize(
+    "route",
+    [
+        "/api/control-mode",
+        "/api/critical/ack",
+        "/api/critical/ack-all",
+        "/api/action",
+    ],
+)
+def test_cross_origin_cookie_post_is_rejected_before_any_route_handler(
+    route,
+):
+    """Every state-changing POST route shares the CSRF gate before body parsing."""
+    import modules.dashboard_impl as dashboard
+
+    class Fake:
+        token = "csrf-test-token"
+        secure_cookie = False
+        allow_control = True
+        headers = {
+            "Cookie": "sentinel_token=csrf-test-token",
+            "Origin": "http://attacker.invalid",
+            "Host": "localhost:8792",
+            "Content-Length": "20",
+        }
+        path = route
+        sent = None
+
+        def _auth_ok(self):
+            return True
+
+        def _csrf_ok(self):
+            return dashboard._Handler._csrf_ok(self)
+
+        def _send(self, code, body, ctype="application/json", extra_headers=None):
+            self.sent = code
+
+        def _read_json_body(self):
+            raise AssertionError("CSRF rejection must happen before route body parsing")
+
+    handler = Fake()
+    handler.do_POST = dashboard._Handler.do_POST.__get__(handler, Fake)
+    handler.do_POST()
+
+    assert handler.sent == 403
