@@ -46,7 +46,7 @@ def test_send_alert_auto_opens_case_hook(tmp_path, monkeypatch):
     monkeypatch.setattr(
         case_hooks,
         "maybe_open_case_from_engine_alert",
-        lambda alert_type, details, actor="sentinel": called.append((alert_type, details)),
+        lambda alert_type, details, actor="sentinel": (called.append((alert_type, details)), order.append("case")),
     )
     monkeypatch.setattr(critical_alerts, "is_critical", lambda *args, **kwargs: True)
     monkeypatch.setattr(critical_alerts, "record", lambda *args, **kwargs: None)
