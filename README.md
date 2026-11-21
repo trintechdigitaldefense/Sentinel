@@ -163,7 +163,7 @@ Supported: **Python 3.10+**, Linux (primary). Termux/Android containers may lack
 | Dashboard bind | **127.0.0.1** |
 | Dashboard `allow_control` | **false** (viewer) |
 | Config file mode | **0600** on write |
-| SIEM/file shipping | **Disabled by default** | Explicit configuration required |
+| SIEM/file shipping | **Disabled by default** (opt-in) |
 | Self-integrity baseline | **0600**, atomic write |
 
 Dashboard: shareable token **cannot enable** controls; set `dashboard.allow_control: true` on the host if operators need actions.
