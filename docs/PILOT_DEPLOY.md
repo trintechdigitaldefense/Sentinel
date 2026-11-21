@@ -24,11 +24,13 @@ python3 sentinel.py suppress-add SUSPICIOUS_PROCESS "backup-script"
 python3 sentinel.py suppress
 ```
 
-## Multi-host (optional)
-```bash
-python3 sentinel.py agent-key site-office-pc
-# on remote: python3 sentinel.py enroll --server http://SENSOR:8743 --key <api_key>
-```
+## Multi-host (optional) — transport warning
+
+The legacy enrollment example below uses plain HTTP on port 8743. The current main-branch remote-agent default also constructs an `http://` central URL when no explicit central URL is configured. Do **not** use that default across a LAN, VPN, public network, or other untrusted path: the shared-token/agent traffic is not protected by TLS.
+
+For the current main-branch implementation, keep the legacy central-agent listener and enrollment flow confined to a trusted loopback/local test environment. Do not advertise remote multi-host deployment as secure or client-ready until a separately reviewed implementation enforces HTTPS, certificate validation, per-agent credential handling, and fail-closed behavior on network-facing listeners. PR #8 contains proposed remediation, but it is still unmerged and is not part of this documented main-branch capability.
+
+The remote dashboard TLS procedure in [DASHBOARD_TLS.md](DASHBOARD_TLS.md) protects the dashboard path; it does not automatically secure the separate agent transport.
 
 ## Limits to tell the client
 - One sensor ≠ every laptop fully protected
