@@ -97,6 +97,7 @@ class DashboardCfg:
     token: str = ""
     remote_access: bool = False
     cookie_secure: bool = False
+    trusted_hosts: list = field(default_factory=list)
 
 
 @dataclass
@@ -245,6 +246,41 @@ def validate(cfg: SentinelConfig) -> None:
         errors.append("dashboard.remote_access requires dashboard.cookie_secure=true")
     if cfg.dashboard.cookie_secure and not cfg.dashboard.remote_access:
         errors.append("dashboard.cookie_secure requires dashboard.remote_access=true")
+
+    trusted_hosts = cfg.dashboard.trusted_hosts
+    if not isinstance(trusted_hosts, list):
+        errors.append("dashboard.trusted_hosts must be a list of hostnames")
+    else:
+        import ipaddress
+        import re
+
+        for host in trusted_hosts:
+            if not isinstance(host, str) or not host or host != host.strip():
+                errors.append("dashboard.trusted_hosts entries must be non-empty hostnames")
+                break
+            try:
+                ipaddress.ip_address(host)
+                continue
+            except ValueError:
+                pass
+            try:
+                normalized = host.encode("idna").decode("ascii").lower()
+            except UnicodeError:
+                errors.append(f"dashboard.trusted_hosts contains an invalid hostname: {host!r}")
+                break
+            if (
+                len(normalized) > 253
+                or normalized.endswith(".")
+                or not re.fullmatch(
+                    r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)(?:\.(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?))*",
+                    normalized,
+                )
+            ):
+                errors.append(f"dashboard.trusted_hosts contains an invalid hostname: {host!r}")
+                break
+
+    if cfg.dashboard.remote_access and not trusted_hosts:
+        errors.append("dashboard.remote_access requires explicit dashboard.trusted_hosts")
     if cfg.alerting.dedup_minutes < 0:
         errors.append("alerting.dedup_minutes must be >= 0")
     if cfg.logging.level.upper() not in ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"):

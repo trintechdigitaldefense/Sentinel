@@ -1305,6 +1305,7 @@ class _Handler(BaseHTTPRequestHandler):
     token = ""
     allow_control = False  # safe class default
     secure_cookie = False  # set only when HTTPS is provided directly or by a trusted TLS proxy
+    trusted_hosts = ("localhost", "127.0.0.1")  # local-only default
 
     def log_message(self, fmt, *args):
         pass
@@ -1323,12 +1324,145 @@ class _Handler(BaseHTTPRequestHandler):
                 return True
         return False
 
+    def _origin_host_ok(self) -> bool:
+        """Validate Origin, Host, scheme, port and the configured host allowlist.
+
+        The expected scheme comes only from secure_cookie. Forwarded headers
+        are deliberately ignored; a TLS proxy must preserve the public Host
+        header and be configured explicitly by the operator.
+        """
+        import ipaddress
+        import re
+
+        origin = self.headers.get("Origin")
+        host = self.headers.get("Host")
+
+        if (
+            not isinstance(origin, str)
+            or not isinstance(host, str)
+            or not origin
+            or not host
+            or origin != origin.strip()
+            or host != host.strip()
+            or origin.lower() == "null"
+            or any(ch.isspace() for ch in origin)
+            or any(ch.isspace() for ch in host)
+            or any(ch in host for ch in (",", "@", "/", "\\"))
+            or origin.endswith(":")
+            or host.endswith(":")
+        ):
+            return False
+
+        # Reject duplicate security-sensitive headers when the server exposes them.
+        get_all = getattr(self.headers, "get_all", None)
+        if callable(get_all):
+            for header_name in ("Origin", "Host"):
+                values = get_all(header_name) or []
+                if len(values) != 1:
+                    return False
+
+        expected_scheme = "https" if self.secure_cookie else "http"
+
+        def normalize_host(value: str) -> str | None:
+            try:
+                return ipaddress.ip_address(value).compressed.lower()
+            except ValueError:
+                if value.endswith("."):
+                    return None
+                try:
+                    normalized = value.encode("idna").decode("ascii").lower()
+                except UnicodeError:
+                    return None
+                if (
+                    not normalized
+                    or len(normalized) > 253
+                    or not re.fullmatch(
+                        r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*",
+                        normalized,
+                    )
+                ):
+                    return None
+                return normalized
+
+        try:
+            parsed_origin = urlparse(origin)
+            parsed_host = urlparse("//" + host)
+
+            if parsed_origin.scheme.lower() != expected_scheme:
+                return False
+
+            if "?" in origin or "#" in origin or "?" in host or "#" in host:
+                return False
+
+            if (
+                not parsed_origin.hostname
+                or parsed_origin.username is not None
+                or parsed_origin.password is not None
+                or parsed_origin.path != ""
+                or parsed_origin.params
+                or parsed_origin.query
+                or parsed_origin.fragment
+            ):
+                return False
+
+            if (
+                not parsed_host.hostname
+                or parsed_host.username is not None
+                or parsed_host.password is not None
+                or parsed_host.path
+                or parsed_host.params
+                or parsed_host.query
+                or parsed_host.fragment
+            ):
+                return False
+
+            origin_host = normalize_host(parsed_origin.hostname)
+            request_host = normalize_host(parsed_host.hostname)
+            if not origin_host or not request_host:
+                return False
+
+            origin_port = parsed_origin.port
+            request_port = parsed_host.port
+            default_port = 443 if expected_scheme == "https" else 80
+
+            if origin_port is None:
+                origin_port = default_port
+            if request_port is None:
+                request_port = default_port
+            if origin_port == 0 or request_port == 0:
+                return False
+
+            configured_hosts = getattr(
+                self, "trusted_hosts", _Handler.trusted_hosts
+            )
+            if not isinstance(configured_hosts, (list, tuple, set, frozenset)):
+                return False
+
+            allowed_hosts = set()
+            for configured_host in configured_hosts:
+                if (
+                    not isinstance(configured_host, str)
+                    or not configured_host
+                    or configured_host != configured_host.strip()
+                ):
+                    return False
+                normalized = normalize_host(configured_host)
+                if not normalized:
+                    return False
+                allowed_hosts.add(normalized)
+
+            return (
+                origin_host == request_host
+                and origin_port == request_port
+                and request_host in allowed_hosts
+            )
+        except (UnicodeError, ValueError):
+            return False
+
     def _csrf_ok(self) -> bool:
-        """Require a same-origin Origin header for session-cookie-authenticated POSTs.
+        """Require trusted same-origin checks for session-cookie POST requests.
 
         Bearer-authenticated API clients are not exposed to browser cookie CSRF.
-        The expected scheme is derived only from the explicit secure-cookie
-        deployment setting; arbitrary forwarded headers are never trusted.
         """
         auth = self.headers.get("Authorization") or ""
         if auth.startswith("Bearer ") and self.token and secrets.compare_digest(
@@ -1337,63 +1471,14 @@ class _Handler(BaseHTTPRequestHandler):
             return True
 
         cookie = self.headers.get("Cookie") or ""
-        session_cookie = False
         for part in cookie.split(";"):
             key, sep, value = part.strip().partition("=")
             if sep and key == "sentinel_token" and self.token and secrets.compare_digest(
                 value.strip(), self.token
             ):
-                session_cookie = True
-                break
-        if not session_cookie:
-            return True
+                return _Handler._origin_host_ok(self)
 
-        origin = self.headers.get("Origin")
-        host = self.headers.get("Host")
-        if not origin or not host or origin.strip().lower() == "null":
-            return False
-        if any(ch.isspace() for ch in host) or any(ch in host for ch in (",", "@", "/", "\\")):
-            return False
-        if origin.rstrip().endswith(":") or host.strip().endswith(":"):
-            return False
-        try:
-            parsed_origin = urlparse(origin)
-            parsed_host = urlparse("//" + host.strip())
-            expected_scheme = "https" if self.secure_cookie else "http"
-            if parsed_origin.scheme.lower() != expected_scheme:
-                return False
-            if (
-                not parsed_origin.hostname
-                or parsed_origin.username is not None
-                or parsed_origin.password is not None
-                or parsed_origin.path not in ("", "/")
-                or parsed_origin.params
-                or parsed_origin.query
-                or parsed_origin.fragment
-            ):
-                return False
-            if (
-                not parsed_host.hostname
-                or parsed_host.username is not None
-                or parsed_host.password is not None
-                or parsed_host.path
-                or parsed_host.query
-                or parsed_host.fragment
-            ):
-                return False
-            origin_host = parsed_origin.hostname.rstrip(".").encode("idna").decode("ascii").lower()
-            request_host = parsed_host.hostname.rstrip(".").encode("idna").decode("ascii").lower()
-            origin_port = parsed_origin.port
-            request_port = parsed_host.port
-            if origin_port is None:
-                origin_port = 443 if expected_scheme == "https" else 80
-            if request_port is None:
-                request_port = 443 if expected_scheme == "https" else 80
-            if origin_port == 0 or request_port == 0:
-                return False
-            return origin_host == request_host and origin_port == request_port
-        except (UnicodeError, ValueError):
-            return False
+        return True
 
 
     def _send(self, code: int, body: bytes, ctype: str = "text/html; charset=utf-8", extra_headers: dict | None = None):
@@ -1446,6 +1531,22 @@ class _Handler(BaseHTTPRequestHandler):
             else:
                 self._send(401, b'{"ok":false,"error":"unauthorized"}', "application/json")
             return
+        report_generation_paths = (
+            "/api/report/pdf",
+            "/api/report/client",
+            "/api/report/generate",
+            "/api/report/tech",
+            "/api/report/technical",
+        )
+        if path in report_generation_paths and not self._csrf_ok():
+            self._send(403, b'{"ok":false,"error":"cross-origin request rejected"}', "application/json")
+            return
+        if path in ("/api/realtime", "/api/threats"):
+            q = parse_qs(urlparse(self.path).query)
+            scan_requested = (q.get("scan") or ["0"])[0] in ("1", "true", "yes")
+            if scan_requested and not self._csrf_ok():
+                self._send(403, b'{"ok":false,"error":"cross-origin request rejected"}', "application/json")
+                return
         data = collect_full()
         data["control"] = bool(self.allow_control)
         if path in ("/api/critical", "/api/critical/"):
@@ -1597,6 +1698,9 @@ class _Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = urlparse(self.path).path
         if path == "/api/session":
+            if not self._origin_host_ok():
+                self._send(403, b'{"ok":false,"error":"cross-origin request rejected"}', "application/json")
+                return
             try:
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:
@@ -1911,6 +2015,42 @@ def _validate_remote_dashboard_config(dash: dict) -> None:
             "the dashboard backend does not provide direct HTTPS"
         )
 
+    import ipaddress
+    import re
+
+    trusted_hosts = dash.get("trusted_hosts", [])
+    if not isinstance(trusted_hosts, list):
+        raise RuntimeError("dashboard.trusted_hosts must be a list")
+
+    if dash.get("remote_access") is True and not trusted_hosts:
+        raise RuntimeError(
+            "dashboard.remote_access requires dashboard.trusted_hosts"
+        )
+
+    for host in trusted_hosts:
+        if not isinstance(host, str) or not host or host != host.strip():
+            raise RuntimeError("dashboard.trusted_hosts contains an invalid entry")
+        try:
+            ipaddress.ip_address(host)
+            continue
+        except ValueError:
+            pass
+
+        try:
+            normalized = host.encode("idna").decode("ascii").lower()
+        except UnicodeError as exc:
+            raise RuntimeError("dashboard.trusted_hosts contains an invalid hostname") from exc
+
+        if (
+            len(normalized) > 253
+            or normalized.endswith(".")
+            or not re.fullmatch(
+                r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*",
+                normalized,
+            )
+        ):
+            raise RuntimeError("dashboard.trusted_hosts contains an invalid hostname")
+
 
 def start_dashboard(port: int | None = None, bind: str | None = None):
     token, cfg_port, dash = ensure_token()
@@ -1921,6 +2061,10 @@ def start_dashboard(port: int | None = None, bind: str | None = None):
     if bind != requested_bind:
         print("[!] Non-loopback dashboard bind refused; using 127.0.0.1. Use a local TLS reverse proxy for remote access.")
     _Handler.token = token
+    if dash.get("remote_access") is True:
+        _Handler.trusted_hosts = tuple(dash.get("trusted_hosts") or ())
+    else:
+        _Handler.trusted_hosts = ("localhost", "127.0.0.1")
     # Set dashboard.cookie_secure=true when HTTPS is terminated by a trusted proxy.
     # This is intentionally explicit; untrusted forwarding headers are not consulted.
     _Handler.secure_cookie = bool(dash.get("cookie_secure", False))

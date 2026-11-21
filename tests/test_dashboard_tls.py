@@ -28,7 +28,7 @@ def test_remote_dashboard_requires_secure_cookie():
 def test_remote_dashboard_accepts_explicit_secure_cookie():
     from modules.dashboard_impl import _validate_remote_dashboard_config
 
-    _validate_remote_dashboard_config({"remote_access": True, "cookie_secure": True})
+    _validate_remote_dashboard_config({"remote_access": True, "cookie_secure": True, "trusted_hosts": ["sentinel.customer.com"]})
 
 
 def test_remote_dashboard_rejects_ambiguous_string_booleans():
@@ -86,3 +86,35 @@ def test_secure_cookie_requires_declared_remote_tls_proxy():
 
     with pytest.raises(RuntimeError, match="remote_access=true"):
         _validate_remote_dashboard_config({"remote_access": False, "cookie_secure": True})
+
+
+def test_remote_dashboard_requires_explicit_trusted_hosts():
+    from modules.dashboard_impl import _validate_remote_dashboard_config
+
+    with pytest.raises(RuntimeError, match="trusted_hosts"):
+        _validate_remote_dashboard_config({
+            "remote_access": True,
+            "cookie_secure": True,
+        })
+
+
+def test_remote_dashboard_accepts_explicit_trusted_hosts():
+    from modules.dashboard_impl import _validate_remote_dashboard_config
+
+    _validate_remote_dashboard_config({
+        "remote_access": True,
+        "cookie_secure": True,
+        "trusted_hosts": ["sentinel.customer.com"],
+    })
+
+
+@pytest.mark.parametrize("hosts", ["sentinel.customer.com", None, 123, ["bad host"]])
+def test_remote_dashboard_rejects_invalid_trusted_hosts(hosts):
+    from modules.dashboard_impl import _validate_remote_dashboard_config
+
+    with pytest.raises(RuntimeError, match="trusted_hosts"):
+        _validate_remote_dashboard_config({
+            "remote_access": True,
+            "cookie_secure": True,
+            "trusted_hosts": hosts,
+        })

@@ -42,6 +42,9 @@ class AuthenticatedFakeHandler(FakeHandler):
     def _auth_ok(self):
         return True
 
+    def _csrf_ok(self):
+        return True
+
 
 def run_download(handler, monkeypatch, tmp_path, reports):
     data = tmp_path / "data"
