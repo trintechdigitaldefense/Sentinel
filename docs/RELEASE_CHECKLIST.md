@@ -1,9 +1,9 @@
 # SENTINEL release checklist
 
-**Current repository baseline:** `main` at `54b2797b95d2108220ada85efba36246656bb6a9` (PR #23 merge, 2026-11-21)  
+**Current repository baseline:** `main` at `769b91d5e3ee97a4a82672c88438327474784c8d` (PR #24 merge, 2026-11-21)  
 **Product status:** **pilot candidate**. This checklist does not declare a production release, certification, or deployment approval.
 
-## Latest repository status — 2026-11-21
+## Latest repository status — 2026-11-21 (post-PR #24)
 
 ### Merged work
 
@@ -12,13 +12,14 @@
 | PR #19 — dashboard/deployment hardening | **MERGED** | Implements cookie-authenticated Origin/Host checks, atomic runtime config updates, loopback-only backend binding and TLS configuration guards, and nonce-based CSP hardening. |
 | PR #21 — PDF-serving hardening | **MERGED** | Rejects unsafe filenames, traversal, symlinked files/directories, non-regular files, and report paths outside approved locations. |
 | PR #22 — supervised monitoring and readiness documentation | **MERGED** | Clarifies continuous monitoring versus human alert triage, escalation, and response responsibility. |
-| PR #23 — dashboard Origin/Host validation follow-up | **MERGED** | Merge commit: `54b2797b95d2108220ada85efba36246656bb6a9`. Strengthens validation of cookie-authenticated state-changing requests and browser regression coverage. |
+| PR #23 — dashboard Origin/Host validation follow-up | **MERGED** | Strengthens validation of cookie-authenticated state-changing requests and browser regression coverage. |
+| PR #24 — repository documentation refresh | **MERGED** | Refreshes README, changelog, security policy, release checklist and historical audit labeling. Merge commit: `769b91d5e3ee97a4a82672c88438327474784c8d`. |
 
 ### Automated evidence
 
 - PR #23 GitHub Actions passed on its PR head: **347 tests passed on Python 3.10 and 347 on Python 3.12**.
 - PR #21 recorded **310 passed, 1 skipped** locally and passing Python 3.10/3.12 GitHub Actions on its PR commit.
-- These are PR-head/historical test results. The repository status lookup did not return a post-merge workflow/status result for the current `main` commit; therefore post-merge CI is **not claimed as verified** here.
+- These are PR-head/historical test results. The repository status lookup for current `main` (`769b91d5e3ee97a4a82672c88438327474784c8d`) returned no status records or workflow runs; therefore post-merge CI is **not claimed as verified** here.
 - Passing automated tests do not establish live deployment safety, independent security approval, third-party message receipt, or production certification.
 
 ## Dashboard/deployment issues #15–#18
