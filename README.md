@@ -182,7 +182,7 @@ python scripts/firewall_smoke.py
 ```
 
 Details: [docs/TESTING.md](docs/TESTING.md).  
-CI runs compile-all, future-import guard, ruff, firewall smoke, pytest on PRs to `main`.
+CI runs compile-all, future-import guard, Ruff, and pytest on Python 3.10/3.12, plus isolated live nftables apply/restore, SSH continuity, and systemd service-lifecycle jobs on PRs to `main`.
 
 **Current security/reliability CI evidence (2026-11-21):** PR-head CI passed for PRs #31, #34, #35, #36 and #40. Coverage includes TLS/per-agent central transport, strict SSH host-key checks, isolated live nftables apply/restore, real SSH continuity through firewall changes, case alert/CLI integration, setup no-write/config-preservation tests, and a disposable systemd service lifecycle test (install, start, restart, stop, start). PR #36's merge commit also passed post-merge CI. The final current `main` commit `d8bd2ca` has no post-merge workflow result returned yet. These are automated regression checks, not customer-host certification or proof of staffed 24/7 response.
 
@@ -205,6 +205,9 @@ Earlier post-merge verification on `main` at `e80c09b` (2026-11-17): `python3 -m
 | [docs/EVIDENCE_HASH.md](docs/EVIDENCE_HASH.md) | What evidence hashes prove |
 | [CHANGELOG.md](CHANGELOG.md) | User-visible changes |
 | [docs/SALES_PACK.md](docs/SALES_PACK.md) | Pilot sales materials |
+| [docs/AGENT_KEY_MIGRATION.md](docs/AGENT_KEY_MIGRATION.md) | Agent-key migration, rotation and revocation |
+| [docs/CASES_INTEGRATION.md](docs/CASES_INTEGRATION.md) | Case CLI and alert integration |
+| [docs/PILOT_DEPLOY.md](docs/PILOT_DEPLOY.md) | Supervised pilot deployment requirements |
 
 ---
 
