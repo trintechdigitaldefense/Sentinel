@@ -2,6 +2,7 @@
 
 ## Unreleased — dashboard request validation and repository status refresh (2026-11-21)
 
+- PR #25 merged to `main` as `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44`: aligned the release checklist baseline and clarified that current-main legacy agent transport uses HTTP and is not suitable for untrusted networks. Documentation-only; no code or deployment changes.
 - PR #24 merged to `main` as `769b91d5e3ee97a4a82672c88438327474784c8d`: refreshed repository documentation, security policy, release gates, and historical audit labeling. No product code, release tag, deployment, or certification changed.
 - Current-main status lookup for the PR #24 merge commit returned no workflow runs or status records; post-merge CI is not claimed as verified.
 - PR #23 merged to `main` as `54b2797b95d2108220ada85efba36246656bb6a9`: strengthened dashboard Origin/Host validation for cookie-authenticated state-changing requests and added browser-security regression coverage.
