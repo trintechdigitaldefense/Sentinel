@@ -400,6 +400,27 @@ class CentralAgentHandler(BaseHTTPRequestHandler):
         })
 
 
+def _handler_for_listener(
+    is_loopback: bool,
+    send_alert_fn: Optional[Callable] = None,
+    canary_beacon_fn: Optional[Callable] = None,
+):
+    """Create an isolated handler policy for each listener instance."""
+    def _beacon(cid, meta):
+        if canary_beacon_fn:
+            canary_beacon_fn(cid, meta)
+
+    return type(
+        "BoundCentralAgentHandler",
+        (CentralAgentHandler,),
+        {
+            "allow_shared_token": bool(is_loopback),
+            "send_alert_fn": send_alert_fn,
+            "canary_beacon_fn": _beacon,
+        },
+    )
+
+
 class _ThreadedCentralServer(ThreadingHTTPServer):
     allow_reuse_address = True
     daemon_threads = True
@@ -441,18 +462,14 @@ def start_central(
     if logger:
         logger.info("Central token ready (%s chars)", len(tok))
 
-    def _beacon(cid, meta):
-        if canary_beacon_fn:
-            canary_beacon_fn(cid, meta)
-
-    # Bind callbacks on class for handler instances
-    CentralAgentHandler.send_alert_fn = send_alert_fn
-    CentralAgentHandler.canary_beacon_fn = _beacon
-
-    CentralAgentHandler.allow_shared_token = is_loopback
+    handler_class = _handler_for_listener(
+        is_loopback,
+        send_alert_fn=send_alert_fn,
+        canary_beacon_fn=canary_beacon_fn,
+    )
     server = None
     try:
-        server = _ThreadedCentralServer((host, port), CentralAgentHandler)
+        server = _ThreadedCentralServer((host, port), handler_class)
         if not is_loopback:
             server = _maybe_ssl(server, cfg)
         else:
