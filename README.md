@@ -40,6 +40,18 @@ python3 sentinel.py service-status      # confirm always-on
 
 **Operator supervision:** set an agreed review cadence (weekly/biweekly is a baseline for routine review, with critical alerts escalated promptly); run `doctor`, review critical alerts, check alert delivery/queue health, and confirm canaries. The service can monitor continuously, but the operator-response commitment must be defined separately.
 
+## Secure multi-host deployment
+
+For multi-host monitoring, enroll a Sentinel agent on each additional Linux host and connect it to a central listener. Network-facing central listeners require a valid TLS certificate and private key; the listener fails closed if TLS setup is missing or invalid. Plain HTTP is restricted to loopback use.
+
+- Each agent uses an individual API key. Keys are stored hashed on the central side, expire after **30 days by default**, and can be revoked or reissued. Protect the central master key and agent credential files.
+- Agent bundles use HTTPS off-loopback and verify the configured CA. The certificate SAN must match the central URL hostname.
+- Automated SSH enrollment requires the target host key to be verified and already present in the operator's `known_hosts` file (`StrictHostKeyChecking=yes`). Do not accept an unverified host key.
+- On supported Linux hosts, the agent can run as `sentinel-agent.service` under systemd. The service lifecycle is exercised in a disposable CI systemd container; still verify service behavior and recovery on the actual target OS before a client pilot.
+- Firewall rule application remains dry-run until explicitly confirmed. Transactional nftables apply/restore and SSH continuity are tested in isolated CI, but a customer-specific change/rollback drill is still required.
+
+See [docs/AGENT_KEY_MIGRATION.md](docs/AGENT_KEY_MIGRATION.md) and [docs/PILOT_DEPLOY.md](docs/PILOT_DEPLOY.md). Remote-agent security does not change Sentinel's supervised operating model: a human operator remains responsible for alert review and response.
+
 **False positives:**  
 `python3 sentinel.py suppress-add SUSPICIOUS_PROCESS "pattern"`  
 `python3 sentinel.py suppress`
@@ -54,15 +66,15 @@ python3 sentinel.py service-status      # confirm always-on
 | Persistence hunting | Implemented · tested (partial) | Cron, systemd, keys, LD_PRELOAD surfaces |
 | Reverse-shell / behavioral | Implemented · tested (partial) | Heuristics — not proof of compromise alone |
 | Canary / deception files | Implemented | Tracked decoys; missing tracked paths alert |
-| Host firewall control plane | Implemented · dry-run default | Confirm required to apply; lockout guard |
+| Host firewall control plane | Implemented · dry-run default | Transactional nftables apply/restore; isolated apply and SSH-continuity CI passed; client-host drill still required |
 | SSH brute-force blocking | Implemented · **auto_block off by default** | Opt-in autonomy |
 | Multi-channel alerts | Implemented · automated tests | Persistent finding state, delivery deduplication, quiet hours, offline retry queue |
 | Critical alert persistence | Implemented · tested | Survive restarts until ACK |
 | Local dashboard | Implemented · authz tests | Loopback + view-only defaults; token auth |
 | Doctor / go-live | Implemented | Install-health — not a production certification |
 | SIEM / Splunk HEC | Implemented · tested (partial) | Optional; disabled until configured |
-| Cases / evidence packs | Implemented | Hash = post-export integrity, not legal CoC alone — see [docs/EVIDENCE_HASH.md](docs/EVIDENCE_HASH.md) |
-| MSP central / agent keys | Implemented | Requires correct module load; see audit |
+| Cases / evidence packs | Implemented | Auto-open from high-signal alerts; CLI: `python3 sentinel.py cases list`; hash = post-export integrity, not legal CoC alone — see [docs/EVIDENCE_HASH.md](docs/EVIDENCE_HASH.md) |
+| MSP central / agent keys | Implemented · TLS + per-agent keys | Network listeners fail closed without TLS; 30-day default key expiry; preverified SSH host keys required — see [docs/AGENT_KEY_MIGRATION.md](docs/AGENT_KEY_MIGRATION.md) |
 
 **Alert delivery reliability (PR #9):** unchanged active findings are tracked separately from trusted detection baselines. Finding state is written atomically with restrictive file permissions and thread/process locking. Alert delivery attempts are serialized per fingerprint; failed or unconfirmed deliveries are not treated as handled. Confirmed offline-queue entries can be retried by the hunt-cycle maintenance path. This reduces duplicate notifications and avoids silently losing retryable alerts; it does not prove that a third-party channel is reachable or that a human received an alert.
 
@@ -137,6 +149,8 @@ Supported: **Python 3.10+**, Linux (primary). Termux/Android containers may lack
 | `python3 sentinel.py dashboard` | Local UI (token URL printed) |
 | `python3 sentinel.py monitor` | Real-time threat poll (CLI) |
 | `python3 sentinel.py service-install` | Background/service install |
+| `python3 sentinel.py cases list` | List open cases |
+| `python3 sentinel.py cases note <CASE_ID> "Update"` | Add a case note |
 
 ---
 
@@ -149,6 +163,7 @@ Supported: **Python 3.10+**, Linux (primary). Termux/Android containers may lack
 | Dashboard bind | **127.0.0.1** |
 | Dashboard `allow_control` | **false** (viewer) |
 | Config file mode | **0600** on write |
+| SIEM/file shipping | **Disabled by default** | Explicit configuration required |
 | Self-integrity baseline | **0600**, atomic write |
 
 Dashboard: shareable token **cannot enable** controls; set `dashboard.allow_control: true` on the host if operators need actions.
@@ -169,7 +184,7 @@ python scripts/firewall_smoke.py
 Details: [docs/TESTING.md](docs/TESTING.md).  
 CI runs compile-all, future-import guard, ruff, firewall smoke, pytest on PRs to `main`.
 
-**Latest dashboard security verification (PR #23, 2026-11-21):** GitHub Actions passed on the PR head with **347 tests on Python 3.10 and 347 on Python 3.12**. PR #23 adds/strengthens Origin and Host validation for cookie-authenticated state-changing requests and browser regression coverage. This is PR-head CI evidence; it is not a post-merge CI result, live deployment validation, or production certification.
+**Current security/reliability CI evidence (2026-11-21):** PR-head CI passed for PRs #31, #34, #35, #36 and #40. Coverage includes TLS/per-agent central transport, strict SSH host-key checks, isolated live nftables apply/restore, real SSH continuity through firewall changes, case alert/CLI integration, setup no-write/config-preservation tests, and a disposable systemd service lifecycle test (install, start, restart, stop, start). PR #36's merge commit also passed post-merge CI. The final current `main` commit `d8bd2ca` has no post-merge workflow result returned yet. These are automated regression checks, not customer-host certification or proof of staffed 24/7 response.
 
 **Earlier PDF-serving verification (PR #21, 2026-11-20):** 310 passed, 1 skipped in the full local suite; Python 3.10 and 3.12 GitHub Actions checks passed on the PR commit. This covers PDF path, file, and directory symlink handling. It is historical PR-head evidence, not a current-main test result.
 
@@ -182,7 +197,8 @@ Earlier post-merge verification on `main` at `e80c09b` (2026-11-17): `python3 -m
 | Doc | Purpose |
 |-----|---------|
 | [INSTALL.md](INSTALL.md) | Install, upgrade, recovery |
-| [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) | Findings register |
+| [docs/SECURITY_AUDIT_2026-11.md](docs/SECURITY_AUDIT_2026-11.md) | November security revalidation |
+| [docs/SECURITY_AUDIT.md](docs/SECURITY_AUDIT.md) | Historical audit snapshot |
 | [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md) | Release gates |
 | [docs/FEATURE_INVENTORY.md](docs/FEATURE_INVENTORY.md) | Capability inventory |
 | [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md) | Threat model |
@@ -197,7 +213,7 @@ Earlier post-merge verification on `main` at `e80c09b` (2026-11-17): `python3 -m
 - Heuristic detections (shells, entropy tripwires) can false-positive; treat as leads, not verdicts.
 - Realtime FIM is reduced without `inotifywait` (`visibility_status().incomplete`).
 - Query-string dashboard tokens can leak via logs/Referer (prefer Bearer; tracked as H-04).
-- Live firewall **apply** and third-party SIEM delivery are not fully exercised in CI.
+- Live firewall apply/restore and SSH continuity are exercised only in isolated CI; a customer-host firewall change/rollback drill and real third-party SIEM delivery/receipt remain unverified.
 - Dashboard Origin/Host validation, atomic runtime configuration writes, loopback/TLS configuration guards, and nonce-based CSP hardening have implementation merged through PRs [#19](https://github.com/trintechdigitaldefense/Sentinel/pull/19) and [#23](https://github.com/trintechdigitaldefense/Sentinel/pull/23). Tracking issues [#15](https://github.com/trintechdigitaldefense/Sentinel/issues/15)–[#18](https://github.com/trintechdigitaldefense/Sentinel/issues/18) remain open pending independent review and completion of their acceptance evidence; do not treat them as closed.
 - Actual remote TLS reverse-proxy, certificate, cookie, and network-exposure configuration must be verified on the target host before remote dashboard access is enabled.
 - Post-merge CI on the exact current `main` commit, live firewall apply, real third-party alert delivery/receipt, restart/power-loss recovery, and detection coverage/false-positive rates are not established by PR-head CI.
