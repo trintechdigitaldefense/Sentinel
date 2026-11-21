@@ -22,7 +22,7 @@ jobs:
             -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
             ubuntu:24.04 bash -euxo pipefail -c '
               apt-get update
-              DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip nftables
+              DEBIAN_FRONTEND=noninteractive apt-get install -y python3 python3-venv python3-pip git nftables
               python3 -m venv /opt/sentinel-test-venv
               /opt/sentinel-test-venv/bin/pip install pytest
               /opt/sentinel-test-venv/bin/pytest -q tests/test_firewall_nft_integration.py
