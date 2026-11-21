@@ -8,7 +8,7 @@ def test_build_bundle(tmp_path, monkeypatch):
     # reload paths
     import importlib
     importlib.reload(remote_agent)
-    r = remote_agent.build_install_bundle(central_url="http://10.0.0.1:8743", label="t")
+    r = remote_agent.build_install_bundle(central_url="https://10.0.0.1:8743", label="t")
     assert r.get("ok")
     assert Path(r["install_script"]).is_file()
     text = Path(r["install_script"]).read_text()
