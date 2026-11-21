@@ -2,6 +2,9 @@
 
 ## Unreleased — dashboard request validation and repository status refresh (2026-11-21)
 
+- PR #35 merged: case auto-open is wired into alert processing after routing, and `sentinel.py cases ...` is tracked source with regression tests.
+- PR #34 merged: transactional nftables apply/restore, input validation, and isolated live firewall/SSH continuity CI passed.
+- PR #31 merged: central-agent TLS enforcement, per-agent expiring credentials, authenticated identity binding, and strict SSH host-key verification.
 - PR #27 merged to `main` as `9b105dc32a41a2342a2440dc18b1122c4cdf5672`: refreshed Requests (`2.34.2`), ReportLab (`5.1.0`), `actions/checkout` (`v7.0.1`) and `actions/setup-python` (`v7.1.0`). PR-head CI passed; post-merge CI is not yet claimed.
 - PR #26 merged the current-main security audit revalidation and acceptance status for issues #15–#18; it is documentation-only and does not close those issues.
 - PR #25 merged to `main` as `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44`: aligned the release checklist baseline and clarified that current-main legacy agent transport uses HTTP and is not suitable for untrusted networks. Documentation-only; no code or deployment changes.
