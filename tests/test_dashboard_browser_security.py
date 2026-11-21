@@ -80,29 +80,21 @@ def test_browser_login_xss_report_links_and_security_headers(dashboard_server):
             if request.url.endswith("/api/session")
             else None,
         )
-        login_responses = []
-        page.on(
-            "response",
-            lambda response: login_responses.append(response)
-            if response.url.endswith("/api/session")
-            else None,
-        )
         page.locator("#token").fill("browser-test-token")
-        page.locator("button[type=submit]").click()
-        assert login_responses, "browser sign-in did not issue POST /api/session"
-        login_response = login_responses[-1]
+        with page.expect_response(lambda response: response.url.endswith("/api/session")) as response_info:
+            page.locator("button[type=submit]").click()
+        login_response = response_info.value
         assert login_response.status == 303, (
             f"browser sign-in rejected: HTTP {login_response.status}; "
-            f"response={login_response.text()!r}; "
-            f"request_headers={login_requests[-1].all_headers() if login_requests else {}}"
+            f"response={login_response.text()!r}"
         )
-        page.wait_for_load_state("domcontentloaded")
-        assert page.locator("#token").count() == 0, (
-            "sign-in redirect did not establish an authenticated session; "
-            f"page={page.url!r}, cookies={context.cookies()!r}"
+        assert login_requests, "browser sign-in did not issue POST /api/session"
+        assert login_requests[-1].all_headers().get("origin") == dashboard_server.rstrip("/"), (
+            "login must send the real same-origin Origin header"
         )
         page.locator("#realtime table").wait_for(timeout=5000)
         assert page.url == dashboard_server
+        assert page.locator("#token").count() == 0
         assert "browser-test-token" not in page.content()
         assert page.evaluate("typeof renderThreats") == "function", page_errors
 
