@@ -73,9 +73,27 @@ def test_browser_login_xss_report_links_and_security_headers(dashboard_server):
         assert page.locator("#token").is_visible()
         assert page.locator("#realtime").count() == 0
 
+        login_responses = []
+        page.on(
+            "response",
+            lambda response: login_responses.append(response)
+            if response.url.endswith("/api/session")
+            else None,
+        )
         page.locator("#token").fill("browser-test-token")
         page.locator("button[type=submit]").click()
-        page.locator("#realtime table").wait_for()
+        assert login_responses, "browser sign-in did not issue POST /api/session"
+        login_response = login_responses[-1]
+        assert login_response.status == 303, (
+            f"browser sign-in rejected: HTTP {login_response.status}; "
+            f"response={login_response.text()!r}"
+        )
+        page.wait_for_load_state("domcontentloaded")
+        assert page.locator("#token").count() == 0, (
+            "sign-in redirect did not establish an authenticated session; "
+            f"page={page.url!r}, cookies={context.cookies()!r}"
+        )
+        page.locator("#realtime table").wait_for(timeout=5000)
         assert page.url == dashboard_server
         assert "browser-test-token" not in page.content()
         assert page.evaluate("typeof renderThreats") == "function", page_errors
