@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import ipaddress
 import sqlite3
 import ssl
 from datetime import datetime, timezone
@@ -33,8 +34,16 @@ def _now() -> str:
 
 
 def init_db() -> None:
-    DATA.mkdir(parents=True, exist_ok=True)
-    con = sqlite3.connect(DB)
+    DATA.mkdir(parents=True, exist_ok=True, mode=0o700)
+    try:
+        os.chmod(DATA, 0o700)
+    except OSError:
+        pass
+    previous_umask = os.umask(0o077)
+    try:
+        con = sqlite3.connect(DB)
+    finally:
+        os.umask(previous_umask)
     con.execute(
         """CREATE TABLE IF NOT EXISTS events (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -69,6 +78,10 @@ def init_db() -> None:
     con.execute("CREATE INDEX IF NOT EXISTS idx_audit_ts ON audit_events(ts)")
     con.commit()
     con.close()
+    try:
+        os.chmod(DB, 0o600)
+    except OSError:
+        pass
 
 
 def audit(
@@ -352,15 +365,31 @@ def main():
         print(result)
         return
 
+    if bool(args.cert) != bool(args.keyfile):
+        raise SystemExit("[!] TLS requires both --cert and --keyfile")
+    normalized_host = str(args.host).strip().strip("[]")
+    try:
+        is_loopback = ipaddress.ip_address(normalized_host).is_loopback
+    except ValueError:
+        # Only the literal localhost name is trusted as loopback; do not
+        # resolve arbitrary hostnames while deciding whether HTTP is safe.
+        is_loopback = normalized_host.lower() == "localhost"
+    if not is_loopback and not (args.cert and args.keyfile):
+        raise SystemExit("[!] Refusing network listener without TLS; provide --cert and --keyfile or bind to loopback")
+
     Handler.master_key = args.master_key
-    httpd = ThreadingHTTPServer((args.host, args.port), Handler)
+    tls_context = None
     if args.cert and args.keyfile:
-        ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-        ctx.load_cert_chain(args.cert, args.keyfile)
-        httpd.socket = ctx.wrap_socket(httpd.socket, server_side=True)
+        tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+        # Load and validate credentials before opening the listening socket.
+        tls_context.load_cert_chain(args.cert, args.keyfile)
+
+    httpd = ThreadingHTTPServer((args.host, args.port), Handler)
+    if tls_context is not None:
+        httpd.socket = tls_context.wrap_socket(httpd.socket, server_side=True)
         print(f"[+] SENTINEL central HTTPS on {args.host}:{args.port} (Phase 5)")
     else:
-        print(f"[+] SENTINEL central HTTP on {args.host}:{args.port} (use TLS in production) — Phase 5")
+        print(f"[+] SENTINEL central HTTP on loopback only {args.host}:{args.port} (Phase 5)")
     httpd.serve_forever()
 
 
