@@ -73,6 +73,13 @@ def test_browser_login_xss_report_links_and_security_headers(dashboard_server):
         assert page.locator("#token").is_visible()
         assert page.locator("#realtime").count() == 0
 
+        login_requests = []
+        page.on(
+            "request",
+            lambda request: login_requests.append(request)
+            if request.url.endswith("/api/session")
+            else None,
+        )
         login_responses = []
         page.on(
             "response",
@@ -86,7 +93,8 @@ def test_browser_login_xss_report_links_and_security_headers(dashboard_server):
         login_response = login_responses[-1]
         assert login_response.status == 303, (
             f"browser sign-in rejected: HTTP {login_response.status}; "
-            f"response={login_response.text()!r}"
+            f"response={login_response.text()!r}; "
+            f"request_headers={login_requests[-1].all_headers() if login_requests else {}}"
         )
         page.wait_for_load_state("domcontentloaded")
         assert page.locator("#token").count() == 0, (
