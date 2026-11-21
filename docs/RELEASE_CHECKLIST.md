@@ -1,6 +1,6 @@
 # SENTINEL release checklist
 
-**Application/security source baseline reviewed:** `3388e2bf1c88ac0b33b8cd6535c70a5abff3ba6d` (PR #35 merge, 2026-11-21)  
+**Application/security source baseline reviewed:** `d8bd2caeb39f62d17972891a0f8dd8d4c7a3de50` (PR #40 merge, 2026-11-21; PR #41 is documentation-only)  
 **Dependency/CI baseline:** `9b105dc32a41a2342a2440dc18b1122c4cdf5672` (PR #27 merge, 2026-11-21)  
 **Product status:** **pilot candidate**. This checklist does not declare a production release, certification, or deployment approval.
 
@@ -21,6 +21,10 @@
 | PR #31 — agent transport and per-agent credentials | **MERGED** | Enforces HTTPS/TLS for network listeners, per-agent credentials and strict SSH host-key verification. |
 | PR #34 — firewall transaction safety | **MERGED** | Adds nftables validation, transactional restore, and isolated live nftables/SSH continuity CI. |
 | PR #35 — case CLI and alert integration | **MERGED** | Tracks case auto-open and CLI wiring in source rather than relying on setup-time patching. |
+| PR #36 — setup and SIEM safety | **MERGED** | Removes runtime source rewriting, deletes unsafe/obsolete injection scripts, and enforces least-privilege SIEM defaults. |
+| PR #39 — firewall-to-case regression | **MERGED** | Tests that firewall events create cases in an isolated Sentinel home. |
+| PR #40 — systemd lifecycle CI | **MERGED** | Adds a disposable systemd container job covering service install/start/restart/stop/start. |
+| PR #41 — README secure multi-host refresh | **MERGED** | Documents TLS, per-agent keys, strict SSH host keys, and CI evidence without changing pilot status. |
 
 ### Automated evidence
 
