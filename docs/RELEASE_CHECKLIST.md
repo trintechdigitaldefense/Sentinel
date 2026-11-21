@@ -1,6 +1,7 @@
 # SENTINEL release checklist
 
-**Application/source baseline reviewed:** `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44` (PR #25 merge, 2026-11-21; subsequent documentation-only PRs do not change application code)  
+**Application/security source baseline reviewed:** `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44` (PR #25 merge, 2026-11-21)  
+**Dependency/CI baseline:** `9b105dc32a41a2342a2440dc18b1122c4cdf5672` (PR #27 merge, 2026-11-21)  
 **Product status:** **pilot candidate**. This checklist does not declare a production release, certification, or deployment approval.
 
 ## Latest repository status — 2026-11-21 (post-PR #24)
@@ -14,13 +15,15 @@
 | PR #22 — supervised monitoring and readiness documentation | **MERGED** | Clarifies continuous monitoring versus human alert triage, escalation, and response responsibility. |
 | PR #23 — dashboard Origin/Host validation follow-up | **MERGED** | Strengthens validation of cookie-authenticated state-changing requests and browser regression coverage. |
 | PR #24 — repository documentation refresh | **MERGED** | Refreshes README, changelog, security policy, release checklist and historical audit labeling. |
-| PR #25 — release baseline and agent transport documentation | **MERGED** | Updates the current-main baseline and documents the legacy HTTP agent transport limitation. Merge commit: `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44`. |
+| PR #25 — release baseline and agent transport documentation | **MERGED** | Updates the release baseline and documents the legacy HTTP agent transport limitation. |
+| PR #26 — current-main audit revalidation | **MERGED** | Revalidates historical security findings, records issues #15–#18 acceptance status and documents additional setup/agent-transport risks. |
+| PR #27 — dependency and GitHub Actions refresh | **MERGED** | Updates Requests, ReportLab, actions/checkout and actions/setup-python. Merge commit: `9b105dc32a41a2342a2440dc18b1122c4cdf5672`. |
 
 ### Automated evidence
 
-- PR #25 documentation CI passed on its PR head. PR #23 GitHub Actions passed on its PR head: **347 tests passed on Python 3.10 and 347 on Python 3.12**.
+- PR #27 CI passed on its PR head; no post-merge workflow result is claimed for its merge commit. PR #23 GitHub Actions passed on its PR head: **347 tests passed on Python 3.10 and 347 on Python 3.12**.
 - PR #21 recorded **310 passed, 1 skipped** locally and passing Python 3.10/3.12 GitHub Actions on its PR commit.
-- These are PR-head/historical test results. The repository status lookup for current `main` (`c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44`) has not yet returned a post-merge workflow result; therefore post-merge CI is **not claimed as verified** here.
+- These are PR-head/historical test results. The current-main status lookup for `9b105dc32a41a2342a2440dc18b1122c4cdf5672` has returned no post-merge workflow result; therefore post-merge CI is **not claimed as verified** here.
 - Passing automated tests do not establish live deployment safety, independent security approval, third-party message receipt, or production certification.
 
 ## Dashboard/deployment issues #15–#18

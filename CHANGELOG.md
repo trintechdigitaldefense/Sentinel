@@ -2,6 +2,8 @@
 
 ## Unreleased — dashboard request validation and repository status refresh (2026-11-21)
 
+- PR #27 merged to `main` as `9b105dc32a41a2342a2440dc18b1122c4cdf5672`: refreshed Requests (`2.34.2`), ReportLab (`5.1.0`), `actions/checkout` (`v7.0.1`) and `actions/setup-python` (`v7.1.0`). PR-head CI passed; post-merge CI is not yet claimed.
+- PR #26 merged the current-main security audit revalidation and acceptance status for issues #15–#18; it is documentation-only and does not close those issues.
 - PR #25 merged to `main` as `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44`: aligned the release checklist baseline and clarified that current-main legacy agent transport uses HTTP and is not suitable for untrusted networks. Documentation-only; no code or deployment changes.
 - PR #24 merged to `main` as `769b91d5e3ee97a4a82672c88438327474784c8d`: refreshed repository documentation, security policy, release gates, and historical audit labeling. No product code, release tag, deployment, or certification changed.
 - Current-main status lookup for the PR #24 merge commit returned no workflow runs or status records; post-merge CI is not claimed as verified.

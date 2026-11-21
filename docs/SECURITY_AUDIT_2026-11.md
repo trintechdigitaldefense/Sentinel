@@ -2,7 +2,8 @@
 
 **Original audit date:** 2026-11-17  
 **Current-main revalidation:** 2026-11-21  
-**Current revalidation baseline:** application/source tree at `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44` (PR #25 merge; docs-only follow-up PRs do not change application code)  
+**Current application/security source baseline:** `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44` (PR #25 merge)  
+**Current dependency/CI baseline:** `9b105dc32a41a2342a2440dc18b1122c4cdf5672` (PR #27 merge; dependency and workflow changes only)  
 **Original reviewed baseline:** `main` at `a9fac56fef73c7344bb4af92a6053124b7894caa` (PR #10 merge); this remains the baseline for the historical findings below.  
 **Review branch:** `security/readiness-audit-2026-11`  
 **Scope:** Static source and test review of dashboard security, installer safety, alert delivery/queue reliability, and firewall validation readiness.  
@@ -136,7 +137,7 @@ The current-main revalidation was a read-only GitHub source and test inspection.
 
 ## Current-main revalidation — 2026-11-21
 
-**Baseline inspected:** `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44`.  
+**Application/security source baseline inspected:** `c9561a0c3d8bc42cd6b8b0670fe4aae0ac9d8c44`. Dependency and CI metadata were refreshed separately by PR #27.  
 **Method:** read-only inspection of current source, test files, release checklist, and PR #8/#11 metadata. No code execution or live operational testing was performed in this revalidation.
 
 ### Historical finding disposition on current main
