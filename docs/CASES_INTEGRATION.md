@@ -1,64 +1,40 @@
-# Cases integration status (2026-10-24)
+# Cases integration status (2026-11-21)
 
-## On main
+## Current main-branch integration
 
 | Component | Status |
-|-----------|--------|
-| `modules/cases.py` + CLI | ✅ Phase 7 |
-| `modules/case_hooks.py` | ✅ Auto-open high/critical (engine + connector) |
-| `tests/test_case_hooks.py` | ✅ |
-| `modules/connectors/cli.py --auto-case` | ✅ |
-| `modules/dashboard_enrich.py` | ✅ |
-| `modules/wire_cases.py` | ✅ Helper for menu + send_alert wrap |
-| `modules/dashboard.py` | ✅ Bootstraps impl + enriches open cases |
+|---|---|
+| `modules/cases.py` and case storage | Implemented |
+| `modules/case_hooks.py` | Auto-opens cases for configured high-signal engine alerts; deduplicates by source event |
+| `modules/wire_cases.py` | Provides the cases subcommand handler |
+| `sentinel.py send_alert()` | Calls the case auto-open hook after alert logging and critical persistence |
+| `sentinel.py cases ...` | CLI dispatches to `modules.wire_cases.cases_command` |
+| `tests/test_case_hooks.py` | Covers engine/normalized alert case creation and deduplication |
+| Dashboard API | `collect_full()` includes `cases_open` and `cases_open_count`; this is API data, not a rendered dashboard panel |
 
-## Menu + send_alert in sentinel.py
-
-The full `sentinel.py` patch (v3.2.0) adds:
-
-- Menu items **16** (list open cases) and **17** (cases submenu)
-- Command: `python3 sentinel.py cases list|create|status|...`
-- `send_alert()` calls `maybe_open_case_from_engine_alert` for critical types
-
-That full engine file is prepared; apply on a machine with git push access:
+## Operator commands
 
 ```bash
-git clone https://github.com/trintechdigitaldefense/Sentinel.git
-# copy patched sentinel.py from the Phase 7 wire workspace, or merge these hooks:
+python3 sentinel.py cases list
+python3 sentinel.py cases list-all
+python3 sentinel.py cases create "Investigate suspicious activity"
+python3 sentinel.py cases get <CASE_ID>
+python3 sentinel.py cases status <CASE_ID> investigating
+python3 sentinel.py cases assign <CASE_ID> "Operator"
+python3 sentinel.py cases note <CASE_ID> "Investigation update"
+python3 sentinel.py cases evidence <CASE_ID>
 ```
 
-### Minimal send_alert hook (add after writing alerts.log)
-
-```python
-try:
-    from modules.case_hooks import maybe_open_case_from_engine_alert
-    maybe_open_case_from_engine_alert(alert_type, details if isinstance(details, dict) else {"raw": details})
-except Exception:
-    pass
-```
-
-### Minimal cases command
-
-```python
-elif command == "cases":
-    from modules.wire_cases import cases_command
-    cases_command(args)
-```
-
-### Menu entries
-
-```python
-("16", "Cases — list open", ("cases", "list")),
-("17", "Cases — create / triage submenu", ("__cases__",)),
-```
-
-### Dashboard open cases
-
-`collect_full()` now includes `cases_open` / `cases_open_count` via `dashboard_enrich`.
-Refresh the local dashboard to see open cases in `/api/status`.
-
-### Connector auto-case
+The standalone module CLI remains available:
 
 ```bash
-python3 -c "from modules.connectors.cli import main; main(['fetch','--source','sentinel_local','--auto-case'])"
+python3 -m modules.cases_cli list
 ```
+
+## Dashboard boundary
+
+The active dashboard API exposes open-case counts/data, but the legacy `scripts/apply_dashboard_cases.py` injection is not part of the tracked UI. That script currently renders case values with unsafe `innerHTML` and must not be run or used as a release step. A dashboard panel should be implemented directly in the active dashboard template using DOM construction and `textContent`, with browser tests for hostile values.
+
+## Setup boundary
+
+The current setup path still invokes legacy source-wiring scripts. The case CLI and alert hook are now tracked in `sentinel.py`; a separate setup-safety change must remove the redundant runtime source-rewriting calls only after the dashboard injection is removed from the setup path. Do not treat setup as non-mutating until that follow-up is merged and verified.
