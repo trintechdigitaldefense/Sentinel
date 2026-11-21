@@ -16,6 +16,8 @@ import json
 import logging
 import os
 import socket
+import stat
+import tempfile
 import ssl
 import time
 import urllib.error
@@ -513,34 +515,90 @@ def test_emit() -> dict:
 
 
 
-def enable_defaults(enable: bool = True) -> dict:
-    """Ensure alerting.siem block exists and optionally enable ship_file + flag."""
-    import json
-    p = _home() / "config.json"
+def _atomic_write_config(path: Path, cfg: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     try:
-        cfg = json.loads(p.read_text()) if p.exists() else {}
+        os.chmod(path.parent, 0o700)
+    except OSError:
+        pass
+    fd, name = tempfile.mkstemp(prefix=".config.json.", suffix=".tmp", dir=str(path.parent))
+    temp_path = Path(name)
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(cfg, stream, indent=2)
+            stream.write("\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_path, path)
+        os.chmod(path, 0o600)
+        try:
+            dir_fd = os.open(str(path.parent), os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass
     except Exception:
+        try:
+            temp_path.unlink()
+        except OSError:
+            pass
+        raise
+
+
+def enable_defaults(enable: bool = True) -> dict:
+    """Ensure safe SIEM defaults without enabling file shipping or dashboard control.
+
+    Existing explicit user settings are preserved. Malformed or non-regular
+    configuration files are never replaced with defaults.
+    """
+    path = _home() / "config.json"
+    if path.is_symlink():
+        raise RuntimeError(f"Sentinel config is a symbolic link; refusing to replace {path}")
+    if path.exists():
+        try:
+            mode = path.stat().st_mode
+            if not stat.S_ISREG(mode):
+                raise ValueError("config path is not a regular file")
+            cfg = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(cfg, dict):
+                raise ValueError("configuration root must be a JSON object")
+        except Exception as exc:
+            raise RuntimeError(f"Sentinel config is unreadable; refusing to replace it: {exc}") from exc
+    else:
         cfg = {}
+
     alerting = cfg.setdefault("alerting", {})
+    if not isinstance(alerting, dict):
+        raise ValueError("alerting configuration must be an object")
     siem = alerting.setdefault("siem", {})
-    siem["enabled"] = bool(enable)
+    if not isinstance(siem, dict):
+        raise ValueError("SIEM configuration must be an object")
+
+    if enable:
+        siem["enabled"] = True
+    else:
+        siem.setdefault("enabled", False)
     siem.setdefault("format", "json")
     siem.setdefault("min_severity", "LOW")
     siem.setdefault("syslog", {"enabled": False, "host": "", "port": 514, "protocol": "udp"})
     siem.setdefault("splunk_hec", {"enabled": False, "url": "", "token": "", "verify_tls": True})
     siem.setdefault("webhook", {"enabled": False, "url": "", "verify_tls": True})
-    sf = siem.setdefault("ship_file", {"enabled": True, "path": ""})
-    sf["enabled"] = True
+
+    ship_file = siem.setdefault("ship_file", {})
+    if not isinstance(ship_file, dict):
+        raise ValueError("SIEM ship_file configuration must be an object")
+    ship_file.setdefault("enabled", False)
+    ship_file.setdefault("path", "")
     alerting["siem"] = siem
     cfg["alerting"] = alerting
-    # dashboard defaults
-    dash = cfg.setdefault("dashboard", {})
-    if not dash.get("token"):
-        import secrets
-        dash["token"] = secrets.token_urlsafe(24)
-    dash.setdefault("port", 8792)
-    dash.setdefault("allow_control", True)
-    cfg["dashboard"] = dash
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(cfg, indent=2))
-    return {"ok": True, "siem_enabled": siem["enabled"], "path": str(p), "dashboard_port": dash.get("port")}
+
+    _atomic_write_config(path, cfg)
+    return {
+        "ok": True,
+        "siem_enabled": bool(siem.get("enabled")),
+        "ship_file_enabled": bool(ship_file.get("enabled")),
+        "path": str(path),
+    }
