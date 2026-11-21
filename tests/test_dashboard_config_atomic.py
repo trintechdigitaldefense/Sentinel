@@ -81,7 +81,7 @@ def test_save_cfg_file_fsync_failure_preserves_original_and_cleans_temp(
     import modules.dashboard_impl as dashboard
 
     config = tmp_path / "config.json"
-    original = b'{"customer":"preserve-on-fsync-error"}\\n'
+    original = b'{"customer":"preserve-on-fsync-error"}\n'
     config.write_bytes(original)
     monkeypatch.setattr(dashboard, "_home", lambda: tmp_path)
 
